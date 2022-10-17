@@ -1,0 +1,392 @@
+//
+
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.grpc.gt";
+option java_outer_classname = "gtProto";
+option objc_class_prefix = "HLW";
+
+package gt;
+
+// The gpp service definition.
+service gpp {
+  rpc TEECC_InitializeContext (Inicont_Request) returns (Inicont_Reply) {}
+  rpc TEECC_FinalizeContext (Fincont_Request) returns (Fincont_Reply) {}
+  rpc TEECC_OpenSession (Opes_Request) returns (Opes_Reply) {}
+  rpc TEECC_InvokeCommand (Invo_Request) returns (Invo_Reply) {}
+  rpc TEECC_CloseSession (Close_Request) returns (Close_Reply) {}
+  rpc TEECC_TA(TA_Chunk) returns (TA_Reply) {}
+  rpc TEECC_SetJwt(Setjwt_Request) returns (Setjwt_Reply) {}
+}
+
+
+message Inicont_Request {
+  uint64 name_size = 1;
+  string name = 2;
+  string token = 3;
+  string taname = 4;
+}
+
+message Inicont_Reply {
+  uint32 teecresult = 1;
+  int32  context_fd = 2;
+  uint64 context_tapath_outsize = 3;
+  bytes  context_tapath = 4;
+  uint64 context_sessionlist_next = 5;
+  uint64 context_sessionlist_prev = 6;
+  uint64 context_shrdmemlist_next = 7;
+  uint64 context_shrdmemlist_prev = 8;
+  uint64 context_sharebuffer_buffer = 9;
+  int64  context_sharebuffer_bufferbarrier = 10;
+  uint64 context_addr = 11;
+  int32  flag = 12;
+}
+
+message Fincont_Request {
+  int32  in_context_fd = 1;
+  uint64 in_context_tapath_size= 2;
+  bytes  in_context_tapath = 3;
+  uint64 in_context_sessionlist_next = 4;
+  uint64 in_context_sessionlist_prev = 5;
+  uint64 in_context_shrdmemlist_next = 6;
+  uint64 in_context_shrdmemlist_prev = 7;
+  uint64 in_context_sharebuffer_buffer = 8;
+  int64  in_context_sharebuffer_bufferbarrier = 9;
+  uint64 in_context_addr = 10;
+  string token = 11;
+  string taname = 12;
+}
+
+message Fincont_Reply {
+  int32  context_fd = 1;
+  uint64 context_tapath_outsize = 2;
+  bytes  context_tapath = 3;
+  uint64 context_sessionlist_next = 4;
+  uint64 context_sessionlist_prev = 5;
+  uint64 context_shrdmemlist_next = 6;
+  uint64 context_shrdmemlist_prev = 7;
+  uint64 context_sharebuffer_buffer = 8;
+  int64  context_sharebuffer_bufferbarrier = 9;
+  uint64 context_addr = 10;
+  int32  flag = 11;
+}
+
+message Opes_Request {
+  int32  in_context_fd = 1;
+  uint64 in_context_tapath_size= 2;
+  bytes  in_context_tapath = 3;
+  uint64 in_context_sessionlist_next = 4;
+  uint64 in_context_sessionlist_prev = 5;
+  uint64 in_context_shrdmemlist_next = 6;
+  uint64 in_context_shrdmemlist_prev = 7;
+  uint64 in_context_sharebuffer_buffer = 8;
+  int64  in_context_sharebuffer_bufferbarrier = 9;
+  uint32 in_destination_timelow = 10;
+  uint32 in_destination_timemid = 11;
+  uint32 in_destination_timehiandver = 12;
+  uint64  in_destination_cad_size = 13;
+  repeated uint32 in_destination_clockseqandnode = 14;
+  uint32 in_connectionmethod = 15;
+  uint64 in_connectiondata = 16;
+  uint32 in_operation_started = 17;
+  uint32 in_operation_paramtypes = 18;
+  uint64 in_operation_param1_tmpref_buffer = 19;
+  uint32 in_operation_param1_tmpref_size = 20;
+  uint64 in_operation_param1_memref_parent = 21;
+  uint32 in_operation_param1_memref_size = 22;
+  uint32 in_operation_param1_memref_offset = 23;
+  uint32 in_operation_param1_value_a = 24;
+  uint32 in_operation_param1_value_b = 25;
+  int32  in_operation_param1_ionref_ionsharefd = 26;
+  uint32 in_operation_param1_ionref_ionsize = 27;
+  uint64 in_operation_param2_tmpref_buffer = 28;
+  uint32 in_operation_param2_tmpref_size = 29;
+  uint64 in_operation_param2_memref_parent = 30;
+  uint32 in_operation_param2_memref_size = 31;
+  uint32 in_operation_param2_memref_offset = 32;
+  uint32 in_operation_param2_value_a = 33;
+  uint32 in_operation_param2_value_b = 34;
+  int32  in_operation_param2_ionref_ionsharefd = 35;
+  uint32 in_operation_param2_ionref_ionsize = 36;
+  uint64 in_operation_param3_tmpref_buffer = 37;
+  uint32 in_operation_param3_tmpref_size = 38;
+  uint64 in_operation_param3_memref_parent = 39;
+  uint32 in_operation_param3_memref_size = 40;
+  uint32 in_operation_param3_memref_offset = 41;
+  uint32 in_operation_param3_value_a = 42;
+  uint32 in_operation_param3_value_b = 43;
+  int32  in_operation_param3_ionref_ionsharefd = 44;
+  uint32 in_operation_param3_ionref_ionsize = 45;
+  uint64 in_operation_param4_tmpref_buffer = 46;
+  uint32 in_operation_param4_tmpref_size = 47;
+  uint64 in_operation_param4_memref_parent = 48;
+  uint32 in_operation_param4_memref_size = 49;
+  uint32 in_operation_param4_memref_offset = 50;
+  uint32 in_operation_param4_value_a = 51;
+  uint32 in_operation_param4_value_b = 52;
+  int32  in_operation_param4_ionref_ionsharefd = 53;
+  uint32 in_operation_param4_ionref_ionsize = 54;
+  uint64 in_operation_session = 55;
+  int32  in_operation_cancelflag = 56;
+  uint32 in_returnorigin = 57;
+  uint64 in_context_addr = 58;
+  string token = 59;
+  string taname = 60;
+}
+
+message Opes_Reply {
+  uint32 teecresult = 1;
+  int32  context_fd = 2;
+  bytes  context_tapath = 3 ;
+  uint64 context_tapath_outsize = 4;
+  uint64 context_sessionlist_next = 5;
+  uint64 context_sessionlist_prev = 6;
+  uint64 context_shrdmemlist_next = 7;
+  uint64 context_shrdmemlist_prev = 8;
+  uint64 context_sharebuffer_buffer = 9;
+  int64  context_sharebuffer_bufferbarrier = 10;
+  uint32 session_sessionid = 11;
+  uint32 session_serviceid_timelow = 12;
+  uint32 session_serviceid_timemid = 13;
+  uint32 session_serviceid_timehiandver = 14;
+  uint64 session_serviceid_clockseqandnode_outsize = 15;
+  repeated uint32 session_serviceid_clockseqandnode = 16;
+  uint32 session_opscnt = 17;
+  uint64 session_head_next = 18;
+  uint64 session_head_prev = 19;
+  uint64 session_context = 20;
+  uint32 operation_started = 21;
+  uint32 operation_paramtypes = 22;
+  uint64 operation_param1_tmpref_buffer = 23;
+  uint32 operation_param1_tmpref_size = 24;
+  uint64 operation_param1_memref_parent = 25;
+  uint32 operation_param1_memref_size = 26;
+  uint32 operation_param1_memref_offset = 27;
+  uint32 operation_param1_value_a = 28;
+  uint32 operation_param1_value_b = 29;
+  int32  operation_param1_ionref_ionsharefd = 30;
+  uint32 operation_param1_ionref_ionsize = 31;
+  uint64 operation_param2_tmpref_buffer = 32;
+  uint32 operation_param2_tmpref_size = 33;
+  uint64 operation_param2_memref_parent = 34;
+  uint32 operation_param2_memref_size = 35;
+  uint32 operation_param2_memref_offset = 36;
+  uint32 operation_param2_value_a = 37;
+  uint32 operation_param2_value_b = 38;
+  int32  operation_param2_ionref_ionsharefd = 39;
+  uint32 operation_param2_ionref_ionsize = 40;
+  uint64 operation_param3_tmpref_buffer = 41;
+  uint32 operation_param3_tmpref_size = 42;
+  uint64 operation_param3_memref_parent = 43;
+  uint32 operation_param3_memref_size = 44;
+  uint32 operation_param3_memref_offset = 45;
+  uint32 operation_param3_value_a = 46;
+  uint32 operation_param3_value_b = 47;
+  int32  operation_param3_ionref_ionsharefd = 48;
+  uint32 operation_param3_ionref_ionsize = 49;
+  uint64 operation_param4_tmpref_buffer = 50;
+  uint32 operation_param4_tmpref_size = 51;
+  uint64 operation_param4_memref_parent = 52;
+  uint32 operation_param4_memref_size = 53;
+  uint32 operation_param4_memref_offset = 54;
+  uint32 operation_param4_value_a = 55;
+  uint32 operation_param4_value_b = 56;
+  int32  operation_param4_ionref_ionsharefd = 57;
+  uint32 operation_param4_ionref_ionsize = 58;
+  uint64 operation_session = 59;
+  int32  operation_cancelflag = 60;
+  uint32 returnorigin = 61;
+  int32  flag = 62;
+}
+
+message Invo_Request {
+  uint32 in_session_sessionid = 1;
+  uint32 in_session_serviceid_timelow = 2;
+  uint32 in_session_serviceid_timemid = 3;
+  uint32 in_session_serviceid_timehiandver = 4;
+  uint64 in_session_serviceid_cad_size = 5;
+  repeated uint32 in_session_serviceid_clockseqandnode = 6;
+  uint32 in_session_opscnt = 7;
+  uint64 in_session_head_next = 8;
+  uint64 in_session_head_prev = 9;
+  uint64 in_session_context = 10;
+  uint32 in_commandid = 11;
+  uint32 in_operation_started = 12;
+  uint32 in_operation_paramtypes = 13;
+  uint64 in_operation_param1_tmpref_buffer = 14;
+  uint32 in_operation_param1_tmpref_size = 15;
+  uint64 in_operation_param1_memref_parent = 16;
+  uint32 in_operation_param1_memref_parent_flag = 17;
+  uint32 in_operation_param1_memref_size = 18;
+  uint32 in_operation_param1_memref_offset = 19;
+  uint32 in_operation_param1_value_a = 20;
+  uint32 in_operation_param1_value_b = 21;
+  int32  in_operation_param1_ionref_ionsharefd = 22;
+  uint32 in_operation_param1_ionref_ionsize = 23;
+  uint64 in_operation_param2_tmpref_buffer = 24;
+  uint32 in_operation_param2_tmpref_size = 25;
+  uint64 in_operation_param2_memref_parent = 26;
+  uint32 in_operation_param2_memref_parent_flag = 27;
+  uint32 in_operation_param2_memref_size = 28;
+  uint32 in_operation_param2_memref_offset = 29;
+  uint32 in_operation_param2_value_a = 30;
+  uint32 in_operation_param2_value_b = 31;
+  int32  in_operation_param2_ionref_ionsharefd = 32;
+  uint32 in_operation_param2_ionref_ionsize = 33;
+  uint64 in_operation_param3_tmpref_buffer = 34;
+  uint32 in_operation_param3_tmpref_size = 35;
+  uint64 in_operation_param3_memref_parent = 36;
+  uint32 in_operation_param3_memref_parent_flag = 37;
+  uint32 in_operation_param3_memref_size = 38;
+  uint32 in_operation_param3_memref_offset = 39;
+  uint32 in_operation_param3_value_a = 40;
+  uint32 in_operation_param3_value_b = 41;
+  int32  in_operation_param3_ionref_ionsharefd = 42;
+  uint32 in_operation_param3_ionref_ionsize = 43;
+  uint64 in_operation_param4_tmpref_buffer = 44;
+  uint32 in_operation_param4_tmpref_size = 45;
+  uint64 in_operation_param4_memref_parent = 46;
+  uint32 in_operation_param4_memref_parent_flag = 47;
+  uint32 in_operation_param4_memref_size = 48;
+  uint32 in_operation_param4_memref_offset = 49;
+  uint32 in_operation_param4_value_a = 50;
+  uint32 in_operation_param4_value_b = 51;
+  int32  in_operation_param4_ionref_ionsharefd = 52;
+  uint32 in_operation_param4_ionref_ionsize = 53;
+  uint64 in_operation_session = 54;
+  int32  in_operation_cancelflag = 55;
+  uint32 in_returnorigin = 56;
+  uint64 in_bufer1_size = 57;
+  repeated uint32 in_buffer1 = 58;
+  uint64 in_bufer2_size = 59;
+  repeated uint32 in_buffer2 = 60;
+  uint64 in_bufer3_size = 61;
+  repeated uint32 in_buffer3 = 62;
+  uint64 in_bufer4_size = 63;
+  repeated uint32 in_buffer4 = 64;
+  string token = 65;
+  string taname = 66;
+}
+
+message Invo_Reply {
+  uint32 teecresult = 1;
+  uint32 session_sessionid = 2;
+  uint32 session_serviceid_timelow = 3;
+  uint32 session_serviceid_timemid = 4;
+  uint32 session_serviceid_timehiandver = 5;
+  uint64 session_serviceid_clockseqandnode_outsize = 6;
+  repeated uint32 session_serviceid_clockseqandnode = 7;
+  uint32 session_opscnt = 8;
+  uint64 session_head_next = 9;
+  uint64 session_head_prev = 10;
+  uint64 session_context = 11;
+  uint32 operation_started = 12;
+  uint32 operation_paramtypes = 13;
+  uint64 operation_param1_tmpref_buffer = 14;
+  uint32 operation_param1_tmpref_size = 15;
+  uint64 operation_param1_memref_parent = 16;
+  uint32 operation_param1_memref_parent_flag = 17;
+  uint32 operation_param1_memref_size = 18;
+  uint32 operation_param1_memref_offset = 19;
+  uint32 operation_param1_value_a = 20;
+  uint32 operation_param1_value_b = 21;
+  int32  operation_param1_ionref_ionsharefd = 22;
+  uint32 operation_param1_ionref_ionsize = 23;
+  uint64 operation_param2_tmpref_buffer = 24;
+  uint32 operation_param2_tmpref_size = 25;
+  uint64 operation_param2_memref_parent = 26;
+  uint32 operation_param2_memref_parent_flag = 27;
+  uint32 operation_param2_memref_size = 28;
+  uint32 operation_param2_memref_offset = 29;
+  uint32 operation_param2_value_a = 30;
+  uint32 operation_param2_value_b = 31;
+  int32  operation_param2_ionref_ionsharefd = 32;
+  uint32 operation_param2_ionref_ionsize = 33;
+  uint64 operation_param3_tmpref_buffer = 34;
+  uint32 operation_param3_tmpref_size = 35;
+  uint64 operation_param3_memref_parent = 36;
+  uint32 operation_param3_memref_parent_flag = 37;
+  uint32 operation_param3_memref_size = 38;
+  uint32 operation_param3_memref_offset = 39;
+  uint32 operation_param3_value_a = 40;
+  uint32 operation_param3_value_b = 41;
+  int32  operation_param3_ionref_ionsharefd = 42;
+  uint32 operation_param3_ionref_ionsize = 43;
+  uint64 operation_param4_tmpref_buffer = 44;
+  uint32 operation_param4_tmpref_size = 45;
+  uint64 operation_param4_memref_parent = 46;
+  uint32 operation_param4_memref_parent_flag = 47;
+  uint32 operation_param4_memref_size = 48;
+  uint32 operation_param4_memref_offset = 49;
+  uint32 operation_param4_value_a = 50;
+  uint32 operation_param4_value_b = 51;
+  int32  operation_param4_ionref_ionsharefd = 52;
+  uint32 operation_param4_ionref_ionsize = 53;
+  uint64 operation_session = 54;
+  int32  operation_cancelflag = 55;
+  uint32 returnorigin = 56;
+
+  uint64 buffer1_outsize = 57;
+  uint64 buffer2_outsize = 58;
+  uint64 buffer3_outsize = 59;
+  uint64 buffer4_outsize = 60;
+
+  repeated uint32 buffer1 = 61;
+  repeated uint32 buffer2 = 62;
+  repeated uint32 buffer3 = 63;
+  repeated uint32 buffer4 = 64;
+  int32  flag = 65;
+}
+
+message Close_Request {
+  uint32 in_session_sessionid = 1;
+  uint32 in_session_serviceid_timelow = 2;
+  uint32 in_session_serviceid_timemid = 3;
+  uint32 in_session_serviceid_timehiandver = 4;
+  uint64 in_session_serviceid_cad_size = 5;
+  repeated uint32 in_session_serviceid_clockseqandnode = 6;
+  uint32 in_session_opscnt = 7;
+  uint64 in_session_head_next = 8;
+  uint64 in_session_head_prev = 9;
+  uint64 in_session_context = 10;
+  string token = 11;
+  string taname = 12;
+}
+
+message Close_Reply {
+  uint32 session_sessionid = 1;
+  uint32 session_serviceid_timelow = 2;
+  uint32 session_serviceid_timemid = 3;
+  uint32 session_serviceid_timehiandver = 4;
+  uint64 session_serviceid_cad_outsize = 5;
+  repeated uint32 session_serviceid_clockseqandnode = 6;
+  uint32 session_opscnt = 7;
+  uint64 session_head_next = 8;
+  uint64 session_head_prev = 9;
+  uint64 session_context = 10;
+  int32  flag = 11;
+}
+
+message TA_Chunk{
+  string name = 1;
+  bytes  buffer = 2;
+  string token = 3;
+  string taname = 4;
+  bytes  sha256 = 5;
+  string subdir = 6;
+}
+
+message TA_Reply{
+  int32 code = 1;
+  int32 flag = 2;
+}
+
+message Setjwt_Request{
+  string taname = 1;
+  string token = 2;
+}
+
+message Setjwt_Reply{
+  int32 retcode = 1;
+}

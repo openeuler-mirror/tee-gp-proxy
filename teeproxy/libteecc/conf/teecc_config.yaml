@@ -1,0 +1,10 @@
+GPPROXY_ADDRESS:    "gpserver.org:50051"
+
+NAME_SERVERCA_CERT: "ca_crt.pem"
+NAME_CLIENT_KEY:    "client_key.pem"
+NAME_CLIENT_CERT:   "client_crt.pem"
+
+# 0, no tls 
+# 1, only server certificate
+# 2, server and client certificates
+GRPC_TLS: 1

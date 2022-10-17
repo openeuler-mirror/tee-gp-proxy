@@ -1,37 +1,34 @@
-# tee-gp-proxy
+# cc-resource-pooling
 
 #### 介绍
-This project aims to provide an implementation for RPC invoking TEE to facilitate the use of Kunpeng confidential computing in cloud scennarios.
+机密计算资源池（Confidential Computeing Resource Pooling）项目旨在通过资源池化TrustZone的算力，方便鲲鹏机密计算的可信应用在云上部署。
+详细内容可参考仓库中的设计文档。
 
 #### 软件架构
-软件架构说明
+![TrustZone资源池架构](docs/pic/arch-II.png)
+
+本项目借助了gPRC这一字节流框架，扩展新创建了可部署在任意位置的GP(Globle Platform) API 库-下文称为GP Client，用于部署在云上的TrustZone的Client APP访问真实的TrustZone TEE。同时在Host上 新建了 GP API proxy，用于接收来自远程的CA的 GP API的调用。
+
+GP Client用于序列化CA的GP接口调用，GP Proxy则收到调用合反序列化后，将GP调用转化为本地TEE Client接口调用。考虑到并发处理的情况，GP API Proxy可管理多任时的队列。
+使用此方法，解决在VM或Docker中穿透虚拟化层访问TEE驱动的问题。如果需要，你也可以进一步开发，将多泰山服务器集群化管理。
+
 
 
 #### 安装教程
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+参考部署文档。
 
 #### 使用说明
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+1.  本项目原项目中引入了Host端对客户端的认证机制，并在GP API 以及Service侧提供了透传JWT的API，JWT的获取以及确认需要应用实现；
+2.  在配置gPRC时，建议启用TLS以及基于证书的双向认证，注意证书私钥为机密数据，在部署系统时需要考虑保护机制；
+3.  本项目不包含其它开源项目的代码，涉及的第三方开源组件均需要使用者自行获取。
+
 
 #### 参与贡献
 
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
-
 
 #### 特技
-
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+1. 项目提供接口与原接口完全适配，用户仅需更换libteec.so文件即可直接使用
+2. 增加了token验证机制，并添加了两个扩展程序，作为token验证的中间件
+3. 性能上相较于一期项目显著提升
