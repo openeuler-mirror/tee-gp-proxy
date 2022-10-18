@@ -1,13 +1,13 @@
 # cc-resource-pooling
 
 #### 介绍
-机密计算资源池（Confidential Computeing Resource Pooling）项目旨在通过资源池化TrustZone的算力，方便鲲鹏机密计算的可信应用在云上部署。
+项目（TEE GP Proxy）旨在通过资源池化TrustZone的算力，方便客户在云景中在鲲鹏机密计算的节点部署可信应用。
 详细内容可参考仓库中的设计文档。
 
 #### 软件架构
 ![TrustZone资源池架构](docs/pic/arch-II.png)
 
-本项目借助了gPRC这一字节流框架，扩展新创建了可部署在任意位置的GP(Globle Platform) API 库-下文称为GP Client，用于部署在云上的TrustZone的Client APP访问真实的TrustZone TEE。同时在Host上 新建了 GP API proxy，用于接收来自远程的CA的 GP API的调用。
+本项目借助了gRPC这一字节流框架，扩展新创建了可部署在任意位置的GP(Globle Platform) API 库-下文称为GP Client，用于部署在云上的TrustZone的Client APP访问真实的TrustZone TEE。同时在Host上 新建了 GP API proxy，用于接收来自远程的CA的 GP API的调用。
 
 GP Client用于序列化CA的GP接口调用，GP Proxy则收到调用合反序列化后，将GP调用转化为本地TEE Client接口调用。考虑到并发处理的情况，GP API Proxy可管理多任时的队列。
 使用此方法，解决在VM或Docker中穿透虚拟化层访问TEE驱动的问题。如果需要，你也可以进一步开发，将多泰山服务器集群化管理。
