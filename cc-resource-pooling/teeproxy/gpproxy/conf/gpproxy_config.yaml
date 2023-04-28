@@ -1,0 +1,19 @@
+GPPROXY_ADDRESS:    "[::]:50051"
+
+NAME_SERVER_KEY:    "server_key.pem"
+NAME_SERVER_CERT:   "server_crt.pem"
+NAME_CLIENTCA_CERT: "ca_crt.pem"
+
+# 0, no tls
+# 1, only server certificate
+# 2, server and client certificates
+GRPC_TLS: 1
+
+# 0, do not validate jwt
+# 1, foreced to validate jwt
+FORCE_VALIDATE_JWT: 1
+
+MAX_NUM_THREAD: 128
+MAX_NUM_WORKER: 128
+TIMEDOUT_SESSION: 60
+TIMEDOUT_CONTEXT: 90
