@@ -1,3 +1,0 @@
-# cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$MY_INSTALL_DIR .. 
-cmake -DCMAKE_BUILD_TYPE=Debug .. 
-

@@ -1,8 +1,0 @@
-DBus IPC
-
-packages installed:
-dbus
-libdbus-1-3
-libdbus-1-dev
-libdbus-glib-1-2
-
