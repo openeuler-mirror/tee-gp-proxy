@@ -1,0 +1,930 @@
+diff -Naur '--exclude=.git' ./qemu/hw/char/tc_ns_client.h ./qemu_after/hw/char/tc_ns_client.h
+--- ./qemu/hw/char/tc_ns_client.h	1970-01-01 08:00:00.000000000 +0800
++++ ./qemu_after/hw/char/tc_ns_client.h	2023-10-15 17:25:41.734034090 +0800
+@@ -0,0 +1,162 @@
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2012-2023. All rights reserved.
++ * Licensed under the Mulan PSL v2.
++ * You can use this software according to the terms and conditions of the Mulan PSL v2.
++ * You may obtain a copy of Mulan PSL v2 at:
++ *     http://license.coscl.org.cn/MulanPSL2
++ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
++ * PURPOSE.
++ * See the Mulan PSL v2 for more details.
++ */
++
++#ifndef _TC_NS_CLIENT_H_
++#define _TC_NS_CLIENT_H_
++#include "tee_client_type.h"
++#define TC_DEBUG
++
++#define INVALID_TYPE         0x00
++#define TEECD_CONNECT        0x01
++#ifndef ZERO_SIZE_PTR
++#define ZERO_SIZE_PTR       ((void *)16)
++#define ZERO_OR_NULL_PTR(x) ((unsigned long)(x) <= (unsigned long)ZERO_SIZE_PTR)
++#endif
++
++#define UUID_SIZE      16
++
++#define TC_NS_CLIENT_IOC_MAGIC 't'
++#define TC_NS_CLIENT_DEV       "tc_ns_client"
++#define TC_NS_CLIENT_DEV_NAME  "/dev/tc_ns_client"
++#define TC_TEECD_PRIVATE_DEV_NAME  "/dev/tc_private"
++#define TC_NS_CVM_DEV_NAME  "/dev/tc_ns_cvm"
++
++enum ConnectCmd {
++    GET_FD,
++    GET_TEEVERSION,
++    SET_SYS_XML,
++    GET_TEECD_VERSION,
++};
++
++typedef struct {
++    unsigned int method;
++    unsigned int mdata;
++} TC_NS_ClientLogin;
++
++typedef union {
++    struct {
++        unsigned long long  buffer;
++        unsigned long long offset;
++        unsigned long long size_addr;
++    } memref;
++    struct {
++        unsigned long long a_addr;
++        unsigned long long b_addr;
++    } value;
++} TC_NS_ClientParam;
++
++typedef struct {
++    unsigned int code;
++    unsigned int origin;
++} TC_NS_ClientReturn;
++
++typedef struct {
++    unsigned char uuid[UUID_SIZE];
++    unsigned int session_id;
++    unsigned int cmd_id;
++    TC_NS_ClientReturn returns;
++    TC_NS_ClientLogin login;
++    TC_NS_ClientParam params[TEEC_PARAM_NUM];
++    unsigned int paramTypes;
++    bool started;
++    unsigned int callingPid;
++    unsigned int file_size;
++    union {
++        char *file_buffer;
++        struct {
++            uint32_t file_addr;
++            uint32_t file_h_addr;
++        } memref;
++    };
++} TC_NS_ClientContext;
++
++typedef struct {
++    uint32_t seconds;
++    uint32_t millis;
++} TC_NS_Time;
++
++typedef struct {
++    uint16_t tzdriver_version_major;
++    uint16_t tzdriver_version_minor;
++    uint32_t reserved[15];
++} TC_NS_TEE_Info;
++
++enum SecFileType {
++    LOAD_TA = 0,
++    LOAD_SERVICE,
++    LOAD_LIB,
++    LOAD_DYNAMIC_DRV,
++    LOAD_PATCH,
++    LOAD_TYPE_MAX
++};
++
++struct SecFileInfo {
++    enum SecFileType fileType;
++    uint32_t fileSize;
++    int32_t secLoadErr;
++};
++
++struct SecLoadIoctlStruct {
++    struct SecFileInfo secFileInfo;
++    TEEC_UUID uuid;
++    union {
++        char *fileBuffer;
++        struct {
++            uint32_t file_addr;
++            uint32_t file_h_addr;
++        } memref;
++    };
++}__attribute__((packed));
++
++struct AgentIoctlArgs {
++    uint32_t id;
++    uint32_t bufferSize;
++    union {
++        void *buffer;
++        unsigned long long addr;
++    };
++};
++
++#define TC_NS_CLIENT_IOCTL_SES_OPEN_REQ                   _IOW(TC_NS_CLIENT_IOC_MAGIC, 1, TC_NS_ClientContext)
++#define TC_NS_CLIENT_IOCTL_SES_CLOSE_REQ                  _IOWR(TC_NS_CLIENT_IOC_MAGIC, 2, TC_NS_ClientContext)
++#define TC_NS_CLIENT_IOCTL_SEND_CMD_REQ                   _IOWR(TC_NS_CLIENT_IOC_MAGIC, 3, TC_NS_ClientContext)
++#define TC_NS_CLIENT_IOCTL_SHRD_MEM_RELEASE               _IOWR(TC_NS_CLIENT_IOC_MAGIC, 4, unsigned int)
++#define TC_NS_CLIENT_IOCTL_WAIT_EVENT                     _IOWR(TC_NS_CLIENT_IOC_MAGIC, 5, unsigned int)
++#define TC_NS_CLIENT_IOCTL_SEND_EVENT_RESPONSE            _IOWR(TC_NS_CLIENT_IOC_MAGIC, 6, unsigned int)
++#define TC_NS_CLIENT_IOCTL_REGISTER_AGENT                 _IOWR(TC_NS_CLIENT_IOC_MAGIC, 7, struct AgentIoctlArgs)
++#define TC_NS_CLIENT_IOCTL_UNREGISTER_AGENT               _IOWR(TC_NS_CLIENT_IOC_MAGIC, 8, unsigned int)
++#define TC_NS_CLIENT_IOCTL_LOAD_APP_REQ                   _IOWR(TC_NS_CLIENT_IOC_MAGIC, 9, struct SecLoadIoctlStruct)
++#define TC_NS_CLIENT_IOCTL_NEED_LOAD_APP                  _IOWR(TC_NS_CLIENT_IOC_MAGIC, 10, TC_NS_ClientContext)
++#define TC_NS_CLIENT_IOCTL_LOAD_APP_EXCEPT                _IOWR(TC_NS_CLIENT_IOC_MAGIC, 11, unsigned int)
++#define TC_NS_CLIENT_IOCTL_CANCEL_CMD_REQ                 _IOWR(TC_NS_CLIENT_IOC_MAGIC, 13, TC_NS_ClientContext)
++#define TC_NS_CLIENT_IOCTL_LOGIN                          _IOWR(TC_NS_CLIENT_IOC_MAGIC, 14, int)
++#define TC_NS_CLIENT_IOCTL_TST_CMD_REQ                    _IOWR(TC_NS_CLIENT_IOC_MAGIC, 15, int)
++#define TC_NS_CLIENT_IOCTL_TUI_EVENT                      _IOWR(TC_NS_CLIENT_IOC_MAGIC, 16, int)
++#define TC_NS_CLIENT_IOCTL_SYC_SYS_TIME                   _IOWR(TC_NS_CLIENT_IOC_MAGIC, 17, TC_NS_Time)
++#define TC_NS_CLIENT_IOCTL_SET_NATIVE_IDENTITY            _IOWR(TC_NS_CLIENT_IOC_MAGIC, 18, int)
++#define TC_NS_CLIENT_IOCTL_LOAD_TTF_FILE_AND_NOTCH_HEIGHT _IOWR(TC_NS_CLIENT_IOC_MAGIC, 19, unsigned int)
++#define TC_NS_CLIENT_IOCTL_LATEINIT                       _IOWR(TC_NS_CLIENT_IOC_MAGIC, 20, unsigned int)
++#define TC_NS_CLIENT_IOCTL_GET_TEE_VERSION                _IOWR(TC_NS_CLIENT_IOC_MAGIC, 21, unsigned int)
++#ifdef CONFIG_CMS_SIGNATURE
++#define TC_NS_CLIENT_IOCTL_UPDATE_TA_CRL                  _IOWR(TC_NS_CLIENT_IOC_MAGIC, 22, struct TC_NS_ClientCrl)
++#endif
++#ifdef CONFIG_TEE_TELEPORT_SUPPORT
++#define TC_NS_CLIENT_IOCTL_PORTAL_REGISTER                _IOWR(TC_NS_CLIENT_IOC_MAGIC, 24, struct AgentIoctlArgs)
++#define TC_NS_CLIENT_IOCTL_PORTAL_WORK                    _IOWR(TC_NS_CLIENT_IOC_MAGIC, 25, struct AgentIoctlArgs)
++#endif
++#define TC_NS_CLIENT_IOCTL_GET_TEE_INFO                   _IOWR(TC_NS_CLIENT_IOC_MAGIC, 26, TC_NS_TEE_Info)
++#define TC_NS_CLIENT_IOCTL_SET_VM_FLAG                    _IOWR(TC_NS_CLIENT_IOC_MAGIC, 27, int)
++
++TEEC_Result TEEC_CheckOperation(const TEEC_Operation *operation);
++#endif
++
++
+diff -Naur '--exclude=.git' ./qemu/hw/char/tee_client_constants.h ./qemu_after/hw/char/tee_client_constants.h
+--- ./qemu/hw/char/tee_client_constants.h	1970-01-01 08:00:00.000000000 +0800
++++ ./qemu_after/hw/char/tee_client_constants.h	2023-10-15 17:25:41.734034090 +0800
+@@ -0,0 +1,126 @@
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2013-2022. All rights reserved.
++ * Licensed under the Mulan PSL v2.
++ * You can use this software according to the terms and conditions of the Mulan PSL v2.
++ * You may obtain a copy of Mulan PSL v2 at:
++ *     http://license.coscl.org.cn/MulanPSL2
++ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
++ * PURPOSE.
++ * See the Mulan PSL v2 for more details.
++ */
++
++#ifndef _TEE_CLIENT_CONSTANTS_H_
++#define _TEE_CLIENT_CONSTANTS_H_
++
++enum TEEC_ReturnCode {
++    TEEC_SUCCESS = 0x0,                      /* success */
++    TEEC_ERROR_INVALID_CMD,                  /* invalid command */
++    TEEC_ERROR_SERVICE_NOT_EXIST,            /* target service is not exist */
++    TEEC_ERROR_SESSION_NOT_EXIST,            /* session between client and service is not exist */
++    TEEC_ERROR_SESSION_MAXIMUM,              /* exceed max num of sessions */
++    TEEC_ERROR_REGISTER_EXIST_SERVICE,       /* cannot register the service which already exist */
++    TEEC_ERROR_TAGET_DEAD_FATAL,             /* system error occurs in TEE */
++    TEEC_ERROR_READ_DATA,                    /* failed to read data in file */
++    TEEC_ERROR_WRITE_DATA,                   /* failed to write data to file */
++    TEEC_ERROR_TRUNCATE_OBJECT,              /* data is truncated */
++    TEEC_ERROR_SEEK_DATA,                    /* failed to seek data in file */
++    TEEC_ERROR_FSYNC_DATA,                   /* failed to sync data in file */
++    TEEC_ERROR_RENAME_OBJECT,                /* failed to rename file */
++    TEEC_ERROR_TRUSTED_APP_LOAD_ERROR,       /* failed to load Trusted Application */
++    TEEC_ERROR_GENERIC = 0xFFFF0000,         /* generic error occurs */
++    TEEC_ERROR_ACCESS_DENIED = 0xFFFF0001,   /* permission check failed, in initilize context or
++                                                open session or invoke commnad */
++    TEEC_ERROR_CANCEL = 0xFFFF0002,          /* operation is already canceled */
++    TEEC_ERROR_ACCESS_CONFLICT = 0xFFFF0003, /* confilct occurs in concurrent access to data,
++                                                error occurs in file operaions generally */
++    TEEC_ERROR_EXCESS_DATA = 0xFFFF0004,     /* exceed max data to be handled by system */
++    TEEC_ERROR_BAD_FORMAT = 0xFFFF0005,      /* data format is invalid, Trusted Application cannot
++                                                handle it */
++    TEEC_ERROR_BAD_PARAMETERS = 0xFFFF0006,  /* invalid parameters */
++    TEEC_ERROR_BAD_STATE = 0xFFFF0007,       /* operation failed in current state, when try to access
++                                                storage without initilize storage service */
++    TEEC_ERROR_ITEM_NOT_FOUND = 0xFFFF0008,  /* cannot find target item */
++    TEEC_ERROR_NOT_IMPLEMENTED = 0xFFFF0009, /* request operation is not implemented */
++    TEEC_ERROR_NOT_SUPPORTED = 0xFFFF000A,   /* request operation is not supported */
++    TEEC_ERROR_NO_DATA = 0xFFFF000B,         /* no data present for current operation */
++    TEEC_ERROR_OUT_OF_MEMORY = 0xFFFF000C,   /* system resource if out of use */
++    TEEC_ERROR_BUSY = 0xFFFF000D,            /* system is too busy to handle current operation */
++    TEEC_ERROR_COMMUNICATION = 0xFFFF000E,   /* error occurs when client try to communicate
++                                                with Trusted Application */
++    TEEC_ERROR_SECURITY = 0xFFFF000F,        /* security error occurs */
++    TEEC_ERROR_SHORT_BUFFER = 0xFFFF0010,    /* out buffer is not enough for current request */
++    TEEC_ERROR_MAC_INVALID = 0xFFFF3071,     /* MAC value check failed */
++    TEEC_ERROR_TARGET_DEAD = 0xFFFF3024,     /* Trusted Application is crashed */
++    TEEC_FAIL              = 0xFFFF5002,     /* common error */
++    TEEC_ERROR_EXTERNAL_CANCEL   = 0xFFFF0011,  /* used by adapt only, event caused User Interface operation aborted */
++    TEEC_ERROR_OVERFLOW          = 0xFFFF300F,  /* used by adapt only */
++    TEEC_ERROR_STORAGE_NO_SPACE  = 0xFFFF3041,  /* used by adapt only */
++    TEEC_ERROR_SIGNATURE_INVALID = 0xFFFF3072,  /* used by adapt only */
++    TEEC_ERROR_TIME_NOT_SET      = 0xFFFF5000,  /* used by adapt only */
++    TEEC_ERROR_TIME_NEEDS_RESET  = 0xFFFF5001,  /* used by adapt only */
++    TEEC_ERROR_IPC_OVERFLOW      = 0xFFFF9114   /* ipc overflow */
++};
++
++enum TEEC_ReturnCodeOrigin {
++    TEEC_ORIGIN_API = 0x1,         /* error occurs in handling client API */
++    TEEC_ORIGIN_COMMS = 0x2,       /* error occurs in communicating between REE and TEE */
++    TEEC_ORIGIN_TEE = 0x3,         /* error occurs in TEE */
++    TEEC_ORIGIN_TRUSTED_APP = 0x4, /* error occurs in Trusted Application */
++};
++
++enum TEEC_SharedMemCtl {
++    TEEC_MEM_INPUT = 0x1,  /* input type of memroy */
++    TEEC_MEM_OUTPUT = 0x2, /* output type of memory */
++    TEEC_MEM_INOUT = 0x3,  /* memory is used as both input and output */
++    TEEC_MEM_SHARED_INOUT = 0x4,  /* no copy shared memory */
++};
++
++enum TEEC_ParamType {
++    TEEC_NONE = 0x0,  /* unused parameter */
++    TEEC_VALUE_INPUT = 0x01,  /* input type of value, refer TEEC_Value */
++    TEEC_VALUE_OUTPUT = 0x02, /* output type of value, refer TEEC_Value */
++    TEEC_VALUE_INOUT = 0x03,  /* value is used as both input and output, refer TEEC_Value */
++    TEEC_MEMREF_TEMP_INPUT = 0x05,  /* input type of temp memory reference, refer TEEC_TempMemoryReference */
++    TEEC_MEMREF_TEMP_OUTPUT = 0x06, /* output type of temp memory reference, refer TEEC_TempMemoryReference */
++    TEEC_MEMREF_TEMP_INOUT = 0x07,  /* temp memory reference used as both input and output,
++                                       refer TEEC_TempMemoryReference */
++    TEEC_ION_INPUT = 0x08,  /* input type of icon memory reference, refer TEEC_IonReference */
++    TEEC_ION_SGLIST_INPUT = 0x09, /* input type of ion memory block reference, refer TEEC_IonSglistReference */
++    TEEC_MEMREF_SHARED_INOUT = 0x0a, /* no copy mem */
++    TEEC_MEMREF_WHOLE = 0xc, /* use whole memory block, refer TEEC_RegisteredMemoryReference */
++    TEEC_MEMREF_PARTIAL_INPUT = 0xd, /* input type of memory reference, refer TEEC_RegisteredMemoryReference */
++    TEEC_MEMREF_PARTIAL_OUTPUT = 0xe, /* output type of memory reference, refer TEEC_RegisteredMemoryReference */
++    TEEC_MEMREF_PARTIAL_INOUT = 0xf /* memory reference used as both input and output,
++                                        refer TEEC_RegisteredMemoryReference */
++};
++
++/****************************************************
++ *      Session Login Methods
++ ****************************************************/
++enum TEEC_LoginMethod {
++    TEEC_LOGIN_PUBLIC = 0x0,            /* no Login data is provided */
++    TEEC_LOGIN_USER,                    /* Login data about the user running the
++                                           Client Application process is provided */
++    TEEC_LOGIN_GROUP,                   /* Login data about the group running
++                                           the Client Application process is provided */
++    TEEC_LOGIN_APPLICATION = 0x4,       /* Login data about the running Client
++                                           Application itself is provided */
++    TEEC_LOGIN_USER_APPLICATION = 0x5,  /* Login data about the user running the
++                                           Client Application and about the
++                                           Client Application itself is provided */
++    TEEC_LOGIN_GROUP_APPLICATION = 0x6, /* Login data about the group running
++                                           the Client Application and about the
++                                           Client Application itself is provided */
++    TEEC_LOGIN_IDENTIFY = 0x7,          /* Login data is provided by REE system */
++};
++enum TST_CMD_ID {
++    TST_CMD_ID_01 = 1,
++    TST_CMD_ID_02,
++    TST_CMD_ID_03,
++    TST_CMD_ID_04,
++    TST_CMD_ID_05
++};
++
++#define TEEC_PARAM_NUM 4 /* teec param max number */
++#endif
+diff -Naur '--exclude=.git' ./qemu/hw/char/tee_client_list.h ./qemu_after/hw/char/tee_client_list.h
+--- ./qemu/hw/char/tee_client_list.h	1970-01-01 08:00:00.000000000 +0800
++++ ./qemu_after/hw/char/tee_client_list.h	2023-10-15 17:25:41.734034090 +0800
+@@ -0,0 +1,101 @@
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2013-2021. All rights reserved.
++ * iTrustee licensed under the Mulan PSL v2.
++ * You can use this software according to the terms and conditions of the Mulan PSL v2.
++ * You may obtain a copy of Mulan PSL v2 at:
++ *     http://license.coscl.org.cn/MulanPSL2
++ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
++ * PURPOSE.
++ * See the Mulan PSL v2 for more details.
++ */
++
++#ifndef TEE_CLIENT_LIST_H
++#define TEE_CLIENT_LIST_H
++
++struct ListNode {
++    struct ListNode *next;  /* point to next node  */
++    struct ListNode *prev;  /* point to prev node */
++};
++
++#define OFFSET_OF(type, member) (unsigned long)(&(((type *)0)->member))
++#define CONTAINER_OF(pos, type, member) (type *)(((char *)(pos)) - OFFSET_OF(type, member))
++
++#define LIST_DECLARE(name) \
++    struct ListNode name = { \
++        .next = &name, \
++        .prev = &name, \
++    }
++
++static inline void ListInit(struct ListNode *list)
++{
++    list->next = list;
++    list->prev = list;
++}
++
++#define LIST_HEAD(list) ((list)->next)
++#define LIST_TAIL(list) ((list)->prev)
++#define LIST_EMPTY(list) ((list) == (list)->next)
++
++static inline void ListInsertHead(struct ListNode *list, struct ListNode *entry)
++{
++    list->next->prev = entry;
++    entry->next = list->next;
++    entry->prev = list;
++    list->next = entry;
++}
++
++static inline void ListInsertTail(struct ListNode *list, struct ListNode *entry)
++{
++    entry->next = list;
++    entry->prev = list->prev;
++    list->prev->next = entry;
++    list->prev = entry;
++}
++
++static inline void ListRemoveEntry(struct ListNode *entry)
++{
++    entry->prev->next = entry->next;
++    entry->next->prev = entry->prev;
++}
++
++static inline struct ListNode *ListRemoveHead(struct ListNode *list)
++{
++    struct ListNode *entry = NULL;
++    if (!LIST_EMPTY(list)) {
++        entry = list->next;
++        ListRemoveEntry(entry);
++    }
++    return entry;
++}
++
++static inline struct ListNode *ListRemoveTail(struct ListNode *list)
++{
++    struct ListNode *entry = NULL;
++    if (!LIST_EMPTY(list)) {
++        entry = list->prev;
++        ListRemoveEntry(entry);
++    }
++    return entry;
++}
++
++#define LIST_ENTRY(ptr, type, member) \
++    ((type *)((char *)(ptr)-(unsigned long)(&((type *)0)->member)))
++
++#define LIST_FOR_EACH(pos, list) \
++    for (pos = (list)->next; pos != (list); pos = pos->next)
++
++#define LIST_FOR_EACH_SAFE(pos, n, list) \
++    for ((pos) = (list)->next, (n) = (pos)->next; (pos) != (list); (pos) = (n), (n) = (pos)->next)
++
++#define LIST_FOR_EACH_ENTRY(pos, list, member) \
++    for (pos = LIST_ENTRY((list)->next, typeof(*pos), member); &pos->member != (list); \
++         pos = LIST_ENTRY(pos->member.next, typeof(*pos), member))
++
++#define LIST_FOR_EACH_ENTRY_SAFE(pos, n, list, member) \
++    for (pos = LIST_ENTRY((list)->next, typeof(*pos), member), n = LIST_ENTRY(pos->member.next, typeof(*pos), \
++         member); &pos->member != (list); pos = n, n = LIST_ENTRY(n->member.next, typeof(*n), member))
++
++#endif
++
++
+diff -Naur '--exclude=.git' ./qemu/hw/char/tee_client_type.h ./qemu_after/hw/char/tee_client_type.h
+--- ./qemu/hw/char/tee_client_type.h	1970-01-01 08:00:00.000000000 +0800
++++ ./qemu_after/hw/char/tee_client_type.h	2023-10-15 17:25:41.734034090 +0800
+@@ -0,0 +1,134 @@
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2013-2022. All rights reserved.
++ * Licensed under the Mulan PSL v2.
++ * You can use this software according to the terms and conditions of the Mulan PSL v2.
++ * You may obtain a copy of Mulan PSL v2 at:
++ *     http://license.coscl.org.cn/MulanPSL2
++ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR
++ * PURPOSE.
++ * See the Mulan PSL v2 for more details.
++ */
++
++#ifndef _TEE_CLIENT_TYPE_H_
++#define _TEE_CLIENT_TYPE_H_
++
++#include <stdbool.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stddef.h>
++#include <semaphore.h>
++#include "tee_client_list.h"
++#include "tee_client_constants.h"
++
++typedef enum TEEC_ReturnCode TEEC_Result;
++
++typedef struct {
++    uint32_t timeLow;
++    uint16_t timeMid;
++    uint16_t timeHiAndVersion;
++    uint8_t clockSeqAndNode[8];
++} TEEC_UUID;
++
++typedef struct {
++    int32_t fd;
++    uint8_t *ta_path;
++    struct ListNode session_list;
++    struct ListNode shrd_mem_list;
++    union {
++        struct {
++            void *buffer;
++            sem_t buffer_barrier;
++        } share_buffer;
++        uint64_t imp;          /* for adapt */
++    };
++} TEEC_Context;
++
++typedef struct {
++    uint32_t session_id;
++    TEEC_UUID service_id;
++    uint32_t ops_cnt;
++    union {
++        struct ListNode head;
++        uint64_t imp;          /* for adapt */
++    };
++    TEEC_Context *context;
++} TEEC_Session;
++
++typedef struct {
++    void *buffer;
++    uint32_t size;
++    uint32_t flags;         /* reference to TEEC_SharedMemCtl */
++    uint32_t ops_cnt;
++    bool is_allocated;      /* identify whether the memory is registered or allocated */
++    union {
++        struct ListNode head;
++        void* imp;          /* for adapt, imp is not used by system CA, only for vendor CA */
++    };
++    TEEC_Context *context;
++} TEEC_SharedMemory;
++
++/*
++ * the corresponding param types are
++ * TEEC_MEMREF_TEMP_INPUT/TEEC_MEMREF_TEMP_OUTPUT/TEEC_MEMREF_TEMP_INOUT
++ */
++typedef struct {
++    void *buffer;
++    uint32_t size;
++} TEEC_TempMemoryReference;
++
++/*
++ * the corresponding param types are
++ * TEEC_MEMREF_WHOLE/TEEC_MEMREF_PARTIAL_INPUT
++ * TEEC_MEMREF_PARTIAL_OUTPUT/TEEC_MEMREF_PARTIAL_INOUT
++ */
++typedef struct {
++    TEEC_SharedMemory *parent;
++    uint32_t size;
++    uint32_t offset;
++} TEEC_RegisteredMemoryReference;
++
++/*
++ * the corresponding param types are
++ * TEEC_VALUE_INPUT/TEEC_VALUE_OUTPUT/TEEC_VALUE_INOUT
++ */
++typedef struct {
++    uint32_t a;
++    uint32_t b;
++} TEEC_Value;
++
++typedef struct {
++    int ion_share_fd;
++    uint32_t ion_size;
++} TEEC_IonReference;
++
++typedef union {
++    TEEC_TempMemoryReference tmpref;
++    TEEC_RegisteredMemoryReference memref;
++    TEEC_Value value;
++    TEEC_IonReference ionref;
++} TEEC_Parameter;
++
++typedef struct {
++    uint32_t event_type;    /* Tui event type */
++    uint32_t value;         /* return value, is keycode if tui event is getKeycode */
++    uint32_t notch;         /* notch size of the screen for tui */
++    uint32_t width;         /* width of foldable screen */
++    uint32_t height;        /* height of foldable screen */
++    uint32_t fold_state;    /* state of foldable screen */
++    uint32_t display_state; /* one state of folded state */
++    uint32_t phy_width;     /* real width of the mobile */
++    uint32_t phy_height;    /* real height of the mobile */
++} TEEC_TUI_Parameter;
++
++typedef struct {
++    uint32_t started;     /* 0 means cancel this operation, others mean to perform this operation */
++    uint32_t paramTypes;  /* use TEEC_PARAM_TYPES to construct this value */
++    TEEC_Parameter params[TEEC_PARAM_NUM];
++    TEEC_Session *session;
++    bool cancel_flag;
++} TEEC_Operation;
++
++#endif
++
++
+diff -Naur '--exclude=.git' ./qemu/hw/char/virtio-console.c ./qemu_after/hw/char/virtio-console.c
+--- ./qemu/hw/char/virtio-console.c	2023-10-15 17:25:08.646034090 +0800
++++ ./qemu_after/hw/char/virtio-console.c	2023-10-15 17:26:43.918034090 +0800
+@@ -20,6 +20,14 @@
+ #include "qapi/error.h"
+ #include "qapi/qapi-events-char.h"
+ 
++#include "qom/object.h"
++#include "hw/core/cpu.h"
++#include "sysemu/hw_accel.h"
++#include "monitor/monitor.h"
++#include <sys/types.h>
++#include <unistd.h>
++#include "tc_ns_client.h"
++
+ #define TYPE_VIRTIO_CONSOLE_SERIAL_PORT "virtserialport"
+ #define VIRTIO_CONSOLE(obj) \
+     OBJECT_CHECK(VirtConsole, (obj), TYPE_VIRTIO_CONSOLE_SERIAL_PORT)
+@@ -44,6 +52,140 @@
+     virtio_serial_throttle_port(VIRTIO_SERIAL_PORT(vcon), false);
+     return FALSE;
+ }
++//#define DEBUG     1
++
++#ifdef  DEBUG
++static void debug(const char *fmt, ...)
++{
++    va_list args;
++
++    va_start(args, fmt);
++    vfprintf(stderr, fmt, args);
++    va_end(args);
++}
++
++#define PRINTF_SIZE 16
++static void dump_buff(const char *buffer, size_t bufLen)
++{
++    size_t i;
++    if (buffer == NULL || bufLen == 0) {
++        return;
++    }
++
++    // printf("\n--------------------------------------------------\n");
++    printf("--------------------------------------------------\n");
++    printf("bufLen = %d\n", (int)bufLen);
++    for (i = 0; i < bufLen; i++) {
++        if (i % PRINTF_SIZE == 0 && i != 0) {
++            printf("\n");
++        }
++        printf("%02x ", *(buffer + i));
++    }
++    printf("\n--------------------------------------------------\n");
++    return;
++}
++#else
++#define debug(fmt, ...) do { } while (0)
++
++#define dump_buff(buffer, bufLen) do { } while (0)
++#endif
++
++#define VTZF_OPEN_TZD		     15
++#define VTZF_OPEN_SESSION        31
++#define VTZF_SEND_CMD            33
++#define VTZF_FS_REGISTER_AGENT   45
++#define VTZF_LOAD_SEC            53
++
++#define TEEC_PARAM_NUM          4 /* teec param max number */
++
++#define IS_TEMP_MEM(paramType)                                                              \
++    (((paramType) == TEEC_MEMREF_TEMP_INPUT) || ((paramType) == TEEC_MEMREF_TEMP_OUTPUT) || \
++     ((paramType) == TEEC_MEMREF_TEMP_INOUT))
++
++#define IS_PARTIAL_MEM(paramType)                                                        \
++    (((paramType) == TEEC_MEMREF_WHOLE) || ((paramType) == TEEC_MEMREF_PARTIAL_INPUT) || \
++     ((paramType) == TEEC_MEMREF_PARTIAL_OUTPUT) || ((paramType) == TEEC_MEMREF_PARTIAL_INOUT))
++
++#define IS_VALUE_MEM(paramType) \
++    (((paramType) == TEEC_VALUE_INPUT) || ((paramType) == TEEC_VALUE_OUTPUT) || ((paramType) == TEEC_VALUE_INOUT))
++
++#define TEEC_PARAM_TYPE_GET(paramTypes, index) \
++    (((paramTypes) >> (4*(index))) & 0x0F)
++
++typedef struct {
++	uint32_t packet_size;
++	uint32_t cmd;
++	uint32_t seq_num;
++	uint32_t vmid;
++	uint32_t flag;
++} struct_packet_cmd_open_tzd;
++
++typedef struct {
++	uint32_t packet_size;
++	uint32_t cmd;
++	uint32_t seq_num;
++	int32_t ptzfd;
++	void  *vmaddr;
++	struct AgentIoctlArgs args;
++} struct_packet_cmd_regagent;
++
++typedef struct {
++	uint32_t packet_size;
++	uint32_t cmd;
++	uint32_t seq_num;
++	int32_t ptzfd;
++	int32_t cpu_index;
++	struct SecLoadIoctlStruct ioctlArg;
++} struct_packet_cmd_load_sec;
++
++typedef struct {
++	uint32_t packet_size;
++	uint32_t cmd;
++	uint32_t seq_num;
++	int32_t ptzfd;
++	int32_t cpu_index;
++	TC_NS_ClientContext cliContext;
++} struct_packet_cmd_session;
++
++/*
++typedef struct {
++	uint32_t packet_size;
++	uint32_t cmd;
++	uint32_t seq_num;
++	int32_t ptzfd;
++	int32_t cpu_index;
++	unsigned long long addrs[TEEC_PARAM_NUM]; 
++	TC_NS_ClientContext cliContext;
++} struct_packet_cmd_send_cmd;
++*/
++
++typedef struct {
++	uint32_t packet_size;
++	uint32_t cmd;
++	uint32_t seq_num;
++	int32_t ptzfd;
++	int32_t err_flag;
++	int with_share;
++	uint64_t block_addrs[TEEC_PARAM_NUM];//qemu and proxy don't use
++	uint32_t block_size[TEEC_PARAM_NUM];
++	unsigned long long addrs[TEEC_PARAM_NUM]; //used by ref mem mmap
++	TC_NS_ClientContext cliContext;
++} struct_packet_cmd_send_cmd;
++
++typedef struct {
++	uint32_t packet_size;
++	uint32_t cmd;
++	uint32_t seq_num;
++	int32_t ptzfd;
++	uint64_t buffer;
++	uint32_t size;
++	uint32_t offset;
++} struct_packet_cmd_mmap;
++
++typedef struct {
++	uint64_t phy_addr;
++	uint64_t page_num;
++}struct_page_block;
+ 
+ /* Callback function that's called when the guest sends us data */
+ static ssize_t flush_buf(VirtIOSerialPort *port,
+@@ -51,12 +193,185 @@
+ {
+     VirtConsole *vcon = VIRTIO_CONSOLE(port);
+     ssize_t ret;
++    int i = 0;
++    uint32_t j = 0;
+ 
+     if (!qemu_chr_fe_backend_connected(&vcon->chr)) {
+         /* If there's no backend, we can just say we consumed all data. */
+         return len;
+     }
+ 
++    debug("\n");
++    debug("debug, %s, %s, %d \n", __FILE__, __func__, __LINE__);
++    debug("   virtio-console virtserialport name = %s, id = %d \n", port->name, (int)port->id);
++    debug("   have_data flush_buf, buflen = %d \n", len);
++    dump_buff((char *)buf, 0);
++
++    if ( len >= 8 ) {
++        uint32_t ui32_cmd = 0;
++        ui32_cmd = *(uint32_t *)((char *)buf + sizeof(uint32_t));
++        switch( ui32_cmd ) {
++        case VTZF_OPEN_TZD:
++            debug("   command is VTZF_OPEN_TZD \n");
++            if ( len >= sizeof(struct_packet_cmd_open_tzd)) {
++                struct_packet_cmd_open_tzd* vtzf_packet_cmd = (struct_packet_cmd_open_tzd *)buf;
++                pid_t qemu_pid = getpid();
++                debug("   qemu_pid                                     = 0x%016lx, %d \n",qemu_pid, qemu_pid);
++                vtzf_packet_cmd->vmid = qemu_pid;
++            }
++            break;
++        case VTZF_LOAD_SEC:
++            debug("   command is VTZF_LOAD_SEC \n");
++            if (len >= sizeof(struct_packet_cmd_load_sec)) {
++                struct_packet_cmd_load_sec* vtzf_packet_cmd = (struct_packet_cmd_load_sec *)buf;
++                debug("   vtzf_packet_cmd->cliContext.file_buffer      = 0x%016lx \n", vtzf_packet_cmd->ioctlArg.fileBuffer);
++                hwaddr gpa = (uint64_t)vtzf_packet_cmd->ioctlArg.fileBuffer;
++                Error *local_err = NULL;
++                MemoryRegion *mr = NULL;
++                void *ptr_hva;
++                ptr_hva = gpa2hva(&mr, gpa, &local_err);
++                if (local_err) {
++                    debug("   gpa2hva failed \n");
++                } else {
++                    debug("   host virtual address of file_buffer          = 0x%016lx, %p \n", (uint64_t)ptr_hva, ptr_hva);
++                    memory_region_unref(mr);
++                    uint64_t ui64_hva;
++                    ui64_hva = (uint64_t)ptr_hva;
++                    vtzf_packet_cmd->ioctlArg.fileBuffer = (void *)ui64_hva;
++                }
++            }
++            break;
++        case VTZF_FS_REGISTER_AGENT:
++            debug("   command is VTZF_FS_REGISTER_AGENT \n");
++            if (len >= sizeof(struct_packet_cmd_regagent)) {
++                struct_packet_cmd_regagent* vtzf_packet_cmd = (struct_packet_cmd_regagent *)buf;
++                debug("   vtzf_packet_cmd->cliContext.file_buffer      = 0x%016lx \n", vtzf_packet_cmd->vmaddr);
++                hwaddr gpa = (uint64_t)vtzf_packet_cmd->vmaddr;
++                Error *local_err = NULL;
++                MemoryRegion *mr = NULL;
++                void *ptr_hva;
++                ptr_hva = gpa2hva(&mr, gpa, &local_err);
++                if (local_err) {
++                    debug("   gpa2hva failed \n");
++                } else {
++                    debug("   host virtual address of vmaddr          = 0x%016lx, %p \n", (uint64_t)ptr_hva, ptr_hva);
++                    memory_region_unref(mr);
++                    uint64_t ui64_hva;
++                    ui64_hva = (uint64_t)ptr_hva;
++                    vtzf_packet_cmd->vmaddr = (void *)ui64_hva;
++                }
++            }
++            break;
++        case VTZF_OPEN_SESSION:
++            debug("   command is VTZF_OPEN_SESSION \n");
++            debug("sizeof(struct_packet_cmd_session) =%d \n", sizeof(struct_packet_cmd_session));
++            debug("sizeof(TC_NS_ClientContext) =%d \n", sizeof(TC_NS_ClientContext));
++            if ( len >= sizeof(struct_packet_cmd_session) ) {
++                struct_packet_cmd_session* vtzf_packet_cmd = (struct_packet_cmd_session *)buf;
++                debug("   vtzf_packet_cmd->cliContext.file_size        = 0x%08x, %d \n", vtzf_packet_cmd->cliContext.file_size,
++                    vtzf_packet_cmd->cliContext.file_size);
++                debug("   vtzf_packet_cmd->cliContext.file_buffer      = 0x%016lx \n", vtzf_packet_cmd->cliContext.file_buffer);
++                hwaddr gpa = (uint64_t)vtzf_packet_cmd->cliContext.file_buffer;
++                Error *local_err = NULL;
++                MemoryRegion *mr = NULL;
++                void *ptr_hva;
++                ptr_hva = gpa2hva(&mr, gpa, &local_err);
++                if (local_err) {
++                    debug("   gpa2hva failed \n");
++                } else {
++                    debug("   host virtual address of file_buffer          = 0x%016lx, %p \n", (uint64_t)ptr_hva, ptr_hva);
++                    memory_region_unref(mr);
++                    uint64_t ui64_hva;
++                    ui64_hva = (uint64_t)ptr_hva;
++                    vtzf_packet_cmd->cliContext.file_buffer = (void *)ui64_hva;
++                }
++            }
++            break;
++        case VTZF_SEND_CMD:
++            debug("   command is VTZF_SEND_CMD \n");
++            if ( len >= sizeof(struct_packet_cmd_send_cmd) ) {
++                struct_packet_cmd_send_cmd* vtzf_packet_cmd = (struct_packet_cmd_send_cmd *)buf;
++                uint32_t packet_size =vtzf_packet_cmd->packet_size;
++                if (len != packet_size) {
++                    debug("err ,len != packet_size \n");
++                    vtzf_packet_cmd->err_flag = 1;
++                    break;
++                }
++                uint32_t offset = sizeof(struct_packet_cmd_send_cmd);
++                struct_page_block *page_block;
++                uint32_t block_nums = 0;
++                Error *local_err = NULL;
++                MemoryRegion *mr = NULL;
++                void *ptr_hva;
++
++                uint32_t param_type;
++                bool check_value;
++                hwaddr gpa_param;
++
++                for (i = 0; i < TEEC_PARAM_NUM; i++) {
++                    param_type = TEEC_PARAM_TYPE_GET(vtzf_packet_cmd->cliContext.paramTypes, i);
++                    check_value = (param_type == TEEC_ION_INPUT || param_type == TEEC_ION_SGLIST_INPUT);
++                    if (IS_TEMP_MEM(param_type)) {
++                        gpa_param = (uint64_t)vtzf_packet_cmd->cliContext.params[i].memref.buffer;
++                        ptr_hva = gpa2hva(&mr, gpa_param, &local_err);
++                        if (local_err) {
++                            debug("   gpa2hva params[%d].memref.buffer failed \n", i);
++                        } else {
++                            debug("   host virtual address of memref.buffer        = 0x%016lx, %p \n", (uint64_t)ptr_hva, ptr_hva);
++                            memory_region_unref(mr);
++                            uint64_t ui64_hva;
++                            ui64_hva = (uint64_t)ptr_hva;
++                            vtzf_packet_cmd->cliContext.params[i].memref.buffer = ui64_hva;
++                        }
++                    } else if (IS_PARTIAL_MEM(param_type)) {
++                        gpa_param = (uint64_t)vtzf_packet_cmd->cliContext.params[i].memref.buffer;
++                        ptr_hva = gpa2hva(&mr, gpa_param, &local_err);
++                        if (local_err) {
++                            debug("   gpa2hva params[%d].memref.buffer failed \n", i);
++                        } else {
++                            debug("   host virtual address of memref.buffer     = 0x%016lx, %p \n", (uint64_t)ptr_hva, ptr_hva);
++                            memory_region_unref(mr);
++                            uint64_t ui64_hva;
++                            ui64_hva = (uint64_t)ptr_hva;
++                            vtzf_packet_cmd->cliContext.params[i].memref.buffer = ui64_hva;
++                        }
++                    } else if (param_type == TEEC_MEMREF_SHARED_INOUT) {
++                        dump_buff((char *)buf, 0);
++                        block_nums = vtzf_packet_cmd->block_size[i] / sizeof(struct_page_block);
++                        page_block = (struct_page_block *)((char *)vtzf_packet_cmd + offset);
++
++                        for(j = 0; j < block_nums; j++){
++                            gpa_param = page_block[j].phy_addr;
++                            debug("page_block[%d].phy_addr = %llx\n", j, page_block[j].phy_addr);
++                            
++                            ptr_hva = gpa2hva(&mr, gpa_param, &local_err);
++                            if (local_err) {
++                                debug("   gpa2hva params[%d].memref.buffer failed \n", i);
++                            } else {
++                                debug("   host virtual address of memref.buffer     = 0x%016lx, %p \n", (uint64_t)ptr_hva, ptr_hva);
++                                memory_region_unref(mr);
++                                uint64_t ui64_hva;
++                                ui64_hva = (uint64_t)ptr_hva;
++                                page_block[j].phy_addr = ui64_hva;
++                            }
++                        }
++
++                        offset += vtzf_packet_cmd->block_size[i];
++                    } else if (IS_VALUE_MEM(param_type) || check_value) {
++                        /* do nothing */
++                    } else {
++                        /* if type is none, ignore it */
++                    }
++                }// end for
++
++            }//end if
++            break;
++        default:
++            debug("   other command \n");
++        }        
++
++    } // end of if ( len >= 4 ) 
++
+     ret = qemu_chr_fe_write(&vcon->chr, buf, len);
+     trace_virtio_console_flush_buf(port->id, len, ret);
+ 
+@@ -304,3 +619,8 @@
+ }
+ 
+ type_init(virtconsole_register_types)
++
++
++
++
++
+diff -Naur '--exclude=.git' ./qemu/include/monitor/monitor.h ./qemu_after/include/monitor/monitor.h
+--- ./qemu/include/monitor/monitor.h	2023-10-15 17:25:08.874034090 +0800
++++ ./qemu_after/include/monitor/monitor.h	2023-10-15 17:25:41.738034090 +0800
+@@ -4,6 +4,7 @@
+ #include "block/block.h"
+ #include "qapi/qapi-types-misc.h"
+ #include "qemu/readline.h"
++#include "exec/hwaddr.h"
+ 
+ extern __thread Monitor *cur_mon;
+ typedef struct MonitorHMP MonitorHMP;
+@@ -36,6 +37,8 @@
+ int monitor_set_cpu(int cpu_index);
+ int monitor_get_cpu_index(void);
+ 
++void *gpa2hva(MemoryRegion **p_mr, hwaddr addr, Error **errp);
++
+ void monitor_read_command(MonitorHMP *mon, int show_prompt);
+ int monitor_read_password(MonitorHMP *mon, ReadLineFunc *readline_func,
+                           void *opaque);
+@@ -49,3 +52,4 @@
+ int64_t monitor_fdset_dup_fd_find(int dup_fd);
+ 
+ #endif /* MONITOR_H */
++
+diff -Naur '--exclude=.git' ./qemu/monitor/misc.c ./qemu_after/monitor/misc.c
+--- ./qemu/monitor/misc.c	2023-10-15 17:25:08.902034090 +0800
++++ ./qemu_after/monitor/misc.c	2023-10-15 17:25:41.738034090 +0800
+@@ -674,7 +674,7 @@
+     memory_dump(mon, count, format, size, addr, 1);
+ }
+ 
+-static void *gpa2hva(MemoryRegion **p_mr, hwaddr addr, Error **errp)
++void *gpa2hva(MemoryRegion **p_mr, hwaddr addr, Error **errp)
+ {
+     MemoryRegionSection mrs = memory_region_find(get_system_memory(),
+                                                  addr, 1);
