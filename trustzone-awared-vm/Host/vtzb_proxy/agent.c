@@ -93,7 +93,6 @@ void register_agent(struct_packet_cmd_regagent *packet_cmd,
         pthread_mutex_lock(&serial_port->vm_file->agents_lock);
         ListInsertTail(&serial_port->vm_file->agents_head, &tmp->node);
         pthread_mutex_unlock(&serial_port->vm_file->agents_lock);
-        printf("agent buf = %llx\n", packet_cmd->args.addr);
     }
 END:
     packet_rsp.packet_size = sizeof(packet_rsp);
@@ -109,7 +108,6 @@ void wait_event(struct_packet_cmd_event *packet_cmd,
     struct serial_port_file *serial_port)
 {
     debug("***** cmd is wait event *****\n");
-    printf("wait event seq_num = %d\n", packet_cmd->seq_num);
     int ret = -EFAULT;
     struct_packet_rsp_general packet_rsp;
     unsigned long buf[2];
@@ -153,7 +151,6 @@ void sent_event_response(struct_packet_cmd_event *packet_cmd,
     struct serial_port_file *serial_port)
 {
     debug("***** cmd is sent_event_response *****\n");
-    printf("response seq_num = %d\n", packet_cmd->seq_num);
     int ret = -EFAULT;
     struct_packet_rsp_general packet_rsp;
     unsigned long buf[2];
