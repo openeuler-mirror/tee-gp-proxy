@@ -672,7 +672,7 @@ diff -Naur '--exclude=.git' ./qemu/hw/char/virtio-console.c ./qemu_after/hw/char
 +	uint32_t seq_num;
 +	int32_t ptzfd;
 +	int32_t err_flag;
-+	int with_share;
++	uint32_t vm_page_size;
 +	uint64_t block_addrs[TEEC_PARAM_NUM];//qemu and proxy don't use
 +	uint32_t block_size[TEEC_PARAM_NUM];
 +	unsigned long long addrs[TEEC_PARAM_NUM]; //used by ref mem mmap
