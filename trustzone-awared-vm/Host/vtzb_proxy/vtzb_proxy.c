@@ -563,6 +563,7 @@ static int process_address(struct_packet_cmd_send_cmd *packet_cmd, ClientParam p
             /* 第一个struct_page_block 存放shared mem 的size信息，后面的才是block buf*/
             uint32_t block_buf_size = packet_cmd->block_size[index];
             uint32_t tmp_buf_size = sizeof(struct_page_block) + packet_cmd->block_size[index];
+            params[index].share.buf_size = tmp_buf_size;
             offset += packet_cmd->block_size[index];
             for(uint32_t j = 0; j < block_nums; j++) {
                 debug("page_block[%u].block.user_addr = 0x%llx\n", j, page_block[j].block.user_addr);
@@ -590,8 +591,8 @@ static int process_address(struct_packet_cmd_send_cmd *packet_cmd, ClientParam p
             /* 修改替换掉 packet_cmd->cliContext.params[index].memref */
             packet_cmd->cliContext.params[index].memref.buffer = (unsigned int)(uintptr_t)tmp_buf;
             packet_cmd->cliContext.params[index].memref.buffer_h_addr = (unsigned int)((uint64_t)tmp_buf >> H_OFFSET);
-            packet_cmd->cliContext.params[index].memref.size_addr = (unsigned int)(uintptr_t)&tmp_buf_size;
-            packet_cmd->cliContext.params[index].memref.size_h_addr = (unsigned int)((uint64_t)&tmp_buf_size >> H_OFFSET);
+            packet_cmd->cliContext.params[index].memref.size_addr = (unsigned int)(uintptr_t)&(params[index].share.buf_size);
+            packet_cmd->cliContext.params[index].memref.size_h_addr = (unsigned int)((uint64_t)&(params[index].share.buf_size) >> H_OFFSET);
             debug("packet_cmd->cliContext.params[index].memref.buffer = 0x%lx\n", packet_cmd->cliContext.params[index].memref.buffer);
             debug("packet_cmd->cliContext.params[index].memref.buffer_h_addr = 0x%lx\n", packet_cmd->cliContext.params[index].memref.buffer_h_addr);
 
