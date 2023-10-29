@@ -508,7 +508,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
 +		if (host_page_num != host_pages_no) {
 +			tloge("get page phy addr failed\n");
 +			if (host_page_num > 0)
-+				put_vm_pages(host_pages, host_page_num);
++				release_pages(host_pages, host_page_num);
 +			vfree(host_pages);
 +			if (vm_page_size !=  PAGE_SIZE)
 +				vfree(vm_pages);
@@ -522,7 +522,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
 +			struct page *page = NULL;
 +			page = host_pages[j];
 +			if (page == NULL) {
-+				put_vm_pages(host_pages, host_page_num);
++				release_pages(host_pages, host_page_num);
 +				vfree(host_pages);
 +				if (vm_page_size <  PAGE_SIZE)
 +					vfree(vm_pages);
