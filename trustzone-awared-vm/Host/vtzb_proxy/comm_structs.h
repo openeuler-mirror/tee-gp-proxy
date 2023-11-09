@@ -10,6 +10,7 @@
 #define TC_PRIVATE_DEV_FLAG      4
 #define TC_CVM_DEV_FLAG          5
 #define TLOG_DEV_FLAG            6
+#define TLOG_DEV_THD_FLAG        7
 
 #define VTZ_OPEN_TZD            15
 #define VTZ_CLOSE_TZD           17
