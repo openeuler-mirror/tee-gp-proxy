@@ -54,8 +54,8 @@ static void open_tzdriver(struct_packet_cmd_open_tzd *packet_cmd,
             fd = serial_port->vm_file->log_fd;
         }
     } else if(packet_cmd->flag == TLOG_DEV_FLAG) {
-            fd = open(TC_LOGGER_DEV_NAME, O_RDONLY);
-            ret = ioctl(fd, TEELOGGER_SET_VM_FLAG, packet_cmd->vmid);
+        fd = open(TC_LOGGER_DEV_NAME, O_RDONLY);
+        ret = ioctl(fd, TEELOGGER_SET_VM_FLAG, packet_cmd->vmid);
     } else{
         switch (packet_cmd->flag)
         {
