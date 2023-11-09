@@ -46,14 +46,17 @@ static void open_tzdriver(struct_packet_cmd_open_tzd *packet_cmd,
     packet_rsp.seq_num = packet_cmd->seq_num + 1;
     packet_rsp.packet_size = sizeof(packet_rsp);
     packet_rsp.vmid = packet_cmd->vmid;
-    if (packet_cmd->flag == TLOG_DEV_FLAG) {
+    if (packet_cmd->flag == TLOG_DEV_THD_FLAG) {
         if (!serial_port->vm_file || !serial_port->vm_file->log_fd) {
             fd = open(TC_LOGGER_DEV_NAME, O_RDONLY);
             ret = ioctl(fd, TEELOGGER_SET_VM_FLAG, packet_cmd->vmid);
         } else {
             fd = serial_port->vm_file->log_fd;
         }
-    } else {
+    } else if(packet_cmd->flag == TLOG_DEV_FLAG) {
+            fd = open(TC_LOGGER_DEV_NAME, O_RDONLY);
+            ret = ioctl(fd, TEELOGGER_SET_VM_FLAG, packet_cmd->vmid);
+    } else{
         switch (packet_cmd->flag)
         {
         case TC_NS_CLIENT_DEV_FLAG:
@@ -99,7 +102,7 @@ END:
             vm_fp = serial_port->vm_file;
         }
         add_fd_list(fd, vm_fp);
-        if (packet_cmd->flag == TLOG_DEV_FLAG) {
+        if (packet_cmd->flag == TLOG_DEV_THD_FLAG) {
             vm_fp->log_fd = fd;
         }
     }
