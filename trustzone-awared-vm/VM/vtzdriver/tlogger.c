@@ -756,7 +756,7 @@ int log_thread_func(void *arg)
 	while(!kthread_should_stop() && !dev_file->log_flag){
 		if (ret == -EAGAIN) {
 			dev_file->log_flag = 2;
-			while(!kthread_should_stop() && open_tzdriver_tlogger(g_thread_reader, TLOG_DEV_FLAG, true)){
+			while(!kthread_should_stop() && open_tzdriver_tlogger(g_thread_reader, TLOG_DEV_THD_FLAG, true)){
 				tlogd("will sleep 10s\n");
 				(void)wait_event_interruptible_timeout(dev_file->log_wait_event_wq, dev_file->log_flag, 10 * HZ);
 				tlogd("after sleep 10s\n");
