@@ -41,7 +41,6 @@ int thread_pool_init(ThreadPool* pool)
 /* Recreate a new thread to fill the gap in the thread pool after killing a thread. */
 void replenish_thread_pool(ThreadPool* pool, pthread_t thd)
 {
-    pthread_mutex_lock(&pool->task_mutex);
     for (int i = 0; i < THREAD_POOL_SIZE; i++) {
         if (pthread_equal(pool->threads[i], thd)) {
             g_thd_args[i].index = i;
@@ -51,8 +50,7 @@ void replenish_thread_pool(ThreadPool* pool, pthread_t thd)
             debug("creat new thread\n");
             break;
         }
-    }
-    pthread_mutex_unlock(&pool->task_mutex);   
+    }  
 }
 
 /* Thread function */
