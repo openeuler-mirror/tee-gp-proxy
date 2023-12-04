@@ -30,7 +30,7 @@
 #include "process_data.h"
 #include "tlogcat.h"
 
-ThreadPool g_pool;
+ThreadPool g_pool = {0};
 extern int g_pollfd_len;
 extern struct pollfd g_pollfd[SERIAL_PORT_NUM];
 extern struct serial_port_file *g_serial_array[SERIAL_PORT_NUM];
