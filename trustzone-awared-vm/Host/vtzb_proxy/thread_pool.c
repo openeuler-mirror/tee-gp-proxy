@@ -90,7 +90,11 @@ void *thread_func(void *arg)
         pool->task_count--;
         pthread_cond_broadcast(&pool->queue_not_full);
         pthread_mutex_unlock(&pool->task_mutex);
+        if (pool->task_args[index])
+            free(pool->task_args[index]);
+        pool->task_args[index] = task.arg;
         task.task_func(task.arg);
+        pool->task_args[index] = NULL;
     }
 
     return NULL;
