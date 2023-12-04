@@ -24,6 +24,7 @@ typedef struct {
     pthread_t threads[THREAD_POOL_SIZE]; // Thread array
     unsigned int session_ids[THREAD_POOL_SIZE]; // Session ID of the ongoing command
     bool kill_flag[THREAD_POOL_SIZE];
+    void *task_args[THREAD_POOL_SIZE];
     Task task_queue[TASK_QUEUE_SIZE];    // Task queue
     int task_count;                      // Number of tasks in the task queue
     int front;                           // Queue head index
