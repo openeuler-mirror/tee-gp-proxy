@@ -2,6 +2,7 @@
 #include <linux/mutex.h>
 #include <linux/list.h>
 #include <linux/slab.h>
+#include <securec.h>
 #include "tc_ns_log.h"
 
 struct reserved_shm_list g_res_shm_list;
