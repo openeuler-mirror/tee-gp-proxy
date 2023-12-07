@@ -12,6 +12,7 @@
 #define SERIAL_PORT_NUM			 15
 #define BUF_LEN_MAX_RD           1024 *512
 #define UNIX_PATH_MAX            108
+#define CHECK_TIME_SEC           2
 
 struct serial_port_list {
     pthread_mutex_t lock;
@@ -39,4 +40,3 @@ void *get_serial_port_file(int serial_port_fd);
 void check_stat_serial_port();
 int check_stat_serial_port_first();
 #endif
-
