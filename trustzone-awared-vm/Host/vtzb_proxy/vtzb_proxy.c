@@ -577,13 +577,14 @@ void *thread_entry(void *args)
     char* rd_buf = (char*)(args) + sizeof(uint64_t);
     ui32_cmd = *(uint32_t*)(rd_buf + sizeof(uint32_t));
 
-    debug("received message packet from guest: \n");
-    debug("cmd = %d, 0x%8.8x \n", ui32_cmd, ui32_cmd);
-
-    if (ui32_cmd == VTZ_OPEN_TZD)
+    if (ui32_cmd == VTZ_OPEN_TZD) {
         (void)open_tzdriver((struct_packet_cmd_open_tzd *)rd_buf, serial_port);
-    if (ui32_cmd == VTZ_NOTHING)
+        goto END;
+    }
+    if (ui32_cmd == VTZ_NOTHING) {
         (void)vtz_nothing((struct_packet_cmd_nothing *)rd_buf, serial_port);
+        goto END;
+    }
     packet_general = (struct_packet_cmd_general *)rd_buf;
     if (!serial_port || !packet_general ||
         !find_fd_file(packet_general->ptzfd, serial_port->vm_file)) {
@@ -650,6 +651,8 @@ void *thread_entry(void *args)
     }
 
 END:
+    if (args)
+        free(args);
     return NULL;
 }
 
@@ -664,17 +667,14 @@ void proc_event(struct serial_port_file *serial_port)
         return;
     }
     fd = serial_port->sock;
-    pthread_mutex_lock(&serial_port->lock);
     ret = read(fd, serial_port->rd_buf + serial_port->offset, BUF_LEN_MAX_RD - serial_port->offset);
-    debug("read len = %d\n",ret);
 
     if (ret < 0) {
         tloge("read domain socket failed \n");
-        debug("read domain socket failed \n");
-        goto END;
+        return;
     }
     if (ret == 0)
-        goto END;
+        return;
     buf_len = ret + serial_port->offset;
     while(1) {
         void *packet = NULL;
@@ -685,9 +685,6 @@ void proc_event(struct serial_port_file *serial_port)
         thread_pool_submit(&g_pool, thread_entry, (void *)((uint64_t)packet));
     }
     serial_port->offset = offset;
-
-END:
-    pthread_mutex_unlock(&serial_port->lock);
 }
 
 int main() {
@@ -725,4 +722,3 @@ END2:
     serial_port_list_destroy();
     return 0;
 }
-
