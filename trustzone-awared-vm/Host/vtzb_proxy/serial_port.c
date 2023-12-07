@@ -169,7 +169,7 @@ static void do_check_stat_serial_port()
 void check_stat_serial_port()
 {
     gettimeofday(&g_cur_time, NULL);
-    if (g_cur_time.tv_sec - g_last_time.tv_sec > 20) {
+    if (g_cur_time.tv_sec - g_last_time.tv_sec > CHECK_TIME_SEC) {
         do_check_stat_serial_port();
         gettimeofday(&g_last_time, NULL);
     }
