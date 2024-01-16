@@ -11,9 +11,8 @@ STATUS := $(findstring vsnprintf_s, $(RESULT))
 vtzfdriver-objs += libboundscheck/src/memcpy_s.o libboundscheck/src/memset_s.o libboundscheck/src/strcpy_s.o libboundscheck/src/strncpy_s.o \
 libboundscheck/src/memmove_s.o libboundscheck/src/strcat_s.o libboundscheck/src/strncat_s.o libboundscheck/src/strtok_s.o \
 libboundscheck/src/securecutil.o libboundscheck/src/secureprintoutput_a.o libboundscheck/src/snprintf_s.o libboundscheck/src/vsnprintf_s.o
-vtzfdriver-objs += tlogger.o serialport.o tee_info.o reserved_shm.o process_data.o block_pages.o
-
 # endif
+vtzfdriver-objs += tlogger.o serialport.o tee_info.o reserved_shm.o process_data.o block_pages.o
 
 KERN_VER = $(shell uname -r)
 KERN_DIR = /lib/modules/$(KERN_VER)/build
@@ -23,11 +22,10 @@ EXTRA_CFLAGS += -I$(PWD)/libboundscheck/include/
 EXTRA_CFLAGS += -I$(PWD)/inc/
 
 all:
+	@sudo mkdir -p /var/log/tee
 	make -C $(KERN_DIR) M=`pwd` modules
 
-
-.PHONY: clean
 clean:
 	# make -C $(KERN_DIR) M=`pwd` modules clean
 	-rm -vrf *.o *.ko
-	-rm -vrf *.order *.symvers *.mod.c *.mod.o .tmp_versions .*o.cmd .*.o.d *.mod
+	-rm -vrf *.order *.symvers *.mod.c *.mod.o .tmp_versions .*o.cmd .*.o.d *.mod .*.cmd
