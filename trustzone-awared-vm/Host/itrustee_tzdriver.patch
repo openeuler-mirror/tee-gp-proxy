@@ -1067,21 +1067,18 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_cvm_driver.c itrustee_tzdr
 diff -Naur '--exclude=.git' itrustee_tzdriver/Makefile itrustee_tzdriver_new/Makefile
 --- itrustee_tzdriver/Makefile	2023-11-24 16:18:54.007641440 +0800
 +++ itrustee_tzdriver_new/Makefile	2023-11-24 16:58:48.000000000 +0800
-@@ -38,8 +38,11 @@
- 
+@@ -37,8 +37,8 @@ libboundscheck/src/securecutil.o libboundscheck/src/secureprintoutput_a.o libbou
+ endif
+
  # you should config right path according to your run-time environment
- KPATH := /usr/src/kernels
+-KPATH := /usr/src/kernels
 -KDIR  := $(KPATH)/$(shell ls $(KPATH))
--KDIR = /usr/src/linux-5.10.0-60.114.0.141.oe2203.aarch64
-+#KDIR  := $(KPATH)/$(shell ls $(KPATH))
-+#KDIR = /usr/src/linux-5.10.0-60.114.0.141.oe2203.aarch64
 +KERN_VER = $(shell uname -r)
 +KDIR = /lib/modules/$(KERN_VER)/build
-+
+
  EXTRA_CFLAGS += -isystem /usr/lib/gcc/aarch64-linux-gnu/10.3.1/include
  EXTRA_CFLAGS += -isystem /usr/lib/gcc/aarch64-openEuler-linux-gnu/12/include
- EXTRA_CFLAGS += -fstack-protector-strong -DCONFIG_TEELOG -DCONFIG_TZDRIVER_MODULE -DCONFIG_TEECD_AUTH -DCONFIG_PAGES_MEM=y -DCONFIG_CLOUDSERVER_TEECD_AUTH
-@@ -49,6 +52,7 @@
+@@ -49,6 +49,7 @@ EXTRA_CFLAGS += -DCONFIG_CPU_AFF_NR=0 -DCONFIG_BIG_SESSION=100 -DCONFIG_NOTIFY_P
  EXTRA_CFLAGS += -DCONFIG_TEE_LOG_ACHIVE_PATH=\"/var/log/tee/last_teemsg\"
  EXTRA_CFLAGS += -DNOT_TRIGGER_AP_RESET -DLAST_TEE_MSG_ROOT_GID -DCONFIG_NOCOPY_SHAREDMEM -DCONFIG_TA_AFFINITY=y -DCONFIG_TA_AFFINITY_CPU_NUMS=128
  EXTRA_CFLAGS += -DTEECD_PATH_UID_AUTH_CTX=\"/usr/bin/teecd:0\"
