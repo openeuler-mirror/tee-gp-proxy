@@ -1,6 +1,23 @@
-diff -Naur '--exclude=.git' qemu/hw/char/tc_ns_client.h qemu_after/hw/char/tc_ns_client.h
+From 011ed576f4405a930b0cffa31a984fb4f03146e3 Mon Sep 17 00:00:00 2001
+From: Ju Fu <fuju1@huawei.com>
+Date: Tue, 25 Jun 2024 15:15:51 +0800
+Subject: [PATCH OLK-5.10] cvm: delete dead code and resolve macro definition
+ holes
+
+virtcca inclusion
+category: feature
+bugzilla: https://gitee.com/openeuler/kernel/issues/I9TM0T
+
+--------------------------------
+
+delete dead code and resolve macro definition holes
+
+Signed-off-by: Ju Fu <fuju1@huawei.com>
+---
+
+diff -ruNp qemu/hw/char/tc_ns_client.h qemu-after/hw/char/tc_ns_client.h
 --- qemu/hw/char/tc_ns_client.h	1970-01-01 08:00:00.000000000 +0800
-+++ qemu_after/hw/char/tc_ns_client.h	2023-10-23 15:09:10.840630820 +0800
++++ qemu-after/hw/char/tc_ns_client.h	2024-07-12 17:36:25.179832480 +0800
 @@ -0,0 +1,162 @@
 +/*
 + * Copyright (c) Huawei Technologies Co., Ltd. 2012-2023. All rights reserved.
@@ -164,9 +181,9 @@ diff -Naur '--exclude=.git' qemu/hw/char/tc_ns_client.h qemu_after/hw/char/tc_ns
 +#endif
 +
 +
-diff -Naur '--exclude=.git' qemu/hw/char/tee_client_constants.h qemu_after/hw/char/tee_client_constants.h
+diff -ruNp qemu/hw/char/tee_client_constants.h qemu-after/hw/char/tee_client_constants.h
 --- qemu/hw/char/tee_client_constants.h	1970-01-01 08:00:00.000000000 +0800
-+++ qemu_after/hw/char/tee_client_constants.h	2023-10-23 15:09:10.840630820 +0800
++++ qemu-after/hw/char/tee_client_constants.h	2024-07-12 17:36:25.171832480 +0800
 @@ -0,0 +1,126 @@
 +/*
 + * Copyright (c) Huawei Technologies Co., Ltd. 2013-2022. All rights reserved.
@@ -294,9 +311,9 @@ diff -Naur '--exclude=.git' qemu/hw/char/tee_client_constants.h qemu_after/hw/ch
 +
 +#define TEEC_PARAM_NUM 4 /* teec param max number */
 +#endif
-diff -Naur '--exclude=.git' qemu/hw/char/tee_client_list.h qemu_after/hw/char/tee_client_list.h
+diff -ruNp qemu/hw/char/tee_client_list.h qemu-after/hw/char/tee_client_list.h
 --- qemu/hw/char/tee_client_list.h	1970-01-01 08:00:00.000000000 +0800
-+++ qemu_after/hw/char/tee_client_list.h	2023-10-23 15:09:10.840630820 +0800
++++ qemu-after/hw/char/tee_client_list.h	2024-07-12 17:36:25.163832480 +0800
 @@ -0,0 +1,101 @@
 +/*
 + * Copyright (c) Huawei Technologies Co., Ltd. 2013-2021. All rights reserved.
@@ -399,9 +416,9 @@ diff -Naur '--exclude=.git' qemu/hw/char/tee_client_list.h qemu_after/hw/char/te
 +#endif
 +
 +
-diff -Naur '--exclude=.git' qemu/hw/char/tee_client_type.h qemu_after/hw/char/tee_client_type.h
+diff -ruNp qemu/hw/char/tee_client_type.h qemu-after/hw/char/tee_client_type.h
 --- qemu/hw/char/tee_client_type.h	1970-01-01 08:00:00.000000000 +0800
-+++ qemu_after/hw/char/tee_client_type.h	2023-10-23 15:09:10.840630820 +0800
++++ qemu-after/hw/char/tee_client_type.h	2024-07-12 17:36:25.155832480 +0800
 @@ -0,0 +1,134 @@
 +/*
 + * Copyright (c) Huawei Technologies Co., Ltd. 2013-2022. All rights reserved.
@@ -537,14 +554,13 @@ diff -Naur '--exclude=.git' qemu/hw/char/tee_client_type.h qemu_after/hw/char/te
 +#endif
 +
 +
-diff -Naur '--exclude=.git' qemu/hw/char/virtio-console.c qemu_after/hw/char/virtio-console.c
---- qemu/hw/char/virtio-console.c	2023-10-15 17:28:44.746034090 +0800
-+++ qemu_after/hw/char/virtio-console.c	2023-10-23 15:11:13.312630820 +0800
-@@ -20,6 +20,14 @@
- #include "qapi/error.h"
+diff -ruNp qemu/hw/char/virtio-console.c qemu-after/hw/char/virtio-console.c
+--- qemu/hw/char/virtio-console.c	2024-07-12 17:36:25.127832480 +0800
++++ qemu-after/hw/char/virtio-console.c	2024-07-12 17:36:25.151832480 +0800
+@@ -22,6 +22,13 @@
  #include "qapi/qapi-events-char.h"
+ #include "qom/object.h"
  
-+#include "qom/object.h"
 +#include "hw/core/cpu.h"
 +#include "sysemu/hw_accel.h"
 +#include "monitor/monitor.h"
@@ -553,12 +569,12 @@ diff -Naur '--exclude=.git' qemu/hw/char/virtio-console.c qemu_after/hw/char/vir
 +#include "tc_ns_client.h"
 +
  #define TYPE_VIRTIO_CONSOLE_SERIAL_PORT "virtserialport"
- #define VIRTIO_CONSOLE(obj) \
-     OBJECT_CHECK(VirtConsole, (obj), TYPE_VIRTIO_CONSOLE_SERIAL_PORT)
-@@ -44,6 +52,133 @@
-     virtio_serial_throttle_port(VIRTIO_SERIAL_PORT(vcon), false);
+ typedef struct VirtConsole VirtConsole;
+ DECLARE_INSTANCE_CHECKER(VirtConsole, VIRTIO_CONSOLE,
+@@ -48,18 +55,327 @@ static gboolean chr_write_unblocked(void
      return FALSE;
  }
+ 
 +//#define DEBUG     1
 +
 +#ifdef  DEBUG
@@ -686,10 +702,10 @@ diff -Naur '--exclude=.git' qemu/hw/char/virtio-console.c qemu_after/hw/char/vir
 +	uint32_t page_num;
 +	uint32_t frag_flag;
 +}struct_page_block;
- 
++
  /* Callback function that's called when the guest sends us data */
  static ssize_t flush_buf(VirtIOSerialPort *port,
-@@ -51,12 +186,193 @@
+                          const uint8_t *buf, ssize_t len)
  {
      VirtConsole *vcon = VIRTIO_CONSOLE(port);
      ssize_t ret;
@@ -733,7 +749,7 @@ diff -Naur '--exclude=.git' qemu/hw/char/virtio-console.c qemu_after/hw/char/vir
 +                struct_packet_cmd_load_sec* vtzf_packet_cmd = (struct_packet_cmd_load_sec *)buf;
 +                debug("   vtzf_packet_cmd->cliContext.file_buffer      = 0x%016lx \n", vtzf_packet_cmd->ioctlArg.fileBuffer);
 +                hwaddr gpa = (uint64_t)vtzf_packet_cmd->ioctlArg.fileBuffer;
-+                ptr_hva = gpa2hva(&mr, gpa, &local_err);
++                ptr_hva = gpa2hva(&mr, gpa, 1, &local_err);
 +                if (local_err) {
 +                    debug("   gpa2hva failed \n");
 +                } else {
@@ -751,7 +767,7 @@ diff -Naur '--exclude=.git' qemu/hw/char/virtio-console.c qemu_after/hw/char/vir
 +                struct_packet_cmd_regagent* vtzf_packet_cmd = (struct_packet_cmd_regagent *)buf;
 +                debug("   vtzf_packet_cmd->cliContext.file_buffer      = 0x%016lx \n", vtzf_packet_cmd->vmaddr);
 +                hwaddr gpa = (uint64_t)vtzf_packet_cmd->vmaddr;
-+                ptr_hva = gpa2hva(&mr, gpa, &local_err);
++                ptr_hva = gpa2hva(&mr, gpa, 1, &local_err);
 +                if (local_err) {
 +                    debug("   gpa2hva failed \n");
 +                } else {
@@ -773,7 +789,7 @@ diff -Naur '--exclude=.git' qemu/hw/char/virtio-console.c qemu_after/hw/char/vir
 +                    vtzf_packet_cmd->cliContext.file_size);
 +                debug("   vtzf_packet_cmd->cliContext.file_buffer      = 0x%016lx \n", vtzf_packet_cmd->cliContext.file_buffer);
 +                hwaddr gpa = (uint64_t)vtzf_packet_cmd->cliContext.file_buffer;
-+                ptr_hva = gpa2hva(&mr, gpa, &local_err);
++                ptr_hva = gpa2hva(&mr, gpa, 1, &local_err);
 +                if (local_err) {
 +                    debug("   gpa2hva failed \n");
 +                } else {
@@ -803,7 +819,7 @@ diff -Naur '--exclude=.git' qemu/hw/char/virtio-console.c qemu_after/hw/char/vir
 +                    check_value = (param_type == TEEC_ION_INPUT || param_type == TEEC_ION_SGLIST_INPUT);
 +                    if (IS_TEMP_MEM(param_type)) {
 +                        gpa_param = (uint64_t)vtzf_packet_cmd->cliContext.params[i].memref.buffer;
-+                        ptr_hva = gpa2hva(&mr, gpa_param, &local_err);
++                        ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
 +                        if (local_err) {
 +                            debug("   gpa2hva params[%d].memref.buffer failed \n", i);
 +                        } else {
@@ -815,7 +831,7 @@ diff -Naur '--exclude=.git' qemu/hw/char/virtio-console.c qemu_after/hw/char/vir
 +                        }
 +                    } else if (IS_PARTIAL_MEM(param_type)) {
 +                        gpa_param = (uint64_t)vtzf_packet_cmd->cliContext.params[i].memref.buffer;
-+                        ptr_hva = gpa2hva(&mr, gpa_param, &local_err);
++                        ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
 +                        if (local_err) {
 +                            debug("   gpa2hva params[%d].memref.buffer failed \n", i);
 +                        } else {
@@ -840,7 +856,7 @@ diff -Naur '--exclude=.git' qemu/hw/char/virtio-console.c qemu_after/hw/char/vir
 +                    for(j = 0; j < fragment_block_num; j++){
 +                        gpa_param = page_block[j].phy_addr;
 +                        debug("page_block[%d].phy_addr = %llx\n", j, page_block[j].phy_addr);
-+                        ptr_hva = gpa2hva(&mr, gpa_param, &local_err);
++                        ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
 +                        if (local_err) {
 +                            debug("   gpa2hva params[%d].memref.buffer failed \n", i);
 +                        } else {
@@ -863,7 +879,7 @@ diff -Naur '--exclude=.git' qemu/hw/char/virtio-console.c qemu_after/hw/char/vir
 +                    for(j = 0; j < fragment_block_num; j++){
 +                        gpa_param = page_block[j].phy_addr;
 +                        debug("page_block[%d].phy_addr = %llx\n", j, page_block[j].phy_addr);
-+                        ptr_hva = gpa2hva(&mr, gpa_param, &local_err);
++                        ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
 +                        if (local_err) {
 +                            debug("   gpa2hva params[%d].memref.buffer failed \n", i);
 +                        } else {
@@ -884,51 +900,3 @@ diff -Naur '--exclude=.git' qemu/hw/char/virtio-console.c qemu_after/hw/char/vir
      ret = qemu_chr_fe_write(&vcon->chr, buf, len);
      trace_virtio_console_flush_buf(port->id, len, ret);
  
-@@ -304,3 +620,10 @@
- }
- 
- type_init(virtconsole_register_types)
-+
-+
-+
-+
-+
-+
-+
-diff -Naur '--exclude=.git' qemu/include/monitor/monitor.h qemu_after/include/monitor/monitor.h
---- qemu/include/monitor/monitor.h	2023-10-15 17:28:44.802034090 +0800
-+++ qemu_after/include/monitor/monitor.h	2023-10-23 15:09:10.840630820 +0800
-@@ -4,6 +4,7 @@
- #include "block/block.h"
- #include "qapi/qapi-types-misc.h"
- #include "qemu/readline.h"
-+#include "exec/hwaddr.h"
- 
- extern __thread Monitor *cur_mon;
- typedef struct MonitorHMP MonitorHMP;
-@@ -36,6 +37,8 @@
- int monitor_set_cpu(int cpu_index);
- int monitor_get_cpu_index(void);
- 
-+void *gpa2hva(MemoryRegion **p_mr, hwaddr addr, Error **errp);
-+
- void monitor_read_command(MonitorHMP *mon, int show_prompt);
- int monitor_read_password(MonitorHMP *mon, ReadLineFunc *readline_func,
-                           void *opaque);
-@@ -49,3 +52,4 @@
- int64_t monitor_fdset_dup_fd_find(int dup_fd);
- 
- #endif /* MONITOR_H */
-+
-diff -Naur '--exclude=.git' qemu/monitor/misc.c qemu_after/monitor/misc.c
---- qemu/monitor/misc.c	2023-10-15 17:28:44.826034090 +0800
-+++ qemu_after/monitor/misc.c	2023-10-23 15:09:10.840630820 +0800
-@@ -674,7 +674,7 @@
-     memory_dump(mon, count, format, size, addr, 1);
- }
- 
--static void *gpa2hva(MemoryRegion **p_mr, hwaddr addr, Error **errp)
-+void *gpa2hva(MemoryRegion **p_mr, hwaddr addr, Error **errp)
- {
-     MemoryRegionSection mrs = memory_region_find(get_system_memory(),
-                                                  addr, 1);
