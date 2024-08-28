@@ -1,11 +1,27 @@
-diff -Naur '--exclude=.git' itrustee_tzdriver/auth/auth_base_impl.c itrustee_tzdriver_new/auth/auth_base_impl.c
---- itrustee_tzdriver/auth/auth_base_impl.c	2023-11-24 16:18:54.355641440 +0800
-+++ itrustee_tzdriver_new/auth/auth_base_impl.c	2023-11-24 16:29:26.000000000 +0800
-@@ -332,11 +332,26 @@
+From 011ed576f4405a930b0cffa31a984fb4f03146e3 Mon Sep 17 00:00:00 2001
+From: Ju Fu <fuju1@huawei.com>
+Date: Tue, 25 Jun 2024 15:15:51 +0800
+Subject: [PATCH OLK-5.10] cvm: delete dead code and resolve macro definition
+ holes
+
+virtcca inclusion
+category: feature
+bugzilla: https://gitee.com/openeuler/kernel/issues/I9TM0T
+
+--------------------------------
+
+delete dead code and resolve macro definition holes
+
+Signed-off-by: Ju Fu <fuju1@huawei.com>
+---
+
+diff -uprN itrustee_tzdriver/auth/auth_base_impl.c itrustee_tzdriver_new/auth/auth_base_impl.c
+--- itrustee_tzdriver/auth/auth_base_impl.c	2024-07-12 11:08:59.353629380 +0800
++++ itrustee_tzdriver_new/auth/auth_base_impl.c	2024-07-12 10:51:32.889629380 +0800
+@@ -336,11 +336,25 @@ int check_teecd_auth(void)
  
  	return CHECK_ACCESS_SUCC;
  }
-+
 +int check_proxy_auth(void)
 +{
 +	int ret = check_proc_uid_path(PROXY_PATH_UID_AUTH_CTX);
@@ -28,10 +44,10 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/auth/auth_base_impl.c itrustee_tzd
  #endif
  
  #ifdef CONFIG_TEE_TELEPORT_AUTH
-diff -Naur '--exclude=.git' itrustee_tzdriver/auth/auth_base_impl.h itrustee_tzdriver_new/auth/auth_base_impl.h
---- itrustee_tzdriver/auth/auth_base_impl.h	2023-11-24 16:18:54.355641440 +0800
-+++ itrustee_tzdriver_new/auth/auth_base_impl.h	2023-11-24 16:30:00.000000000 +0800
-@@ -84,6 +84,7 @@
+diff -uprN itrustee_tzdriver/auth/auth_base_impl.h itrustee_tzdriver_new/auth/auth_base_impl.h
+--- itrustee_tzdriver/auth/auth_base_impl.h	2024-07-12 11:08:59.353629380 +0800
++++ itrustee_tzdriver_new/auth/auth_base_impl.h	2024-07-12 10:51:32.885629380 +0800
+@@ -84,6 +84,7 @@ void mutex_crypto_hash_lock(void);
  void mutex_crypto_hash_unlock(void);
  int check_hidl_auth(void);
  int check_teecd_auth(void);
@@ -39,7 +55,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/auth/auth_base_impl.h itrustee_tzd
  #else
  
  static inline void free_shash_handle(void)
-@@ -100,6 +101,11 @@
+@@ -100,6 +101,11 @@ int check_teecd_auth(void)
  {
  	return 0;
  }
@@ -51,10 +67,10 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/auth/auth_base_impl.h itrustee_tzd
  
  #endif /* CLIENT_AUTH || TEECD_AUTH */
  
-diff -Naur '--exclude=.git' itrustee_tzdriver/core/agent.c itrustee_tzdriver_new/core/agent.c
---- itrustee_tzdriver/core/agent.c	2023-11-24 16:18:54.459641440 +0800
-+++ itrustee_tzdriver_new/core/agent.c	2023-11-25 20:40:44.109797330 +0800
-@@ -296,7 +296,8 @@
+diff -uprN itrustee_tzdriver/core/agent.c itrustee_tzdriver_new/core/agent.c
+--- itrustee_tzdriver/core/agent.c	2024-07-12 11:08:59.357629380 +0800
++++ itrustee_tzdriver_new/core/agent.c	2024-07-12 10:51:32.865629380 +0800
+@@ -298,7 +298,8 @@ int tc_ns_set_native_hash(unsigned long
  	return ret;
  }
  
@@ -64,7 +80,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/agent.c itrustee_tzdriver_new
  {
  	int ret = 0;
  	struct tc_ns_smc_cmd smc_cmd = { {0}, 0 };
-@@ -318,6 +319,8 @@
+@@ -320,6 +321,8 @@ int tc_ns_late_init(unsigned long arg)
  	smc_cmd.operation_h_phys =
  		(uint64_t)mailbox_virt_to_phys((uintptr_t)&mb_pack->operation) >> ADDR_TRANS_NUM;
  
@@ -73,7 +89,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/agent.c itrustee_tzdriver_new
  	if (tc_ns_smc(&smc_cmd)) {
  		ret = -EPERM;
  		tloge("late int failed\n");
-@@ -595,7 +598,8 @@
+@@ -597,7 +600,8 @@ int tc_ns_wait_event(unsigned int agent_
  	return ret;
  }
  
@@ -83,7 +99,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/agent.c itrustee_tzdriver_new
  {
  	struct tc_ns_smc_cmd smc_cmd = { {0}, 0 };
  	int ret = 0;
-@@ -621,6 +625,8 @@
+@@ -623,6 +627,8 @@ int tc_ns_sync_sys_time(const struct tc_
  	smc_cmd.operation_phys = mailbox_virt_to_phys((uintptr_t)&mb_pack->operation);
  	smc_cmd.operation_h_phys =
  		(uint64_t)mailbox_virt_to_phys((uintptr_t)&mb_pack->operation) >> ADDR_TRANS_NUM;
@@ -92,7 +108,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/agent.c itrustee_tzdriver_new
  	if (tc_ns_smc(&smc_cmd)) {
  		tloge("tee adjust time failed, return error\n");
  		ret = -EPERM;
-@@ -630,7 +636,8 @@
+@@ -632,7 +638,8 @@ int tc_ns_sync_sys_time(const struct tc_
  	return ret;
  }
  
@@ -102,7 +118,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/agent.c itrustee_tzdriver_new
  {
  	int ret = 0;
  	struct tc_ns_client_time time = { 0 };
-@@ -645,7 +652,7 @@
+@@ -647,7 +654,7 @@ int sync_system_time_from_user(const str
  		return -EFAULT;
  	}
  
@@ -111,7 +127,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/agent.c itrustee_tzdriver_new
  	if (ret != 0)
  		tloge("sync system time from user failed, ret = 0x%x\n", ret);
  
-@@ -663,7 +670,7 @@
+@@ -665,7 +672,7 @@ void sync_system_time_from_kernel(void)
  	time.seconds = (uint32_t)kernel_time.ts.tv_sec;
  	time.millis = (uint32_t)(kernel_time.ts.tv_nsec / MS_TO_NS);
  
@@ -120,7 +136,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/agent.c itrustee_tzdriver_new
  	if (ret != 0)
  		tloge("sync system time from kernel failed, ret = 0x%x\n", ret);
  
-@@ -947,6 +954,8 @@
+@@ -949,6 +956,8 @@ int tc_ns_register_agent(struct tc_ns_de
  	nsid = task_active_pid_ns(current)->ns.inum;
  	if (dev_file != NULL && dev_file->nsid == 0)
  		dev_file->nsid = nsid;
@@ -129,15 +145,10 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/agent.c itrustee_tzdriver_new
  #endif
  
  	if (is_agent_already_exist(agent_id, nsid, &event_data, dev_file, &find_flag))
-@@ -1384,3 +1393,4 @@
- 		put_agent_event(event_data);
- 	}
- }
-+
-diff -Naur '--exclude=.git' itrustee_tzdriver/core/agent.h itrustee_tzdriver_new/core/agent.h
---- itrustee_tzdriver/core/agent.h	2023-11-24 16:18:54.459641440 +0800
-+++ itrustee_tzdriver_new/core/agent.h	2023-11-24 16:33:18.000000000 +0800
-@@ -118,7 +118,8 @@
+diff -uprN itrustee_tzdriver/core/agent.h itrustee_tzdriver_new/core/agent.h
+--- itrustee_tzdriver/core/agent.h	2024-07-12 11:08:59.357629380 +0800
++++ itrustee_tzdriver_new/core/agent.h	2024-07-12 10:51:32.861629380 +0800
+@@ -118,7 +118,8 @@ int agent_process_work(const struct tc_n
  	unsigned int agent_id, unsigned int nsid);
  int is_agent_alive(unsigned int agent_id, unsigned int nsid);
  int tc_ns_set_native_hash(unsigned long arg, unsigned int cmd_id);
@@ -147,7 +158,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/agent.h itrustee_tzdriver_new
  int tc_ns_register_agent(struct tc_ns_dev_file *dev_file, unsigned int agent_id,
  	unsigned int buffer_size, void **buffer, bool user_agent);
  int tc_ns_unregister_agent(unsigned int agent_id, unsigned int nsid);
-@@ -126,7 +127,8 @@
+@@ -126,7 +127,8 @@ void send_crashed_event_response_all(con
  int tc_ns_wait_event(unsigned int agent_id, unsigned int nsid);
  int tc_ns_send_event_response(unsigned int agent_id, unsigned int nsid);
  void send_crashed_event_response_single(const struct tc_ns_dev_file *dev_file);
@@ -157,10 +168,10 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/agent.h itrustee_tzdriver_new
  void sync_system_time_from_kernel(void);
  int tee_agent_clear_work(struct tc_ns_client_context *context,
  	unsigned int dev_file_id);
-diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
---- itrustee_tzdriver/core/gp_ops.c	2023-11-24 16:18:54.459641440 +0800
-+++ itrustee_tzdriver_new/core/gp_ops.c	2023-11-24 16:40:48.000000000 +0800
-@@ -312,6 +312,84 @@
+diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
+--- itrustee_tzdriver/core/gp_ops.c	2024-07-12 11:08:59.357629380 +0800
++++ itrustee_tzdriver_new/core/gp_ops.c	2024-07-12 10:51:32.845629380 +0800
+@@ -231,6 +231,84 @@ int write_to_client(void __user *dest, s
  	return 0;
  }
  
@@ -245,7 +256,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
  static bool is_input_tempmem(unsigned int param_type)
  {
  	if (param_type == TEEC_MEMREF_TEMP_INPUT ||
-@@ -321,7 +399,8 @@
+@@ -240,7 +318,8 @@ static bool is_input_tempmem(unsigned in
  	return false;
  }
  
@@ -255,7 +266,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
  	uint32_t buffer_size, void *temp_buf,
  	unsigned int param_type, uint8_t kernel_params)
  {
-@@ -331,11 +410,22 @@
+@@ -250,11 +329,22 @@ static int update_input_data(const union
  
  	buffer_addr = client_param->memref.buffer |
  		((uint64_t)client_param->memref.buffer_h_addr << ADDR_TRANS_NUM);
@@ -283,7 +294,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
  	}
  	return 0;
  }
-@@ -393,7 +483,7 @@
+@@ -312,7 +402,7 @@ static int alloc_for_tmp_mem(const struc
  	op_params->local_tmpbuf[index].temp_buffer = temp_buf;
  	op_params->local_tmpbuf[index].size = buffer_size;
  
@@ -292,7 +303,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
  		param_type, kernel_params) != 0)
  		return -EFAULT;
  
-@@ -405,8 +495,9 @@
+@@ -324,8 +414,9 @@ static int alloc_for_tmp_mem(const struc
  	return 0;
  }
  
@@ -304,7 +315,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
  {
  	uint64_t size_addr = client_param->memref.size_addr |
  		((uint64_t)client_param->memref.size_h_addr << ADDR_TRANS_NUM);
-@@ -497,7 +588,7 @@
+@@ -416,7 +507,7 @@ static int alloc_for_ref_mem(const struc
  		return -EINVAL;
  
  	client_param = &(call_params->context->params[index]);
@@ -313,7 +324,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
  		return -EINVAL;
  
  	op_params->mb_pack->operation.params[index].memref.buffer = 0;
-@@ -572,6 +663,134 @@
+@@ -491,6 +582,134 @@ static int check_buffer_for_sharedmem(ui
  	return 0;
  }
  
@@ -448,7 +459,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
  static int transfer_shared_mem(const struct tc_call_params *call_params,
  	struct tc_op_params *op_params, uint8_t kernel_params,
  	uint32_t param_type, unsigned int index)
-@@ -580,10 +799,11 @@
+@@ -499,10 +718,11 @@ static int transfer_shared_mem(const str
  	void *start_vaddr = NULL;
  	union tc_ns_client_param *client_param = NULL;
  	uint32_t buffer_size;
@@ -461,11 +472,8 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
  
  	if (index >= TEE_PARAM_NUM)
  		return -EINVAL;
-@@ -591,22 +811,59 @@
- 	client_param = &(call_params->context->params[index]);
- 	if (check_buffer_for_sharedmem(&buffer_size, client_param, kernel_params))
- 		return -EINVAL;
--
+@@ -513,19 +733,57 @@ static int transfer_shared_mem(const str
+ 
  	buffer_addr = client_param->memref.buffer |
  		((uint64_t)client_param->memref.buffer_h_addr << ADDR_TRANS_NUM);
 -	buff = (void *)(uint64_t)(buffer_addr + client_param->memref.offset);
@@ -534,7 +542,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
  	}
  
  	op_params->local_tmpbuf[index].temp_buffer = buff;
-@@ -775,13 +1032,24 @@
+@@ -695,13 +953,24 @@ static int update_tmp_mem(const struct t
  	if (buffer_size == 0)
  		return 0;
  	/* Only update the buffer when the buffer size is valid in complete case */
@@ -566,9 +574,9 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
  	}
  	return 0;
  }
-@@ -958,7 +1226,10 @@
- 		} else if (param_type == TEEC_MEMREF_SHARED_INOUT) {
+@@ -871,7 +1140,10 @@ static void free_operation_params(const
  #ifdef CONFIG_NOCOPY_SHAREDMEM
+ 			tlogd("free_operation_params release nocopy or register shm\n");
  			temp_buf = local_tmpbuf[index].temp_buffer;
 -			if (temp_buf != NULL) {
 +			if (temp_buf != NULL && call_params->dev->isVM) {
@@ -578,10 +586,10 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_ne
  				release_shared_mem_page(temp_buf, local_tmpbuf[index].size);
  				mailbox_free(temp_buf);
  			}
-diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.h itrustee_tzdriver_new/core/gp_ops.h
---- itrustee_tzdriver/core/gp_ops.h	2023-11-24 16:18:54.459641440 +0800
-+++ itrustee_tzdriver_new/core/gp_ops.h	2023-11-24 16:41:14.000000000 +0800
-@@ -30,5 +30,9 @@
+diff -uprN itrustee_tzdriver/core/gp_ops.h itrustee_tzdriver_new/core/gp_ops.h
+--- itrustee_tzdriver/core/gp_ops.h	2024-07-12 11:08:59.357629380 +0800
++++ itrustee_tzdriver_new/core/gp_ops.h	2024-07-12 10:51:32.841629380 +0800
+@@ -28,5 +28,9 @@ int tc_client_call(const struct tc_call_
  bool is_tmp_mem(uint32_t param_type);
  bool is_ref_mem(uint32_t param_type);
  bool is_val_param(uint32_t param_type);
@@ -591,10 +599,10 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/gp_ops.h itrustee_tzdriver_ne
 +	const void __user *src, size_t size, pid_t vm_pid);
  
  #endif
-diff -Naur '--exclude=.git' itrustee_tzdriver/core/session_manager.c itrustee_tzdriver_new/core/session_manager.c
---- itrustee_tzdriver/core/session_manager.c	2023-11-24 16:18:54.459641440 +0800
-+++ itrustee_tzdriver_new/core/session_manager.c	2023-11-24 16:45:46.000000000 +0800
-@@ -595,7 +595,7 @@
+diff -uprN itrustee_tzdriver/core/session_manager.c itrustee_tzdriver_new/core/session_manager.c
+--- itrustee_tzdriver/core/session_manager.c	2024-07-12 11:08:59.357629380 +0800
++++ itrustee_tzdriver_new/core/session_manager.c	2024-07-12 10:51:32.801629380 +0800
+@@ -589,7 +589,7 @@ static struct tc_ns_service *tc_ref_serv
  }
  
  static int tc_ns_service_init(const unsigned char *uuid, uint32_t uuid_len,
@@ -603,7 +611,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/session_manager.c itrustee_tz
  {
  	int ret = 0;
  	struct tc_ns_service *service = NULL;
-@@ -616,7 +616,7 @@
+@@ -610,7 +610,7 @@ static int tc_ns_service_init(const unsi
  	}
  
  #ifdef CONFIG_CONFIDENTIAL_CONTAINER
@@ -612,7 +620,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/session_manager.c itrustee_tz
  #else
  	service->nsid = PROC_PID_INIT_INO;
  #endif
-@@ -654,7 +654,11 @@
+@@ -648,7 +648,11 @@ static struct tc_ns_service *find_servic
  	struct tc_ns_service *service = NULL;
  	bool is_full = false;
  #ifdef CONFIG_CONFIDENTIAL_CONTAINER
@@ -625,7 +633,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/session_manager.c itrustee_tz
  #else
  	unsigned int nsid = PROC_PID_INIT_INO;
  #endif
-@@ -683,7 +687,7 @@
+@@ -677,7 +681,7 @@ static struct tc_ns_service *find_servic
  		goto add_service;
  	}
  	/* Create a new service if we couldn't find it in list */
@@ -634,7 +642,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/session_manager.c itrustee_tz
  	/* unlock after init to make sure find service from all is correct */
  	mutex_unlock(&g_service_list_lock);
  	if (ret != 0) {
-@@ -797,10 +801,19 @@
+@@ -791,10 +795,19 @@ static int32_t load_image_copy_file(stru
  		}
  		return 0;
  	}
@@ -658,7 +666,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/session_manager.c itrustee_tz
  	}
  	return 0;
  }
-@@ -1379,10 +1392,109 @@
+@@ -1387,10 +1400,109 @@ find_session:
  	return ret;
  }
  
@@ -768,7 +776,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/session_manager.c itrustee_tz
  
  	ret = tc_ns_send_cmd(dev_file, context);
  	if (ret != 0)
-@@ -1391,6 +1503,11 @@
+@@ -1399,6 +1511,11 @@ static int ioctl_session_send_cmd(struct
  		if (ret == 0)
  			ret = -EFAULT;
  	}
@@ -780,10 +788,10 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/session_manager.c itrustee_tz
  	return ret;
  }
  
-diff -Naur '--exclude=.git' itrustee_tzdriver/core/shared_mem.c itrustee_tzdriver_new/core/shared_mem.c
---- itrustee_tzdriver/core/shared_mem.c	2023-11-24 16:18:54.463641440 +0800
-+++ itrustee_tzdriver_new/core/shared_mem.c	2023-11-24 16:46:18.000000000 +0800
-@@ -116,6 +116,35 @@
+diff -uprN itrustee_tzdriver/core/shared_mem.c itrustee_tzdriver_new/core/shared_mem.c
+--- itrustee_tzdriver/core/shared_mem.c	2024-07-12 11:08:59.357629380 +0800
++++ itrustee_tzdriver_new/core/shared_mem.c	2024-07-12 10:51:32.793629380 +0800
+@@ -120,6 +120,36 @@ void release_shared_mem_page(uint64_t bu
  		put_page(page);
  	}
  }
@@ -816,23 +824,24 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/shared_mem.c itrustee_tzdrive
 +		last_page = page;
 +	}		
 +}
- #endif
++
+ #else
  
- #ifdef CONFIG_SHARED_MEM_RESERVED
-diff -Naur '--exclude=.git' itrustee_tzdriver/core/shared_mem.h itrustee_tzdriver_new/core/shared_mem.h
---- itrustee_tzdriver/core/shared_mem.h	2023-11-24 16:18:54.463641440 +0800
-+++ itrustee_tzdriver_new/core/shared_mem.h	2023-11-24 16:46:46.000000000 +0800
-@@ -65,5 +65,6 @@
+ int fill_shared_mem_info(uint64_t start_vaddr, uint32_t pages_no,
+diff -uprN itrustee_tzdriver/core/shared_mem.h itrustee_tzdriver_new/core/shared_mem.h
+--- itrustee_tzdriver/core/shared_mem.h	2024-07-12 11:08:59.357629380 +0800
++++ itrustee_tzdriver_new/core/shared_mem.h	2024-07-12 10:51:32.789629380 +0800
+@@ -64,5 +64,5 @@ void free_spi_mem(uint64_t spi_vaddr);
  int fill_shared_mem_info(uint64_t start_vaddr, uint32_t pages_no,
  	uint32_t offset, uint32_t buffer_size, uint64_t info_addr);
  void release_shared_mem_page(uint64_t buf, uint32_t buf_size);
+-
 +void release_vm_shared_mem_page(uint64_t buf, uint32_t buf_size, uint32_t vm_page_size);
  #endif
- #endif
-diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_client_driver.c itrustee_tzdriver_new/core/tc_client_driver.c
---- itrustee_tzdriver/core/tc_client_driver.c	2023-11-24 16:18:54.463641440 +0800
-+++ itrustee_tzdriver_new/core/tc_client_driver.c	2023-11-24 16:53:12.000000000 +0800
-@@ -181,6 +181,8 @@
+diff -uprN itrustee_tzdriver/core/tc_client_driver.c itrustee_tzdriver_new/core/tc_client_driver.c
+--- itrustee_tzdriver/core/tc_client_driver.c	2024-07-12 11:08:59.357629380 +0800
++++ itrustee_tzdriver_new/core/tc_client_driver.c	2024-07-12 10:51:32.749629380 +0800
+@@ -186,6 +186,8 @@ static int tc_ns_get_tee_version(const s
  	smc_cmd.operation_h_phys =
  		(uint64_t)mailbox_virt_to_phys((uintptr_t)&mb_pack->operation) >> ADDR_TRANS_NUM;
  
@@ -841,7 +850,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_client_driver.c itrustee_t
  	if (tc_ns_smc(&smc_cmd) != 0) {
  		ret = -EPERM;
  		tloge("smc call returns error ret 0x%x\n", smc_cmd.ret_val);
-@@ -307,10 +309,14 @@
+@@ -312,10 +314,14 @@ static int client_login_prepare(uint8_t
  
  static int tc_login_check(const struct tc_ns_dev_file *dev_file)
  {
@@ -850,7 +859,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_client_driver.c itrustee_t
 -		tloge("teec auth failed, ret %d\n", ret);
 -		return -EACCES;
 +	int ret;
-+	ret =check_proxy_auth();
++	ret = check_proxy_auth();
 +	if (ret) {
 +		ret = check_teecd_auth();
 +		if (ret != 0) {
@@ -860,7 +869,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_client_driver.c itrustee_t
  	}
  
  	if (!dev_file)
-@@ -713,12 +719,55 @@
+@@ -718,12 +724,55 @@ static int ioctl_check_is_ccos(void __us
  	return ret;
  }
  
@@ -916,7 +925,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_client_driver.c itrustee_t
  	void *argp = (void __user *)(uintptr_t)arg;
  	if (file == NULL || file->private_data == NULL) {
  		tloge("invalid params\n");
-@@ -726,18 +775,34 @@
+@@ -731,18 +780,34 @@ int public_ioctl(const struct file *file
  	}
  	dev_file = file->private_data;
  #ifdef CONFIG_CONFIDENTIAL_CONTAINER
@@ -952,7 +961,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_client_driver.c itrustee_t
  		ret = tc_ns_send_event_response((unsigned int)arg, nsid);
  		break;
  	case TC_NS_CLIENT_IOCTL_REGISTER_AGENT:
-@@ -834,6 +899,14 @@
+@@ -839,6 +904,14 @@ static int tc_client_agent_ioctl(const s
  	return ret;
  }
  
@@ -967,7 +976,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_client_driver.c itrustee_t
  void handle_cmd_prepare(unsigned int cmd)
  {
  	if (cmd != TC_NS_CLIENT_IOCTL_WAIT_EVENT &&
-@@ -853,6 +926,10 @@
+@@ -858,6 +931,10 @@ static long tc_private_ioctl(struct file
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
@@ -978,7 +987,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_client_driver.c itrustee_t
  	handle_cmd_prepare(cmd);
  	switch (cmd) {
  	case TC_NS_CLIENT_IOCTL_GET_TEE_VERSION:
-@@ -867,10 +944,10 @@
+@@ -872,10 +949,10 @@ static long tc_private_ioctl(struct file
  		mutex_unlock(&g_set_ca_hash_lock);
  		break;
  	case TC_NS_CLIENT_IOCTL_LATEINIT:
@@ -991,7 +1000,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_client_driver.c itrustee_t
  			(struct tc_ns_client_time *)(uintptr_t)arg);
  		break;
  	default:
-@@ -889,6 +966,10 @@
+@@ -894,6 +971,10 @@ static long tc_client_ioctl(struct file
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
  
@@ -1002,7 +1011,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_client_driver.c itrustee_t
  	handle_cmd_prepare(cmd);
  	switch (cmd) {
  	case TC_NS_CLIENT_IOCTL_SES_OPEN_REQ:
-@@ -920,20 +1001,30 @@
+@@ -925,20 +1006,30 @@ static int tc_client_open(struct inode *
  {
  	int ret;
  	struct tc_ns_dev_file *dev = NULL;
@@ -1039,21 +1048,21 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_client_driver.c itrustee_t
  #endif
  	return ret;
  }
-diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_client_driver.h itrustee_tzdriver_new/core/tc_client_driver.h
---- itrustee_tzdriver/core/tc_client_driver.h	2023-11-24 16:18:54.463641440 +0800
-+++ itrustee_tzdriver_new/core/tc_client_driver.h	2023-11-24 16:53:36.000000000 +0800
-@@ -38,6 +38,7 @@
+diff -uprN itrustee_tzdriver/core/tc_client_driver.h itrustee_tzdriver_new/core/tc_client_driver.h
+--- itrustee_tzdriver/core/tc_client_driver.h	2024-07-12 11:08:59.357629380 +0800
++++ itrustee_tzdriver_new/core/tc_client_driver.h	2024-07-12 10:51:32.741629380 +0800
+@@ -47,6 +47,7 @@ int tc_ns_client_open(struct tc_ns_dev_f
  int tc_ns_client_close(struct tc_ns_dev_file *dev);
  int is_agent_alive(unsigned int agent_id, unsigned int nsid);
  int tc_ns_register_host_nsid(void);
 +int set_vm_flag(struct tc_ns_dev_file *dev_file, int vmid);
- 
- #if defined(CONFIG_CONFIDENTIAL_CONTAINER) || defined(CONFIG_TEE_TELEPORT_SUPPORT)
- const struct file_operations *get_cvm_fops(void);
-diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_cvm_driver.c itrustee_tzdriver_new/core/tc_cvm_driver.c
---- itrustee_tzdriver/core/tc_cvm_driver.c	2023-11-24 16:18:54.463641440 +0800
-+++ itrustee_tzdriver_new/core/tc_cvm_driver.c	2023-11-24 16:56:40.000000000 +0800
-@@ -57,6 +57,10 @@
+ int init_dev_node(struct dev_node *node, const char *node_name,
+ 		struct class *driver_class, const struct file_operations *fops);
+ void destory_dev_node(struct dev_node *node, struct class *driver_class);
+diff -uprN itrustee_tzdriver/core/tc_cvm_driver.c itrustee_tzdriver_new/core/tc_cvm_driver.c
+--- itrustee_tzdriver/core/tc_cvm_driver.c	2024-07-12 11:08:59.357629380 +0800
++++ itrustee_tzdriver_new/core/tc_cvm_driver.c	2024-07-12 10:51:32.737629380 +0800
+@@ -104,6 +104,10 @@ static long tc_cvm_ioctl(struct file *fi
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
@@ -1064,45 +1073,38 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/core/tc_cvm_driver.c itrustee_tzdr
  	handle_cmd_prepare(cmd);
  
  	switch (cmd) {
-diff -Naur '--exclude=.git' itrustee_tzdriver/Makefile itrustee_tzdriver_new/Makefile
---- itrustee_tzdriver/Makefile	2023-11-24 16:18:54.007641440 +0800
-+++ itrustee_tzdriver_new/Makefile	2023-11-24 16:58:48.000000000 +0800
-@@ -37,8 +37,8 @@ libboundscheck/src/securecutil.o libboundscheck/src/secureprintoutput_a.o libbou
- endif
-
- # you should config right path according to your run-time environment
--KPATH := /usr/src/kernels
--KDIR  := $(KPATH)/$(shell ls $(KPATH))
-+KERN_VER = $(shell uname -r)
-+KDIR = /lib/modules/$(KERN_VER)/build
-
- EXTRA_CFLAGS += -isystem /usr/lib/gcc/aarch64-linux-gnu/10.3.1/include
- EXTRA_CFLAGS += -isystem /usr/lib/gcc/aarch64-openEuler-linux-gnu/12/include
-@@ -49,6 +49,7 @@ EXTRA_CFLAGS += -DCONFIG_CPU_AFF_NR=0 -DCONFIG_BIG_SESSION=100 -DCONFIG_NOTIFY_P
+diff -uprN itrustee_tzdriver/Makefile itrustee_tzdriver_new/Makefile
+--- itrustee_tzdriver/Makefile	2024-07-12 11:08:59.353629380 +0800
++++ itrustee_tzdriver_new/Makefile	2024-07-12 10:51:32.641629380 +0800
+@@ -54,6 +54,7 @@ EXTRA_CFLAGS += -DCONFIG_CPU_AFF_NR=0 -D
  EXTRA_CFLAGS += -DCONFIG_TEE_LOG_ACHIVE_PATH=\"/var/log/tee/last_teemsg\"
- EXTRA_CFLAGS += -DNOT_TRIGGER_AP_RESET -DLAST_TEE_MSG_ROOT_GID -DCONFIG_NOCOPY_SHAREDMEM -DCONFIG_TA_AFFINITY=y -DCONFIG_TA_AFFINITY_CPU_NUMS=128
+ EXTRA_CFLAGS += -DNOT_TRIGGER_AP_RESET -DLAST_TEE_MSG_ROOT_GID -DCONFIG_NOCOPY_SHAREDMEM -DCONFIG_REGISTER_SHAREDMEM -DCONFIG_TA_AFFINITY=y -DCONFIG_TA_AFFINITY_CPU_NUMS=128
  EXTRA_CFLAGS += -DTEECD_PATH_UID_AUTH_CTX=\"/usr/bin/teecd:0\"
 +EXTRA_CFLAGS += -DPROXY_PATH_UID_AUTH_CTX=\"/usr/bin/vtz_proxy:0\"
  EXTRA_CFLAGS += -DCONFIG_AUTH_SUPPORT_UNAME -DCONFIG_AUTH_HASH -std=gnu99
  EXTRA_CFLAGS += -DCONFIG_TEE_UPGRADE -DCONFIG_TEE_REBOOT -DCONFIG_CONFIDENTIAL_TEE
  EXTRA_CFLAGS += -I$(PWD)/tzdriver_internal/tee_reboot
-diff -Naur '--exclude=.git' itrustee_tzdriver/tc_ns_client.h itrustee_tzdriver_new/tc_ns_client.h
---- itrustee_tzdriver/tc_ns_client.h	2023-11-24 16:18:53.627641440 +0800
-+++ itrustee_tzdriver_new/tc_ns_client.h	2023-11-24 16:59:38.000000000 +0800
-@@ -210,6 +210,9 @@
+diff -uprN itrustee_tzdriver/modules.order itrustee_tzdriver_new/modules.order
+--- itrustee_tzdriver/modules.order	1970-01-01 08:00:00.000000000 +0800
++++ itrustee_tzdriver_new/modules.order	2024-07-12 10:54:21.957629380 +0800
+@@ -0,0 +1 @@
++kernel//home/z50040113/target/itrustee_tzdriver/tzdriver.ko
+diff -uprN itrustee_tzdriver/tc_ns_client.h itrustee_tzdriver_new/tc_ns_client.h
+--- itrustee_tzdriver/tc_ns_client.h	2024-07-12 11:08:59.361629380 +0800
++++ itrustee_tzdriver_new/tc_ns_client.h	2024-07-12 10:51:32.625629380 +0800
+@@ -230,6 +230,8 @@ struct tc_ns_log_pool {
  #define TC_NS_CLIENT_IOCTL_GET_TEE_INFO \
  	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 26, struct tc_ns_tee_info)
  
 +#define TC_NS_CLIENT_IOCTL_SET_VM_FLAG \
 +	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 27, int)
-+
  #define TC_NS_CLIENT_IOCTL_CHECK_CCOS \
  	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 32, unsigned int)
  
-diff -Naur '--exclude=.git' itrustee_tzdriver/teek_ns_client.h itrustee_tzdriver_new/teek_ns_client.h
---- itrustee_tzdriver/teek_ns_client.h	2023-11-24 16:18:53.719641440 +0800
-+++ itrustee_tzdriver_new/teek_ns_client.h	2023-11-24 17:00:18.000000000 +0800
-@@ -129,6 +129,9 @@
+diff -uprN itrustee_tzdriver/teek_ns_client.h itrustee_tzdriver_new/teek_ns_client.h
+--- itrustee_tzdriver/teek_ns_client.h	2024-07-12 11:08:59.361629380 +0800
++++ itrustee_tzdriver_new/teek_ns_client.h	2024-07-12 10:51:32.597629380 +0800
+@@ -129,6 +129,9 @@ struct tc_ns_dev_file {
  	int load_app_flag;
  #ifdef CONFIG_CONFIDENTIAL_CONTAINER
  	uint32_t nsid;
@@ -1112,9 +1114,9 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/teek_ns_client.h itrustee_tzdriver
  #endif
  	struct completion close_comp; /* for kthread close unclosed session */
  #ifdef CONFIG_TEE_TELEPORT_SUPPORT
-diff -Naur '--exclude=.git' itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdriver_new/tlogger/tlogger.c
---- itrustee_tzdriver/tlogger/tlogger.c	2023-11-24 16:18:54.927641440 +0800
-+++ itrustee_tzdriver_new/tlogger/tlogger.c	2023-11-24 17:03:54.000000000 +0800
+diff -uprN itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdriver_new/tlogger/tlogger.c
+--- itrustee_tzdriver/tlogger/tlogger.c	2024-07-12 11:08:59.361629380 +0800
++++ itrustee_tzdriver_new/tlogger/tlogger.c	2024-07-12 10:51:32.581629380 +0800
 @@ -61,6 +61,7 @@
  #define SET_TLOGCAT_STAT_BASE  7
  #define GET_TLOGCAT_STAT_BASE  8
@@ -1132,7 +1134,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdrive
  
  int g_tlogcat_f = 0;
  
-@@ -515,7 +518,7 @@
+@@ -515,7 +518,7 @@ void recycle_tlogcat_processes(void)
  }
  #endif
  
@@ -1141,7 +1143,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdrive
  {
  	struct tlogger_group *group = NULL;
  #ifdef CONFIG_CONFIDENTIAL_CONTAINER
-@@ -524,6 +527,9 @@
+@@ -524,6 +527,9 @@ static struct tlogger_group *get_tlogger
  	uint32_t nsid = PROC_PID_INIT_INO;
  #endif
  
@@ -1151,7 +1153,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdrive
  	list_for_each_entry(group, &g_reader_group_list, node) {
  		if (group->nsid == nsid)
  			return group;
-@@ -596,7 +602,7 @@
+@@ -596,7 +602,7 @@ static int process_tlogger_open(struct i
  		return -ENODEV;
  
  	mutex_lock(&g_reader_group_mutex);
@@ -1160,7 +1162,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdrive
  	if (group == NULL) {
  		group = kzalloc(sizeof(*group), GFP_KERNEL);
  		if (ZERO_OR_NULL_PTR((unsigned long)(uintptr_t)group)) {
-@@ -828,6 +834,35 @@
+@@ -808,6 +814,35 @@ static int get_teeos_version(uint32_t cm
  	return 0;
  }
  
@@ -1196,7 +1198,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdrive
  static long process_tlogger_ioctl(struct file *file,
  	unsigned int cmd, unsigned long arg)
  {
-@@ -865,6 +900,9 @@
+@@ -845,6 +880,9 @@ static long process_tlogger_ioctl(struct
  	case TEELOGGER_GET_TEE_INFO:
  		ret = tc_ns_get_tee_info(file, (void *)(uintptr_t)arg);
  		break;
@@ -1206,7 +1208,7 @@ diff -Naur '--exclude=.git' itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdrive
  	default:
  		tloge("ioctl error default\n");
  		break;
-@@ -1043,11 +1081,13 @@
+@@ -1023,11 +1061,13 @@ static int write_part_log_to_msg(struct
  
  	while (next_item && read_off <= read_off_end) {
  		item_len = next_item->buffer_len + sizeof(*next_item);
