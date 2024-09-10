@@ -39,7 +39,7 @@
     (((paramType) == TEEC_VALUE_INPUT) || ((paramType) == TEEC_VALUE_OUTPUT) || ((paramType) == TEEC_VALUE_INOUT))
 
 #define IS_SHARED_MEM(paramType) \
-    ((paramType) == TEEC_MEMREF_SHARED_INOUT)
+    (((paramType) == TEEC_MEMREF_SHARED_INOUT) || ((paramType) == TEEC_MEMREF_REGISTER_INOUT))
 
 #define PAGE_SIZE getpagesize()
 
