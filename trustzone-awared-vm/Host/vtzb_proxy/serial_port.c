@@ -87,7 +87,16 @@ int send_to_vm(struct serial_port_file *serial_port, void *packet_rsp, size_t si
     if (!serial_port || serial_port->sock <= 0 || !packet_rsp)
         return -1;
     pthread_mutex_lock(&serial_port->lock);
-    ret = write(serial_port->sock, packet_rsp, size_rsp);
+    ret = send(serial_port->sock, packet_rsp, size_rsp, MSG_NOSIGNAL);
+    if (ret == -1) {
+        if (errno == EPIPE) {
+            // 处理 EPIPE 错误
+            tloge("Send failed with EPIPE: Broken pipe, socket closed\n");
+        } else {
+
+            tloge("Send failed, errno: %d\n", errno);
+        }
+    }
     pthread_mutex_unlock(&serial_port->lock);
     return ret;
 }

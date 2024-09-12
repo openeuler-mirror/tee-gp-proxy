@@ -121,7 +121,7 @@ static void close_tzdriver(struct_packet_cmd_close_tzd *packet_cmd,
     }
 
     if (send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp)) != sizeof(packet_rsp))
-        tloge("close ptzfd send to VM failed \n");
+        tloge("close_tzdriver send to VM failed \n");
 }
 
 static void log_in_NonHidl(struct_packet_cmd_login_non *packet_cmd, 
@@ -136,7 +136,7 @@ static void log_in_NonHidl(struct_packet_cmd_login_non *packet_cmd,
 
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp))
-        tloge("send to VM failed \n");
+        tloge("log_in_NonHidl send to VM failed \n");
 }
 
 static void log_in(struct_packet_cmd_login *packet_cmd,
@@ -150,7 +150,7 @@ static void log_in(struct_packet_cmd_login *packet_cmd,
     packet_rsp.ret = ret;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp)) {
-        tloge("send to VM failed \n");
+        tloge("log_in send to VM failed \n");
     }
 }
 
@@ -165,7 +165,7 @@ static void get_tee_ver(struct_packet_cmd_getteever *packet_cmd,
     packet_rsp.ret = ret;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp))
-        tloge("send to VM failed \n");
+        tloge("get_tee_ver send to VM failed \n");
 }
 
 static void get_tee_info(struct_packet_cmd_getteeinfo *packet_cmd,
@@ -183,7 +183,7 @@ static void get_tee_info(struct_packet_cmd_getteeinfo *packet_cmd,
     packet_rsp.ret = ret;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp))
-        tloge("send to VM failed \n");
+        tloge("get_tee_info send to VM failed \n");
 }
 
 static void sync_sys_time(struct_packet_cmd_synctime *packet_cmd,
@@ -197,7 +197,7 @@ static void sync_sys_time(struct_packet_cmd_synctime *packet_cmd,
     packet_rsp.ret = ret;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp))
-        tloge("send to VM failed \n");
+        tloge("sync_sys_time send to VM failed \n");
 }
 
 static int process_address_sess(struct_packet_cmd_session *packet_cmd,
@@ -230,7 +230,7 @@ static void open_session(struct_packet_cmd_session *packet_cmd,
 
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp))
-        tloge("send to VM failed \n");
+        tloge("open_session send to VM failed \n");
 }
 
 static void close_session(struct_packet_cmd_session *packet_cmd,
@@ -246,7 +246,7 @@ static void close_session(struct_packet_cmd_session *packet_cmd,
     packet_rsp.ret = ret;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp))
-        tloge("send to VM failed \n");
+        tloge("close_session send to VM failed \n");
     remove_session(packet_cmd->ptzfd, packet_cmd->cliContext.session_id, serial_port->vm_file);
 }
 
@@ -553,7 +553,7 @@ static void send_cmd(struct_packet_cmd_send_cmd *packet_cmd,
     packet_rsp.cliContext = packet_cmd->cliContext;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp)) {
-        tloge("send to VM failed \n");
+        tloge("send_cmd send to VM failed \n");
     }
 }
 
@@ -569,7 +569,7 @@ static void load_sec_file(struct_packet_cmd_load_sec *packet_cmd,
     packet_rsp.ioctlArg = packet_cmd->ioctlArg;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp))
-        tloge("send to VM failed \n");
+        tloge("load_sec_file send to VM failed \n");
 }
 
 static void vtz_dommap(struct_packet_cmd_mmap *packet_cmd,
@@ -602,7 +602,7 @@ static void vtz_dommap(struct_packet_cmd_mmap *packet_cmd,
 END:
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp)) {
-        tloge("send to VM failed \n");
+        tloge("vtz_dommap send to VM failed \n");
         pthread_mutex_lock(&serial_port->vm_file->shrd_mem_lock);
         ListRemoveEntry(&(tmp->node));
         pthread_mutex_unlock(&serial_port->vm_file->shrd_mem_lock);
@@ -645,7 +645,7 @@ static void vtz_dounmmap(struct_packet_cmd_mmap *packet_cmd,
     packet_rsp.ret = ret;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp)) {
-        tloge("send to VM failed \n");
+        tloge("vtz_dounmmap send to VM failed \n");
     }
 }
 
@@ -669,7 +669,7 @@ static void vtz_nothing(struct_packet_cmd_nothing *packet_cmd,
     packet_rsp.ret = 0;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp)) {
-        tloge("send to VM failed \n");
+        tloge("vtz_nothing send to VM failed \n");
     }
 }
 
