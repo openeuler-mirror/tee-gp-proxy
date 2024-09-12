@@ -89,7 +89,7 @@ END:
     packet_rsp.args = packet_cmd->args;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp)) {
-        tloge("send to VM failed \n");
+        tloge("register_agent send to VM failed \n");
     }
 }
 
@@ -128,7 +128,7 @@ void wait_event(struct_packet_cmd_event *packet_cmd,
 
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp)) {
-        tloge("send to VM failed \n");
+        tloge("wait_event send to VM failed \n");
     }
 }
 
@@ -165,6 +165,6 @@ void sent_event_response(struct_packet_cmd_event *packet_cmd,
 
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp)) {
-        tloge("send to VM failed \n");
+        tloge("sent_event_response send to VM failed \n");
     }
 }
