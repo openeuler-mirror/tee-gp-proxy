@@ -121,7 +121,7 @@ static void close_tzdriver(struct_packet_cmd_close_tzd *packet_cmd,
     }
 
     if (send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp)) != sizeof(packet_rsp))
-        tloge("close_tzdriver send to VM failed \n");
+        tloge("close_tzdriverF send to VM failed \n");
 }
 
 static void log_in_NonHidl(struct_packet_cmd_login_non *packet_cmd, 
@@ -681,6 +681,7 @@ void *thread_entry(void *args)
     struct serial_port_file *serial_port = (struct serial_port_file *)u64;
     char *rd_buf = (char *)(args) + sizeof(uint64_t);
     ui32_cmd = *(uint32_t *)(rd_buf + sizeof(uint32_t));
+    tloge("CMD is %d\n", ui32_cmd);
 
     if (ui32_cmd == VTZ_OPEN_TZD) {
         (void)open_tzdriver((struct_packet_cmd_open_tzd *)rd_buf, serial_port);
