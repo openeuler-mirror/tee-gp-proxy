@@ -121,7 +121,7 @@ static void close_tzdriver(struct_packet_cmd_close_tzd *packet_cmd,
     }
 
     if (send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp)) != sizeof(packet_rsp))
-        tloge("close_tzdriverF send to VM failed \n");
+        tloge("close_tzdriver send to VM failed \n");
 }
 
 static void log_in_NonHidl(struct_packet_cmd_login_non *packet_cmd, 

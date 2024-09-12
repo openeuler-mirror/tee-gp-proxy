@@ -84,6 +84,7 @@ void serial_port_list_destroy()
 int send_to_vm(struct serial_port_file *serial_port, void *packet_rsp, size_t size_rsp)
 {
     int ret = 0;
+    int index;
     if (!serial_port || serial_port->sock <= 0 || !packet_rsp)
         return -1;
     pthread_mutex_lock(&serial_port->lock);
@@ -91,6 +92,21 @@ int send_to_vm(struct serial_port_file *serial_port, void *packet_rsp, size_t si
     if (ret == -1) {
         if (errno == EPIPE) {
             // 处理 EPIPE 错误
+            close(serial_port->sock);
+            for (index = 0; index < g_pollfd_len; index++) {
+                if (g_pollfd[index].fd == serial_port->sock) {
+                    break;
+                }
+            }
+            serial_port->sock = 0;
+            g_serial_array[index] = g_serial_array[g_pollfd_len - 1];
+            g_pollfd[index] = g_pollfd[g_pollfd_len - 1];
+            g_pollfd_len--;
+            serial_port->opened = false;
+            if (serial_port->vm_file) {
+                destroy_vm_file(serial_port->vm_file);
+            }
+            serial_port->vm_file = NULL;
             tloge("Send failed with EPIPE: Broken pipe, socket closed\n");
         } else {
 
