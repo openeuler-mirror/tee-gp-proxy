@@ -1,20 +1,3 @@
-From 011ed576f4405a930b0cffa31a984fb4f03146e3 Mon Sep 17 00:00:00 2001
-From: Ju Fu <fuju1@huawei.com>
-Date: Tue, 25 Jun 2024 15:15:51 +0800
-Subject: [PATCH OLK-5.10] cvm: delete dead code and resolve macro definition
- holes
-
-virtcca inclusion
-category: feature
-bugzilla: https://gitee.com/openeuler/kernel/issues/I9TM0T
-
---------------------------------
-
-delete dead code and resolve macro definition holes
-
-Signed-off-by: Ju Fu <fuju1@huawei.com>
----
-
 diff -uprN itrustee_tzdriver/auth/auth_base_impl.c itrustee_tzdriver_new/auth/auth_base_impl.c
 --- itrustee_tzdriver/auth/auth_base_impl.c	2024-07-12 11:08:59.353629380 +0800
 +++ itrustee_tzdriver_new/auth/auth_base_impl.c	2024-07-12 10:51:32.889629380 +0800

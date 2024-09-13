@@ -1,23 +1,6 @@
-From 011ed576f4405a930b0cffa31a984fb4f03146e3 Mon Sep 17 00:00:00 2001
-From: Ju Fu <fuju1@huawei.com>
-Date: Tue, 25 Jun 2024 15:15:51 +0800
-Subject: [PATCH OLK-5.10] cvm: delete dead code and resolve macro definition
- holes
-
-virtcca inclusion
-category: feature
-bugzilla: https://gitee.com/openeuler/kernel/issues/I9TM0T
-
---------------------------------
-
-delete dead code and resolve macro definition holes
-
-Signed-off-by: Ju Fu <fuju1@huawei.com>
----
-
-diff -ruNp qemu/hw/char/tc_ns_client.h qemu-after/hw/char/tc_ns_client.h
+diff -purN qemu/hw/char/tc_ns_client.h qemu_new/hw/char/tc_ns_client.h
 --- qemu/hw/char/tc_ns_client.h	1970-01-01 08:00:00.000000000 +0800
-+++ qemu-after/hw/char/tc_ns_client.h	2024-07-12 17:36:25.179832480 +0800
++++ qemu_new/hw/char/tc_ns_client.h	2024-09-10 11:48:21.650599250 +0800
 @@ -0,0 +1,162 @@
 +/*
 + * Copyright (c) Huawei Technologies Co., Ltd. 2012-2023. All rights reserved.
@@ -181,10 +164,10 @@ diff -ruNp qemu/hw/char/tc_ns_client.h qemu-after/hw/char/tc_ns_client.h
 +#endif
 +
 +
-diff -ruNp qemu/hw/char/tee_client_constants.h qemu-after/hw/char/tee_client_constants.h
+diff -purN qemu/hw/char/tee_client_constants.h qemu_new/hw/char/tee_client_constants.h
 --- qemu/hw/char/tee_client_constants.h	1970-01-01 08:00:00.000000000 +0800
-+++ qemu-after/hw/char/tee_client_constants.h	2024-07-12 17:36:25.171832480 +0800
-@@ -0,0 +1,126 @@
++++ qemu_new/hw/char/tee_client_constants.h	2024-09-10 11:50:22.282599250 +0800
+@@ -0,0 +1,127 @@
 +/*
 + * Copyright (c) Huawei Technologies Co., Ltd. 2013-2022. All rights reserved.
 + * Licensed under the Mulan PSL v2.
@@ -275,6 +258,7 @@ diff -ruNp qemu/hw/char/tee_client_constants.h qemu-after/hw/char/tee_client_con
 +    TEEC_ION_INPUT = 0x08,  /* input type of icon memory reference, refer TEEC_IonReference */
 +    TEEC_ION_SGLIST_INPUT = 0x09, /* input type of ion memory block reference, refer TEEC_IonSglistReference */
 +    TEEC_MEMREF_SHARED_INOUT = 0x0a, /* no copy mem */
++	TEEC_MEMREF_REGISTER_INOUT = 0x0b,
 +    TEEC_MEMREF_WHOLE = 0xc, /* use whole memory block, refer TEEC_RegisteredMemoryReference */
 +    TEEC_MEMREF_PARTIAL_INPUT = 0xd, /* input type of memory reference, refer TEEC_RegisteredMemoryReference */
 +    TEEC_MEMREF_PARTIAL_OUTPUT = 0xe, /* output type of memory reference, refer TEEC_RegisteredMemoryReference */
@@ -311,9 +295,9 @@ diff -ruNp qemu/hw/char/tee_client_constants.h qemu-after/hw/char/tee_client_con
 +
 +#define TEEC_PARAM_NUM 4 /* teec param max number */
 +#endif
-diff -ruNp qemu/hw/char/tee_client_list.h qemu-after/hw/char/tee_client_list.h
+diff -purN qemu/hw/char/tee_client_list.h qemu_new/hw/char/tee_client_list.h
 --- qemu/hw/char/tee_client_list.h	1970-01-01 08:00:00.000000000 +0800
-+++ qemu-after/hw/char/tee_client_list.h	2024-07-12 17:36:25.163832480 +0800
++++ qemu_new/hw/char/tee_client_list.h	2024-09-10 11:48:21.650599250 +0800
 @@ -0,0 +1,101 @@
 +/*
 + * Copyright (c) Huawei Technologies Co., Ltd. 2013-2021. All rights reserved.
@@ -416,9 +400,9 @@ diff -ruNp qemu/hw/char/tee_client_list.h qemu-after/hw/char/tee_client_list.h
 +#endif
 +
 +
-diff -ruNp qemu/hw/char/tee_client_type.h qemu-after/hw/char/tee_client_type.h
+diff -purN qemu/hw/char/tee_client_type.h qemu_new/hw/char/tee_client_type.h
 --- qemu/hw/char/tee_client_type.h	1970-01-01 08:00:00.000000000 +0800
-+++ qemu-after/hw/char/tee_client_type.h	2024-07-12 17:36:25.155832480 +0800
++++ qemu_new/hw/char/tee_client_type.h	2024-09-10 11:48:21.650599250 +0800
 @@ -0,0 +1,134 @@
 +/*
 + * Copyright (c) Huawei Technologies Co., Ltd. 2013-2022. All rights reserved.
@@ -554,9 +538,9 @@ diff -ruNp qemu/hw/char/tee_client_type.h qemu-after/hw/char/tee_client_type.h
 +#endif
 +
 +
-diff -ruNp qemu/hw/char/virtio-console.c qemu-after/hw/char/virtio-console.c
---- qemu/hw/char/virtio-console.c	2024-07-12 17:36:25.127832480 +0800
-+++ qemu-after/hw/char/virtio-console.c	2024-07-12 17:36:25.151832480 +0800
+diff -purN qemu/hw/char/virtio-console.c qemu_new/hw/char/virtio-console.c
+--- qemu/hw/char/virtio-console.c	2024-09-10 11:56:07.870599250 +0800
++++ qemu_new/hw/char/virtio-console.c	2024-09-10 11:52:50.618599250 +0800
 @@ -22,6 +22,13 @@
  #include "qapi/qapi-events-char.h"
  #include "qom/object.h"
@@ -571,7 +555,7 @@ diff -ruNp qemu/hw/char/virtio-console.c qemu-after/hw/char/virtio-console.c
  #define TYPE_VIRTIO_CONSOLE_SERIAL_PORT "virtserialport"
  typedef struct VirtConsole VirtConsole;
  DECLARE_INSTANCE_CHECKER(VirtConsole, VIRTIO_CONSOLE,
-@@ -48,18 +55,327 @@ static gboolean chr_write_unblocked(void
+@@ -48,18 +55,395 @@ static gboolean chr_write_unblocked(void
      return FALSE;
  }
  
@@ -667,6 +651,13 @@ diff -ruNp qemu/hw/char/virtio-console.c qemu-after/hw/char/virtio-console.c
 +	uint32_t seq_num;
 +	int32_t ptzfd;
 +	int32_t cpu_index;
++	int32_t err_flag;
++	int32_t is_fragment;
++	uint32_t fragment_block_num;
++	uint32_t vm_page_size;;
++	uint64_t block_addrs[TEEC_PARAM_NUM];//qemu and proxy don't use
++	uint32_t block_size[TEEC_PARAM_NUM];
++	unsigned long long addrs[TEEC_PARAM_NUM]; //used by ref mem mmap
 +	TC_NS_ClientContext cliContext;
 +} struct_packet_cmd_session;
 +
@@ -785,9 +776,12 @@ diff -ruNp qemu/hw/char/virtio-console.c qemu-after/hw/char/virtio-console.c
 +            debug("sizeof(TC_NS_ClientContext) =%d \n", sizeof(TC_NS_ClientContext));
 +            if ( len >= sizeof(struct_packet_cmd_session) ) {
 +                struct_packet_cmd_session* vtzf_packet_cmd = (struct_packet_cmd_session *)buf;
-+                debug("   vtzf_packet_cmd->cliContext.file_size        = 0x%08x, %d \n", vtzf_packet_cmd->cliContext.file_size,
-+                    vtzf_packet_cmd->cliContext.file_size);
-+                debug("   vtzf_packet_cmd->cliContext.file_buffer      = 0x%016lx \n", vtzf_packet_cmd->cliContext.file_buffer);
++                uint32_t packet_size =vtzf_packet_cmd->packet_size;
++                if (len != packet_size && !vtzf_packet_cmd->fragment_block_num) {
++                    debug("err ,len != packet_size \n");
++                    vtzf_packet_cmd->err_flag = 1;
++                    break;
++                }
 +                hwaddr gpa = (uint64_t)vtzf_packet_cmd->cliContext.file_buffer;
 +                ptr_hva = gpa2hva(&mr, gpa, 1, &local_err);
 +                if (local_err) {
@@ -798,6 +792,64 @@ diff -ruNp qemu/hw/char/virtio-console.c qemu-after/hw/char/virtio-console.c
 +                    uint64_t ui64_hva;
 +                    ui64_hva = (uint64_t)ptr_hva;
 +                    vtzf_packet_cmd->cliContext.file_buffer = (void *)ui64_hva;
++                }
++				
++                uint32_t param_type;
++                bool check_value;
++
++                for (i = 0; i < TEEC_PARAM_NUM; i++) {
++                    param_type = TEEC_PARAM_TYPE_GET(vtzf_packet_cmd->cliContext.paramTypes, i);
++                    check_value = (param_type == TEEC_ION_INPUT || param_type == TEEC_ION_SGLIST_INPUT);
++                    if (IS_TEMP_MEM(param_type)) {
++                        gpa_param = (uint64_t)vtzf_packet_cmd->cliContext.params[i].memref.buffer;
++                        ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
++                        if (local_err) {
++                            debug("   gpa2hva params[%d].memref.buffer failed \n", i);
++                        } else {
++                            debug("   host virtual address of memref.buffer        = 0x%016lx, %p \n", (uint64_t)ptr_hva, ptr_hva);
++                            memory_region_unref(mr);
++                            uint64_t ui64_hva;
++                            ui64_hva = (uint64_t)ptr_hva;
++                            vtzf_packet_cmd->cliContext.params[i].memref.buffer = ui64_hva;
++                        }
++                    } else if (IS_PARTIAL_MEM(param_type)) {
++                        gpa_param = (uint64_t)vtzf_packet_cmd->cliContext.params[i].memref.buffer;
++                        ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
++                        if (local_err) {
++                            debug("   gpa2hva params[%d].memref.buffer failed \n", i);
++                        } else {
++                            debug("   host virtual address of memref.buffer     = 0x%016lx, %p \n", (uint64_t)ptr_hva, ptr_hva);
++                            memory_region_unref(mr);
++                            uint64_t ui64_hva;
++                            ui64_hva = (uint64_t)ptr_hva;
++                            vtzf_packet_cmd->cliContext.params[i].memref.buffer = ui64_hva;
++                        }
++                    } else if (param_type == TEEC_MEMREF_SHARED_INOUT || param_type == TEEC_MEMREF_REGISTER_INOUT) {
++                        /* do nothing */
++                    } else if (IS_VALUE_MEM(param_type) || check_value) {
++                        /* do nothing */
++                    } else {
++                        /* if type is none, ignore it */
++                    }
++                }// end for
++
++                fragment_block_num = vtzf_packet_cmd->fragment_block_num;
++                if (fragment_block_num != 0) {
++                    page_block = (struct_page_block *)((char *)vtzf_packet_cmd + sizeof(struct_packet_cmd_session));
++                    for(j = 0; j < fragment_block_num; j++){
++                        gpa_param = page_block[j].phy_addr;
++                        debug("page_block[%d].phy_addr = %llx\n", j, page_block[j].phy_addr);
++                        ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
++                        if (local_err) {
++                            debug("   gpa2hva params[%d].memref.buffer failed \n", i);
++                        } else {
++                            debug("   host virtual address of memref.buffer     = 0x%016lx, %p \n", (uint64_t)ptr_hva, ptr_hva);
++                            memory_region_unref(mr);
++                            uint64_t ui64_hva;
++                            ui64_hva = (uint64_t)ptr_hva;
++                            page_block[j].phy_addr = ui64_hva;
++                        }
++                    }
 +                }
 +            }
 +            break;
@@ -841,7 +893,7 @@ diff -ruNp qemu/hw/char/virtio-console.c qemu-after/hw/char/virtio-console.c
 +                            ui64_hva = (uint64_t)ptr_hva;
 +                            vtzf_packet_cmd->cliContext.params[i].memref.buffer = ui64_hva;
 +                        }
-+                    } else if (param_type == TEEC_MEMREF_SHARED_INOUT) {
++                    } else if (param_type == TEEC_MEMREF_SHARED_INOUT || param_type == TEEC_MEMREF_REGISTER_INOUT) {
 +                        /* do nothing */
 +                    } else if (IS_VALUE_MEM(param_type) || check_value) {
 +                        /* do nothing */

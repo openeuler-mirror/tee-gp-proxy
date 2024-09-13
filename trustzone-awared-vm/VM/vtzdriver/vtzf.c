@@ -688,18 +688,28 @@ static long tc_client_ioctl(struct file *file, unsigned int cmd, unsigned long a
 	tlogd("tc client ioctl ret = 0x%x\n", ret);
 	return (long)ret;
 }
-
+static int alloc_for_params_sess(struct vtzf_dev_file *dev_file,
+	struct_packet_cmd_session *packet_cmd, uintptr_t addrs[][3]);
+static void update_free_params_sess(struct tc_ns_client_context *clicontext, 
+	struct tc_ns_client_context *context, uintptr_t addrs[4][3]);
+static void free_for_params(struct tc_ns_client_context *clicontext,
+	uintptr_t addrs[4][3]);
+	
 static int tc_ns_open_session(struct vtzf_dev_file *dev_file,
 	struct tc_ns_client_context *clicontext)
 {
-	int ret;
+	int ret = -EINVAL;
+	int i = 0;
+	uint32_t offset = 0;
+	uint32_t total_buf_size = 0;
+	void *cmd_buf = NULL;
 	uint32_t seq_num = get_seq_num(0);
 	struct_packet_cmd_session packet_cmd = {0};
 	struct_packet_rsp_session packet_rsp = {0};
 	size_t file_size = 0;
 	char *buffer = NULL;
 	char *tmp_buffer = NULL;
-
+	uintptr_t addrs[4][3];
 	if (!clicontext || !dev_file || dev_file->ptzfd <= 0) {
 		tloge("invalid params\n");
 		return -EINVAL;
@@ -730,20 +740,74 @@ static int tc_ns_open_session(struct vtzf_dev_file *dev_file,
 		goto END;
 	}
 
-	ret = send_to_proxy(&packet_cmd, sizeof(packet_cmd), &packet_rsp, sizeof(packet_rsp), seq_num);
+	ret = alloc_for_params_sess(dev_file, &packet_cmd, addrs);
+	if (ret) {
+		tloge("alloc for params failed \n");
+		return ret;
+	}
+	for (i = 0;i < TEE_PARAM_NUM; i++) {
+		total_buf_size += packet_cmd.block_size[i];
+	}
+	packet_cmd.fragment_block_num = total_buf_size / sizeof(struct page_block);
+	total_buf_size += sizeof(packet_cmd);
+	packet_cmd.packet_size = total_buf_size;
+	cmd_buf = kzalloc(total_buf_size, GFP_KERNEL);
+	if (!cmd_buf) {
+		tloge("cmd_buf malloc failed\n");
+		ret = -ENOMEM;
+		goto err2;
+	}
+
+	if (memcpy_s(cmd_buf, sizeof(packet_cmd), &packet_cmd, sizeof(packet_cmd)) != 0) {
+		ret = -EFAULT;
+		goto err1;
+	}	
+	offset = sizeof(packet_cmd);
+
+	for (i = 0; i < TEE_PARAM_NUM; i++) {
+		if (packet_cmd.block_size[i] != 0 && 
+			memcpy_s(cmd_buf + offset, packet_cmd.block_size[i],
+				(void *)packet_cmd.block_addrs[i], packet_cmd.block_size[i]) != 0) {
+			ret = -EFAULT;
+			goto err1;
+		}
+		offset += packet_cmd.block_size[i];
+	}
+
+	ret = send_to_proxy(cmd_buf, total_buf_size, &packet_rsp, sizeof(packet_rsp), seq_num);
 	if (!ret) {
 		ret = packet_rsp.ret;
 		tlogd(" opensession ret =%d \n", ret);
 		if (!ret) {
 			packet_rsp.cliContext.file_buffer = tmp_buffer;
+			update_free_params_sess(&packet_rsp.cliContext, clicontext, addrs);
 			*clicontext = packet_rsp.cliContext;
 		} else {
 			tloge("open session failed ret is %d\n", ret);
 			clicontext->returns = packet_rsp.cliContext.returns;
+			free_for_params(&packet_cmd.cliContext, addrs);
 		}
 	} else {
 		tloge("send to proxy failed ret is %d\n", ret);
+		free_for_params(&packet_cmd.cliContext, addrs);
 	}
+	kfree(cmd_buf);
+	for (i = 0; i < TEE_PARAM_NUM; i++) {
+		if (packet_cmd.block_size[i] != 0 && packet_cmd.block_addrs[i]) {
+			kfree((void *)packet_cmd.block_addrs[i]);
+		}
+	}
+	dealloc_res_shm(buffer);
+	return ret;
+err1:
+	kfree(cmd_buf);
+	for (i = 0; i < TEE_PARAM_NUM; i++) {
+		if (packet_cmd.block_size[i] != 0 && packet_cmd.block_addrs[i]) {
+			kfree((void *)packet_cmd.block_addrs[i]);
+		}
+	}	
+err2:
+	free_for_params(&packet_cmd.cliContext, addrs);
 END:
 	dealloc_res_shm(buffer);
 	return ret;
@@ -893,8 +957,85 @@ static int alloc_for_ref_mem(struct vtzf_dev_file *dev_file,
 	return 0;
 }
 
+static int alloc_for_ref_mem_sess(struct vtzf_dev_file *dev_file,
+	struct_packet_cmd_session *packet_cmd, int index, uintptr_t addrs[][3])
+{
+	uintptr_t user_size_addr;
+	struct tc_ns_client_context *clicontext = &packet_cmd->cliContext;
+	bool b_found = false;
+	struct vtzf_shared_mem *shared_mem = NULL;
+	struct vtzf_shared_mem *shared_mem_temp = NULL;
+	void *user_buffer = NULL;
+	uintptr_t phy_buffer;
+	uint32_t buf_size;
+
+	user_size_addr = (uintptr_t)(clicontext->params[index].memref.size_addr 
+			| (uint64_t)clicontext->params[index].memref.size_h_addr << ADDR_TRANS_NUM);
+	user_buffer = (void *)(clicontext->params[index].memref.buffer
+				| (uint64_t)clicontext->params[index].memref.buffer_h_addr << ADDR_TRANS_NUM);
+
+	if (copy_from_user(&buf_size, (void *)user_size_addr, sizeof(uint32_t)) != 0) {
+		tloge("copy from user failed\n");
+		return -EFAULT;
+	}
+
+	mutex_lock(&dev_file->shared_mem_lock);
+	list_for_each_entry_safe(shared_mem, shared_mem_temp, &dev_file->shared_mem_list, head) {
+		if (shared_mem) {
+			if (shared_mem->user_addr == user_buffer) {
+				tlogv("found the mapped shared_mem for cliContext.params[index].memref.buffer\n");
+				phy_buffer = (uintptr_t)shared_mem->phy_addr;
+				clicontext->params[index].memref.buffer = 
+					(unsigned int)(uintptr_t)phy_buffer;
+				clicontext->params[index].memref.buffer_h_addr = 
+					((unsigned long long)(uintptr_t)phy_buffer) >> ADDR_TRANS_NUM;
+
+				packet_cmd->addrs[index] = (unsigned long long)user_buffer;
+				b_found = true;
+				break;
+			}
+		}
+	}
+	mutex_unlock(&dev_file->shared_mem_lock);
+	if (!b_found) {
+		tloge("can't found the mapped shared_mem for cliContext.params[index].memref.buffer \n");
+		return -EFAULT;
+	}
+	clicontext->params[index].memref.size_addr = buf_size;
+	return 0;
+}
+
 static int check_buffer_for_sharedmem(uint32_t *buffer_size,
 	struct_packet_cmd_send_cmd *packet_cmd, int index)
+{
+	uintptr_t user_size_addr;
+	void *user_buffer = NULL;
+	struct tc_ns_client_context *clicontext = &packet_cmd->cliContext;
+	user_size_addr = (uintptr_t)(clicontext->params[index].memref.size_addr 
+			| (uint64_t)clicontext->params[index].memref.size_h_addr << ADDR_TRANS_NUM);
+	user_buffer = (void *)(clicontext->params[index].memref.buffer
+				| (uint64_t)clicontext->params[index].memref.buffer_h_addr << ADDR_TRANS_NUM);
+
+	if (copy_from_user(buffer_size, (void *)user_size_addr, sizeof(uint32_t)) != 0) {
+		tloge("copy from user failed\n");
+		return -EFAULT;
+	}
+
+	if (*buffer_size == 0 || *buffer_size > SZ_256M) {
+		tloge("invalid buffer size\n");
+		return -ENOMEM;
+	}
+
+	if ((packet_cmd->cliContext.params[index].memref.offset >= SZ_256M) ||
+		(UINT64_MAX - (uint64_t)user_buffer <= packet_cmd->cliContext.params[index].memref.offset)) {
+		tloge("invalid buff or offset\n");
+		return -EFAULT;
+	}
+	return 0;
+}
+
+static int check_buffer_for_sharedmem_sess(uint32_t *buffer_size,
+	struct_packet_cmd_session *packet_cmd, int index)
 {
 	uintptr_t user_size_addr;
 	void *user_buffer = NULL;
@@ -964,6 +1105,48 @@ static int alloc_for_share_mem(struct vtzf_dev_file *dev_file,
 	return 0;
 }
 
+static int alloc_for_share_mem_sess(struct vtzf_dev_file *dev_file,
+	struct_packet_cmd_session *packet_cmd, int index, uintptr_t addrs[][3])
+{
+	struct tc_ns_client_context *clicontext = &packet_cmd->cliContext;
+	void *user_buffer = NULL;
+	uint32_t user_buf_size = 0;
+	void *block_buf = NULL;
+	uint32_t block_buf_size = 0;
+	void *pages_buf = NULL;
+	uint32_t pages_buf_size = 0;
+	int block_count;
+	uint32_t offset;
+
+	user_buffer = (void *)(clicontext->params[index].memref.buffer
+				| (uint64_t)clicontext->params[index].memref.buffer_h_addr << ADDR_TRANS_NUM);
+	tlogd(" user_buffer = %p \n", user_buffer);
+	if (check_buffer_for_sharedmem_sess(&user_buf_size, packet_cmd, index))
+		return -EINVAL;
+
+	tlogd("share mem buf size = %u\n", user_buf_size);
+	if (get_page_block(user_buffer, user_buf_size, &block_buf, &block_buf_size, &block_count, &pages_buf, &pages_buf_size) != 0) {
+		tloge("get_page_block failed \n");
+		return -EFAULT;
+	}
+	tlogd("alloc for share mem \n");
+	tlogd("block_buf = %llx \n", (uint64_t)block_buf);
+	tlogd("block_buf_size = %u \n", block_buf_size);
+	//dump_page_blocks(block_count, (uint64_t)block_buf);
+	addrs[index][1] = (uintptr_t)pages_buf;
+	addrs[index][0] = (uintptr_t)pages_buf_size;
+	packet_cmd->block_addrs[index] = (uint64_t)block_buf;
+	packet_cmd->block_size[index] = block_buf_size;
+	packet_cmd->vm_page_size = PAGE_SIZE;
+	clicontext->params[index].memref.size_addr = user_buf_size;
+	offset = ((uint32_t)(uintptr_t)user_buffer) & (~PAGE_MASK);
+	/*memref.h_offset 保存首个PAGE内部的偏移， memref.offset用户buffer的偏移*/
+	clicontext->params[index].memref.h_offset = offset;
+	tlogd("clicontext->params[index].memref.h_offset = %u, 0x%x\n",
+		clicontext->params[index].memref.h_offset, clicontext->params[index].memref.h_offset);
+	return 0;
+}
+
 static int alloc_for_params(struct vtzf_dev_file *dev_file,
 	struct_packet_cmd_send_cmd *packet_cmd, uintptr_t addrs[][3])
 {
@@ -981,8 +1164,42 @@ static int alloc_for_params(struct vtzf_dev_file *dev_file,
 			ret = alloc_for_ref_mem(dev_file , packet_cmd, index, addrs);
 		else if (teec_value_type(param_type, INOUT) || checkValue)
 			ret = alloc_for_val_mem(&packet_cmd->cliContext, index, addrs);
-		else if (param_type == TEEC_MEMREF_SHARED_INOUT)
+		else if (param_type == TEEC_MEMREF_SHARED_INOUT || 
+					param_type == TEEC_MEMREF_REGISTER_INOUT)
 			ret = alloc_for_share_mem(dev_file , packet_cmd, index, addrs);
+		else
+			tlogd("param type = TEEC_NONE\n");
+		if (ret != 0) {
+			goto ERR;
+		}
+	}
+
+	return 0;
+ERR:
+	return ret;
+
+}
+
+static int alloc_for_params_sess(struct vtzf_dev_file *dev_file,
+	struct_packet_cmd_session *packet_cmd, uintptr_t addrs[][3])
+{
+	int ret;
+	int index;
+	uint32_t param_type;
+	bool checkValue;
+	for (index = 0; index < TEE_PARAM_NUM; index++) {
+		param_type = teec_param_type_get(packet_cmd->cliContext.param_types, index);
+		checkValue = (param_type == TEEC_ION_INPUT || param_type == TEEC_ION_SGLIST_INPUT);
+		tlogd("param %u type is %x\n", index, param_type);
+		if (teec_tmpmem_type(param_type, INOUT))
+			ret = alloc_for_tmp_mem(&packet_cmd->cliContext, index, addrs);
+		else if (teec_memref_type(param_type, INOUT))
+			ret = alloc_for_ref_mem_sess(dev_file , packet_cmd, index, addrs);
+		else if (teec_value_type(param_type, INOUT) || checkValue)
+			ret = alloc_for_val_mem(&packet_cmd->cliContext, index, addrs);
+		else if (param_type == TEEC_MEMREF_SHARED_INOUT || 
+					param_type == TEEC_MEMREF_REGISTER_INOUT)
+			ret = alloc_for_share_mem_sess(dev_file , packet_cmd, index, addrs);
 		else
 			tlogd("param type = TEEC_NONE\n");
 		if (ret != 0) {
@@ -1048,7 +1265,75 @@ static void update_free_params(struct tc_ns_client_context *clicontext,
 				ret = -EFAULT;
 			if (copy_to_user((void *)user_addr_val_b, &val_b, sizeof(uint32_t)) != 0)
 				ret = -EFAULT;
-		} else if (param_type == TEEC_MEMREF_SHARED_INOUT){
+		} else if (param_type == TEEC_MEMREF_SHARED_INOUT || 
+					param_type == TEEC_MEMREF_REGISTER_INOUT){
+			pages_buf = (void *)addrs[index][1];
+			pages_buf_size = (uint32_t)addrs[index][0];
+			release_shared_mem_page((uint64_t)pages_buf, pages_buf_size);
+		} else {
+			/* nothing */
+		}
+
+		if (ret) {
+			tloge(" ret =%d \n", ret);
+		}
+	}	
+}
+
+static void update_free_params_sess(struct tc_ns_client_context *clicontext, 
+	struct tc_ns_client_context *context, uintptr_t addrs[4][3])
+{
+	int ret = 0;
+	int index;
+	uint32_t param_type;
+	bool checkValue;
+	uintptr_t buf;
+	uintptr_t user_addr_size, user_addr_buf;
+	uintptr_t user_addr_val_a, user_addr_val_b;
+	uint32_t buf_size;
+	uint32_t val_a, val_b;
+	void *pages_buf = NULL;
+	uint32_t pages_buf_size = 0;
+	for (index = 0; index < 2; index++) {
+		param_type = teec_param_type_get(clicontext->param_types, index);
+		checkValue = (param_type == TEEC_ION_INPUT || param_type == TEEC_ION_SGLIST_INPUT);
+		if (teec_tmpmem_type(param_type, INOUT)) {
+			buf_size = clicontext->params[index].memref.size_addr;
+			buf = addrs[index][1];
+
+			user_addr_size = (uintptr_t)(context->params[index].memref.size_addr 
+				| (uint64_t)context->params[index].memref.size_h_addr << ADDR_TRANS_NUM);
+			user_addr_buf = (uintptr_t)(context->params[index].memref.buffer 
+				| (uint64_t)context->params[index].memref.buffer_h_addr << ADDR_TRANS_NUM);
+
+			if (copy_to_user((void *)user_addr_size, &buf_size, sizeof(uint32_t)) != 0)
+				ret = -EFAULT;
+			if (copy_to_user((void *)user_addr_buf, (void *)buf, buf_size) != 0)
+				ret = -EFAULT;
+			dealloc_res_shm((void *)buf);
+
+		} else if(teec_memref_type(param_type, INOUT)) {
+			buf_size = clicontext->params[index].memref.size_addr;
+
+			user_addr_size = (uintptr_t)(context->params[index].memref.size_addr 
+				| (uint64_t)context->params[index].memref.size_h_addr << ADDR_TRANS_NUM);
+			if (copy_to_user((void *)user_addr_size, &buf_size, sizeof(uint32_t)) != 0)
+				ret = -EFAULT;
+		} else if(teec_value_type(param_type, INOUT) || checkValue) {
+			val_a = clicontext->params[index].value.a_addr;
+			val_b = clicontext->params[index].value.b_addr;
+
+			user_addr_val_a = (uintptr_t)(context->params[index].value.a_addr 
+				| (uint64_t)context->params[index].value.a_h_addr << ADDR_TRANS_NUM);
+			user_addr_val_b = (uintptr_t)(context->params[index].value.b_addr 
+				| (uint64_t)context->params[index].value.b_h_addr << ADDR_TRANS_NUM);
+
+			if (copy_to_user((void *)user_addr_val_a, &val_a, sizeof(uint32_t)) != 0)
+				ret = -EFAULT;
+			if (copy_to_user((void *)user_addr_val_b, &val_b, sizeof(uint32_t)) != 0)
+				ret = -EFAULT;
+		} else if (param_type == TEEC_MEMREF_SHARED_INOUT || 
+					param_type == TEEC_MEMREF_REGISTER_INOUT){
 			pages_buf = (void *)addrs[index][1];
 			pages_buf_size = (uint32_t)addrs[index][0];
 			release_shared_mem_page((uint64_t)pages_buf, pages_buf_size);
@@ -1076,7 +1361,8 @@ static void free_for_params(struct tc_ns_client_context *clicontext,
 		if (teec_tmpmem_type(param_type, INOUT) && addrs[index][1]) {
 			buf = addrs[index][1];
 			dealloc_res_shm((void *)buf);
-		}else if (param_type == TEEC_MEMREF_SHARED_INOUT){
+		}else if (param_type == TEEC_MEMREF_SHARED_INOUT || 
+					param_type == TEEC_MEMREF_REGISTER_INOUT){
 			pages_buf = (void *)addrs[index][1];
 			pages_buf_size = (uint32_t)addrs[index][0];
 			release_shared_mem_page((uint64_t)pages_buf, pages_buf_size);
@@ -1091,9 +1377,9 @@ static int tc_ns_send_cmd(struct vtzf_dev_file *dev_file,
 {
 	int ret = -EINVAL;
 	int i = 0;
-	uint32_t offset =0;
+	uint32_t offset = 0;
 	uint32_t total_buf_size = 0;
-	void *cmd_buf =NULL;
+	void *cmd_buf = NULL;
 	uint32_t seq_num = get_seq_num(0);
 	struct_packet_cmd_send_cmd packet_cmd = {0};
 	struct_packet_rsp_send_cmd packet_rsp = {0};
