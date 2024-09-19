@@ -68,7 +68,7 @@ void register_agent(struct_packet_cmd_regagent *packet_cmd,
     ret = ioctl(packet_cmd->ptzfd, TC_NS_CLIENT_IOCTL_REGISTER_AGENT, buf);
     if (!ret) {
         /* Add the agent buffer to the linked list. */
-        struct_agent_args *tmp = (struct_agent_args *)malloc(sizeof(struct_agent_args));
+        struct_agent_args *tmp = (struct_agent_args *)calloc(1, sizeof(struct_agent_args));
         if (!tmp) {
             tloge("Failed to allocate memory for agent buffer\n");
             ret = -ENOMEM;

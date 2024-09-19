@@ -681,7 +681,6 @@ void *thread_entry(void *args)
     struct serial_port_file *serial_port = (struct serial_port_file *)u64;
     char *rd_buf = (char *)(args) + sizeof(uint64_t);
     ui32_cmd = *(uint32_t *)(rd_buf + sizeof(uint32_t));
-    tloge("CMD is %d\n", ui32_cmd);
 
     if (ui32_cmd == VTZ_OPEN_TZD) {
         (void)open_tzdriver((struct_packet_cmd_open_tzd *)rd_buf, serial_port);
@@ -805,7 +804,7 @@ int main() {
 
     while (1) {
         check_stat_serial_port();
-        ret = safepoll(g_pollfd, g_pollfd_len, 20*1000);
+        ret = safepoll(g_pollfd, SERIAL_PORT_NUM, 20*1000);
         if (ret == -1) {
             tloge("pollfd failed, ret = %d \n", ret);
             return -1;
@@ -814,16 +813,20 @@ int main() {
             continue;
         }
 
-        for (i = 0; i < g_pollfd_len; i++) {
-            if (g_pollfd[i].revents & POLLHUP ||
-                g_pollfd[i].revents & POLLERR ||
+        for (i = 0; i < SERIAL_PORT_NUM; i++) {
+            if (g_pollfd[i].revents & POLLIN) {
+                proc_event(g_serial_array[i]);
+            }
+
+            if (g_pollfd[i].revents & POLLERR ||
                 g_pollfd[i].revents & POLLNVAL) {
-                sleep(CHECK_TIME_SEC);
                 continue;
             }
 
-            if (g_pollfd[i].revents & POLLIN) {
-                proc_event(g_serial_array[i]);
+            if (g_pollfd[i].revents & POLLHUP) {
+                g_serial_array[i]->opened = false;
+                close(g_serial_array[i]->sock);
+                g_pollfd[i].fd = -1;
             }
         }
     }

@@ -45,6 +45,7 @@ int serial_port_list_init()
         serial_port->offset = 0;
         serial_port->rd_buf = (char *)malloc(BUF_LEN_MAX_RD);
         serial_port->vm_file = NULL;
+        g_pollfd[i].fd = -1;
         if (!serial_port->rd_buf) {
             tloge("Failed to allocate memory for rd_buf\n");
             free(serial_port);
@@ -84,7 +85,6 @@ void serial_port_list_destroy()
 int send_to_vm(struct serial_port_file *serial_port, void *packet_rsp, size_t size_rsp)
 {
     int ret = 0;
-    int index;
     if (!serial_port || serial_port->sock <= 0 || !packet_rsp)
         return -1;
     pthread_mutex_lock(&serial_port->lock);
@@ -92,21 +92,6 @@ int send_to_vm(struct serial_port_file *serial_port, void *packet_rsp, size_t si
     if (ret == -1) {
         if (errno == EPIPE) {
             // 处理 EPIPE 错误
-            close(serial_port->sock);
-            for (index = 0; index < g_pollfd_len; index++) {
-                if (g_pollfd[index].fd == serial_port->sock) {
-                    break;
-                }
-            }
-            serial_port->sock = 0;
-            g_serial_array[index] = g_serial_array[g_pollfd_len - 1];
-            g_pollfd[index] = g_pollfd[g_pollfd_len - 1];
-            g_pollfd_len--;
-            serial_port->opened = false;
-            if (serial_port->vm_file) {
-                destroy_vm_file(serial_port->vm_file);
-            }
-            serial_port->vm_file = NULL;
             tloge("Send failed with EPIPE: Broken pipe, socket closed\n");
         } else {
 
@@ -144,7 +129,7 @@ static int connect_domsock_chardev(char *dev_path, int *sock)
 static void do_check_stat_serial_port()
 {
     int ret;
-    int index;
+    int i = 0;
     struct serial_port_file *serial_port;
     (void)pthread_mutex_lock(&g_serial_list.lock);
     LIST_FOR_EACH_ENTRY(serial_port, &g_serial_list.head, head){
@@ -157,25 +142,18 @@ static void do_check_stat_serial_port()
                 } else {
                     serial_port->opened = true;
                     serial_port->offset = 0;
-                    g_serial_array[g_pollfd_len] = serial_port;
-                    g_pollfd[g_pollfd_len].fd = serial_port->sock;
-                    g_pollfd[g_pollfd_len].events = POLLIN;
-                    g_pollfd_len++;
+                    g_serial_array[i] = serial_port;
+                    g_pollfd[i].fd = serial_port->sock;
+                    g_pollfd[i].events = POLLIN;
                 }
             }
         } else {
             ret = access(serial_port->path, R_OK | W_OK);
             if (ret) {
                 close(serial_port->sock);
-                for (index = 0; index < g_pollfd_len; index++) {
-                    if (g_pollfd[index].fd == serial_port->sock) {
-                        break;
-                    }
-                }
-                serial_port->sock = 0;
-                g_serial_array[index] = g_serial_array[g_pollfd_len - 1];
-                g_pollfd[index] = g_pollfd[g_pollfd_len - 1];
-                g_pollfd_len--;
+                serial_port->sock = -1;
+                g_serial_array[i] = NULL;
+                g_pollfd[i].fd = -1;
                 serial_port->opened = false;
                 if (serial_port->vm_file) {
                     destroy_vm_file(serial_port->vm_file);
@@ -183,6 +161,7 @@ static void do_check_stat_serial_port()
                 serial_port->vm_file = NULL;
             }
         }
+        i++;
     }
     (void)pthread_mutex_unlock(&g_serial_list.lock);
 }
