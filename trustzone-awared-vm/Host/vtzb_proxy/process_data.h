@@ -12,6 +12,13 @@
 
 #ifndef PROCESS_DATA_H
 #define PROCESS_DATA_H
+#include <stdint.h>
+
+typedef struct {
+    uint64_t serial_port_ptr;
+    uint32_t vmid;
+} vm_trace_data;
+
 
 void *get_packet_item(void *buf, int buf_len, int *poffset);
 #endif

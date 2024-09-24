@@ -20,7 +20,6 @@
 
 struct serial_port_list g_serial_list;
 struct pollfd g_pollfd[SERIAL_PORT_NUM];
-int g_pollfd_len = 0;
 struct timeval g_last_time, g_cur_time;
 struct serial_port_file *g_serial_array[SERIAL_PORT_NUM];
 
@@ -32,8 +31,7 @@ int serial_port_list_init()
     gettimeofday(&g_cur_time, NULL);
     pthread_mutex_init(&g_serial_list.lock, NULL);
     ListInit(&g_serial_list.head);
-    for ( i = 0; i < SERIAL_PORT_NUM; i++)
-    {
+    for (i = 0; i < SERIAL_PORT_NUM; i++) {
         serial_port = (struct serial_port_file *)malloc(sizeof(struct serial_port_file));
         if (!serial_port) {
             tloge("Failed to allocate memory for serial_port\n");
@@ -45,6 +43,7 @@ int serial_port_list_init()
         serial_port->offset = 0;
         serial_port->rd_buf = (char *)malloc(BUF_LEN_MAX_RD);
         serial_port->vm_file = NULL;
+        serial_port->index = i;
         g_pollfd[i].fd = -1;
         if (!serial_port->rd_buf) {
             tloge("Failed to allocate memory for rd_buf\n");
@@ -76,6 +75,7 @@ void serial_port_list_destroy()
         }
         ListRemoveEntry(&serial_port->head);
         (void)pthread_mutex_destroy(&serial_port->lock);
+        release_vm_file(serial_port, serial_port->index);
         free(serial_port);
     }
     (void)pthread_mutex_unlock(&g_serial_list.lock);
@@ -118,12 +118,37 @@ static int connect_domsock_chardev(char *dev_path, int *sock)
     if (memcpy_s(&sock_addr.sun_path, sizeof(sock_addr.sun_path), dev_path,
         sizeof(sock_addr.sun_path))) {
         tloge("memcpy_s err\n");
+        goto CLOSE;
     }
     ret = connect(*sock, (struct sockaddr *)&sock_addr, sizeof(sock_addr));
     if (ret < 0) {
         tloge("connect domain socket %s failed \n", dev_path);
+        goto CLOSE;
     }
     return ret;
+
+CLOSE:
+    close(*sock);
+    *sock = -1;
+    return ret;
+}
+
+void release_vm_file(struct serial_port_file *serial_port, int i)
+{
+    if (!serial_port) {
+        tloge("vm %d 's serial_port is null\n", i);
+        return;
+    }
+    close(serial_port->sock);
+    serial_port->sock = -1;
+    g_pollfd[i].fd = -1;
+    g_serial_array[i] = NULL;
+    serial_port->opened = false;
+    serial_port->offset = 0;
+    if (serial_port->vm_file) {
+        destroy_vm_file(serial_port->vm_file);
+    }
+    serial_port->vm_file = NULL;
 }
 
 static void do_check_stat_serial_port()
@@ -132,7 +157,7 @@ static void do_check_stat_serial_port()
     int i = 0;
     struct serial_port_file *serial_port;
     (void)pthread_mutex_lock(&g_serial_list.lock);
-    LIST_FOR_EACH_ENTRY(serial_port, &g_serial_list.head, head){
+    LIST_FOR_EACH_ENTRY(serial_port, &g_serial_list.head, head) {
         if (serial_port->opened == false) {
             ret = access(serial_port->path, R_OK | W_OK);
             if (ret == 0) {
@@ -145,20 +170,14 @@ static void do_check_stat_serial_port()
                     g_serial_array[i] = serial_port;
                     g_pollfd[i].fd = serial_port->sock;
                     g_pollfd[i].events = POLLIN;
+                    tlogd("vm %d started, connect fd %d\n", i, serial_port->sock);
                 }
             }
         } else {
             ret = access(serial_port->path, R_OK | W_OK);
             if (ret) {
-                close(serial_port->sock);
-                serial_port->sock = -1;
-                g_serial_array[i] = NULL;
-                g_pollfd[i].fd = -1;
-                serial_port->opened = false;
-                if (serial_port->vm_file) {
-                    destroy_vm_file(serial_port->vm_file);
-                }
-                serial_port->vm_file = NULL;
+                tlogd("vm %d closed, fd %d is invalid, should close\n", i, serial_port->sock);
+                release_vm_file(serial_port, i);
             }
         }
         i++;
@@ -182,18 +201,17 @@ static int clean_dirty_data()
     struct timeval start, end;
     void *tmp_buf;
     (void)ret;
-    if (!g_pollfd_len)
-        return 0;
     tmp_buf = malloc(BUF_LEN_MAX_RD);
     if (!tmp_buf)
         return -ENOMEM;
     gettimeofday(&start, NULL);
     gettimeofday(&end, NULL);
-    while(end.tv_sec - start.tv_sec < 1) {
-        ret = safepoll(g_pollfd, g_pollfd_len, 0);
-        for (i = 0; i < g_pollfd_len; i++) {
+    while (end.tv_sec - start.tv_sec < 1) {
+        ret = safepoll(g_pollfd, SERIAL_PORT_NUM, 0);
+        for (i = 0; i < SERIAL_PORT_NUM; i++) {
             if (g_pollfd[i].revents & POLLIN) {
                 ret = read(g_pollfd[i].fd, tmp_buf, BUF_LEN_MAX_RD);
+                tlogd("clean vm %d dirty data %d\n", i, ret);
             }
         }
         gettimeofday(&end, NULL);

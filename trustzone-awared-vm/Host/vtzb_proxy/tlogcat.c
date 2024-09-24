@@ -92,7 +92,7 @@ static void tlog_get_log(struct_packet_cmd_get_log *packet_cmd,
             tv.tv_usec = 0;
             FD_ZERO(&readset);
             FD_SET(packet_cmd->ptzfd, &readset);
-            tlogd("while select\n");
+            tlogv("while select\n");
             result = select((packet_cmd->ptzfd + 1), &readset, NULL, NULL, &tv);
         } while (result == -1 && errno == EINTR);
         if (result <= 0) {

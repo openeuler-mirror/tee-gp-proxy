@@ -15,6 +15,7 @@ TimeOut g_time_out[THREAD_POOL_SIZE];
 /* Custom signal handler for killing zombie threads. */
 void signal_handler(int signum) {
     (void)signum;
+    tlogd("thread %lu got sig exited\n", pthread_self());
     pthread_exit(NULL);
 }
 
@@ -54,9 +55,11 @@ void replenish_thread_pool(ThreadPool *pool, pthread_t thd)
             pthread_create(&pool->threads[i], NULL, thread_func, &g_thd_args[i]);
             pthread_detach(pool->threads[i]);
             pool->kill_flag[i] = false;
-            break;
+            tlogv("old id %lu, new id %lu\n", thd, pool->threads[i]);
+            return;
         }
     }
+    tloge("can't found the killed thread %lu\n", thd);
 }
 
 /* Thread function */
@@ -82,7 +85,7 @@ void *thread_func(void *arg)
             pthread_mutex_unlock(&pool->task_mutex);
             break;
         }
-        
+
         if (pool->kill_flag[index]) {
             pthread_cond_signal(&pool->queue_not_empty);
             pthread_mutex_unlock(&pool->task_mutex);
@@ -98,6 +101,7 @@ void *thread_func(void *arg)
 
         pthread_mutex_lock(&pool->busy_mutex);
         pool->busy_cnt++;
+        tlogv("start work, thread cnt: %d, task cnt: %d\n", pool->busy_cnt, pool->task_cnt);
         if (pool->task_args[index])
             free(pool->task_args[index]);
         pool->task_args[index] = task.arg;
@@ -108,6 +112,7 @@ void *thread_func(void *arg)
         pthread_mutex_lock(&pool->busy_mutex);
         pool->busy_cnt--;
         pool->task_args[index] = NULL;
+        tlogv("end work, thread cnt: %d, task cnt: %d\n", pool->busy_cnt, pool->task_cnt);
         pthread_mutex_unlock(&pool->busy_mutex);
     }
 
@@ -120,15 +125,14 @@ void *admin_thread(void *arg)
     ThreadPool *pool = (ThreadPool *)arg;
     struct timeval cur_time;
     long time_sec = 0;
-    while (!pool->destroying)
-    {
+    while (!pool->destroying) {
         sleep(DEFAULT_TIME_SEC);
         gettimeofday(&cur_time, NULL);
         time_sec = cur_time.tv_sec;
         pthread_mutex_lock(&pool->time_mutex);
         for (i = 0; i < THREAD_POOL_SIZE; i++) {
             if (g_time_out[i].flag != 0 && (time_sec - g_time_out[i].start_time) > DEFAULT_TIME_SEC) {
-                kill_open_session_thd(g_time_out[i]);
+                kill_open_session_thd(&g_time_out[i]);
                 g_time_out[i].flag = 0;
             }
         }
@@ -158,6 +162,7 @@ void thread_pool_submit(ThreadPool *pool, void *(*task_func)(void *), void *arg)
     pool->task_queue[pool->rear].arg = arg;
     pool->rear = (pool->rear + 1) % TASK_QUEUE_SIZE;
     pool->task_cnt++;
+    tlogv("add task to task queue cnt: %d\n", pool->task_cnt);
     /* Notify waiting threads of a new task. */
     pthread_cond_signal(&pool->queue_not_empty);
 

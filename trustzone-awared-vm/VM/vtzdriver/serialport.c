@@ -239,6 +239,7 @@ void put_event_data(void *packet, int packet_size, uint32_t seq_num)
 {
 	struct vhc_event_data *event_data;
 	struct vhc_event_data *tmp;
+	tlogd("put event: len %d, seq %d\n", packet_size, seq_num);
 	if (!packet)
 		return;
 	spin_lock(&g_event_data_list.spinlock);
@@ -266,10 +267,8 @@ int rd_thread_func(void *arg)
 	uint32_t seq_num;
 	int buf_len = 0;
 	int offset = 0;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(5, 0, 0)
-	struct vtz_buf_struct vtz_buf = {0};
-#endif
 	struct file *fp_serialport = NULL;
+
 	fp_serialport = file->filep;
 	while (!kthread_should_stop()) {
 		ret = wait_event_interruptible(file->rd_wait_event_wq, file->rd_flag);
@@ -280,15 +279,8 @@ int rd_thread_func(void *arg)
 		if (g_destroy_rd_thread)
 			break;
 		off = 0;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(5, 0, 0)
-		vtz_buf.buf = file->buffer + file->offset;
-		vtz_buf.buf_size = SERIAL_PORT_BUF_LEN - file->offset;
-		ssize_ret = fp_serialport->f_op->unlocked_ioctl(fp_serialport,
-			TC_NS_CLIENT_IOCTL_READ_REQ, (unsigned long)(&vtz_buf));
-#else
 		ssize_ret = kernel_read(file->filep, file->buffer + file->offset,
 			SERIAL_PORT_BUF_LEN - file->offset, &off);
-#endif
 		tlogd("kernel_read, ret value = %d, offset = %ld \n", (int)ssize_ret, (long)off);
 		if (ssize_ret <= 0) {
 			tloge("kernel_read failed, ret = %d \n", (int)ssize_ret);
@@ -345,7 +337,6 @@ struct wr_data *get_wr_data(void)
 	spin_unlock(&g_wr_data_list.spinlock);
 	if (write_data && !write_data->wr_buf) {
 		tloge("write_data->wr_buf NULL\n");
-		return NULL;
 	}
 	return write_data;
 }
@@ -362,27 +353,12 @@ void destroy_wr_data(struct wr_data *write_data)
 static int do_write(struct file *fp_serialport, void *buf, uint32_t buf_size)
 {
 	int ret = 0;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(5, 0, 0)
-	struct vtz_buf_struct vtz_buf = {0};
-#else
 	loff_t off =0;
-#endif
 
 	if (!fp_serialport || !buf || buf_size > 32 * 1024)
 		return -EINVAL;
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(5, 0, 0)
-	if (!fp_serialport->f_op->unlocked_ioctl) {
-		tloge("kernel version > 5.0.0, f_op->unlocked_ioctl is NULL, check virtio-console\n");
-		return -EINVAL;
-	}
-	vtz_buf.buf = buf;
-	vtz_buf.buf_size = buf_size;
-	ret = fp_serialport->f_op->unlocked_ioctl(fp_serialport,
-		TC_NS_CLIENT_IOCTL_WRITE_REQ, (unsigned long)(&vtz_buf));
-#else
 	ret = kernel_write(fp_serialport, buf, buf_size, &off);
-#endif
 	return ret < 0 ? ret : 0;
 }
 
@@ -570,16 +546,6 @@ int create_thread(int pos, struct vtzf_serial_port_file *file)
 	(void)snprintf(thread_name, 32, "vtz_wr_thread_%d", pos);
 	file->wr_thread_name = thread_name;
 
-	thread_name = kzalloc(32, GFP_KERNEL);
-	if (!thread_name) {
-		tloge("Failed to allocate memory for thread name\n");
-		kfree(file->rd_thread_name);
-		file->rd_thread_name = NULL;
-		return -ENOMEM;
-	}
-	(void)snprintf(thread_name, 32, "vtz_log_thread_%d", pos);
-	file->log_thread_name = thread_name;
-
 	tmp_thread = kthread_run(rd_thread_func, file, file->rd_thread_name);
 	if (tmp_thread) {
 		file->rd_thread = tmp_thread;
@@ -598,6 +564,16 @@ int create_thread(int pos, struct vtzf_serial_port_file *file)
 		return -EFAULT;
 	}
 
+#ifdef AUTO_LOG_THREAD
+	thread_name = kzalloc(32, GFP_KERNEL);
+	if (!thread_name) {
+		tloge("Failed to allocate memory for thread name\n");
+		kfree(file->rd_thread_name);
+		file->rd_thread_name = NULL;
+		return -ENOMEM;
+	}
+	(void)snprintf(thread_name, 32, "vtz_log_thread_%d", pos);
+	file->log_thread_name = thread_name;
 	tmp_thread = kthread_run(log_thread_func, file, file->log_thread_name);
 	if (tmp_thread) {
 		file->log_thread = tmp_thread;
@@ -606,6 +582,7 @@ int create_thread(int pos, struct vtzf_serial_port_file *file)
 		tloge("Failed to create kernel thread\n");
 		return -EFAULT;
 	}
+#endif
 
 	return 0;
 }
@@ -670,13 +647,6 @@ int serial_port_init(void)
 		init_waitqueue_head(&(serial_port_file->log_wait_event_wq));
 		list_add_tail(&serial_port_file->head, &g_serial_port_list.head);
 		g_serial_port_file = serial_port_file;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(5, 0, 0) 
-		if (!file->f_op->unlocked_ioctl) {
-			tloge("waring! file->f_op->unlocked_ioctl undefine!\n");
-			ret = -EFAULT;
-			goto err;
-		}
-#endif
 		if (create_thread(i, serial_port_file))
 			goto err;
 	}
@@ -755,6 +725,8 @@ int send_to_proxy(void * wrt_buf, size_t size_wrt_buf, void * rd_buf, size_t siz
 {
 	int ret = -1;
 	struct vhc_event_data *event_data;
+
+	tlogd("send data, wr_len %ld, rd_len %ld, seq %d\n", size_wrt_buf, size_rd_buf, seq_num);
 
 	ret = creat_wr_data(wrt_buf, size_wrt_buf);
 	if (ret != 0) {

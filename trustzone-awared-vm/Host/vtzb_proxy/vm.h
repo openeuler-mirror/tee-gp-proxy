@@ -34,6 +34,7 @@ struct vm_file {
 
 struct fd_file {
     int32_t ptzfd;
+    uint32_t fd_type;
     struct ListNode head;
     pthread_mutex_t session_lock;
     struct ListNode session_head;
@@ -55,7 +56,7 @@ typedef struct {
 
 struct fd_file *find_fd_file(int ptzfd, struct vm_file *vm_fp);
 int remove_fd(int ptzfd, struct vm_file *vm_fp);
-void add_fd_list(int fd, struct vm_file *vm_fp);
+void add_fd_list(int fd, uint32_t fd_type, struct vm_file *vm_fp);
 void remove_session(int ptzfd, int session_id, struct vm_file *vm_fp);
 void add_session_list(int ptzfd, struct vm_file *vm_fp, TC_NS_ClientContext *clicontext);
 int destroy_vm_file(struct vm_file *vm_file);
@@ -63,5 +64,5 @@ struct vm_file *create_vm_file(uint32_t vmid);
 void *Kill_useless_thread(void *args);
 int set_start_time(pthread_t tid, int seq_num, struct serial_port_file *serial_port);
 void remove_start_time(int i);
-void kill_open_session_thd(TimeOut t_out);
+void kill_open_session_thd(TimeOut *t_out);
 #endif

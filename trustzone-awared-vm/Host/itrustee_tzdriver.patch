@@ -562,11 +562,11 @@ diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
  	}
  #endif
 -	release_shared_mem_page(temp_buf, temp_buf_sz);
-+	if (call_params->dev->isVM) {
++	if (call_params->dev->isVM)
 +		release_vm_shared_mem_page(temp_buf, temp_buf_sz, call_params->dev->vm_page_size);
-+	} else {
++	else
 +		release_shared_mem_page(temp_buf, temp_buf_sz);
-+	}
++
  	mailbox_free(temp_buf);
  }
  #endif

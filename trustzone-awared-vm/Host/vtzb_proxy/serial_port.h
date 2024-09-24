@@ -20,7 +20,7 @@
 #include "vm.h"
 
 #define VTZB_CHAR_DEV            "/tmp/vm_vtzb_sock"
-#define SERIAL_PORT_NUM          15
+#define SERIAL_PORT_NUM          33
 #define BUF_LEN_MAX_RD           1024 *512
 #define UNIX_PATH_MAX            108
 #define CHECK_TIME_SEC           2
@@ -50,4 +50,5 @@ void *get_rd_buf(int serial_port_fd);
 void *get_serial_port_file(int serial_port_fd);
 void check_stat_serial_port();
 int check_stat_serial_port_first();
+void release_vm_file(struct serial_port_file *serial_port, int i);
 #endif

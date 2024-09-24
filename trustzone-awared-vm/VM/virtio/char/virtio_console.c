@@ -670,7 +670,8 @@ static ssize_t fill_readbuf(struct port *port, char __user *out_buf,
 	buf = port->inbuf;
 	out_count = min(out_count, buf->len - buf->offset);
 
-	if (to_user) {
+	(void)to_user;
+	if (access_ok(out_buf, out_count)) {
 		ssize_t ret;
 
 		ret = copy_to_user(out_buf, buf->buf + buf->offset, out_count);
@@ -827,7 +828,12 @@ static ssize_t port_fops_write(struct file *filp, const char __user *ubuf,
 	if (!buf)
 		return -ENOMEM;
 
-	ret = copy_from_user(buf->buf, ubuf, count);
+	if (access_ok(ubuf, count)) {
+		ret = copy_from_user(buf->buf, ubuf, count);
+	} else {
+		memcpy(buf->buf, ubuf, count);
+		ret = 0;
+	}
 	if (ret) {
 		ret = -EFAULT;
 		goto free_buf;
@@ -852,156 +858,6 @@ free_buf:
 out:
 	return ret;
 }
-
-
-struct vtz_buf_struct{
-	size_t buf_size;
-	void * buf;
-};
-
-
-#define VTZ_IOC_MAGIC  'v'
-#define TC_NS_CLIENT_IOCTL_READ_REQ \
-	 _IOWR(VTZ_IOC_MAGIC, 1, struct vtz_buf_struct)
-#define TC_NS_CLIENT_IOCTL_WRITE_REQ \
-	_IOWR(VTZ_IOC_MAGIC, 2, struct vtz_buf_struct)
-
-static int vtz_read_ioctl(struct file *filp, unsigned int cmd, struct vtz_buf_struct *vtz_buf)
-{
-	int ret = -EINVAL;
-	char *ubuf = vtz_buf->buf;
-	size_t count = vtz_buf->buf_size;
-	struct port *port;
-
-	port = filp->private_data;
-
-	/* Port is hot-unplugged. */
-	if (!port->guest_connected)
-		return -ENODEV;
-
-	if (!port_has_data(port)) {
-		/*
-		 * If nothing's connected on the host just return 0 in
-		 * case of list_empty; this tells the userspace app
-		 * that there's no connection
-		 */
-		if (!port->host_connected)
-			return 0;
-		if (filp->f_flags & O_NONBLOCK)
-			return -EAGAIN;
-		ret = wait_event_freezable(port->waitqueue,
-					   !will_read_block(port));
-		if (ret < 0)
-			return ret;
-	}
-	/* Port got hot-unplugged while we were waiting above. */
-	if (!port->guest_connected)
-		return -ENODEV;
-	/*
-	 * We could've received a disconnection message while we were
-	 * waiting for more data.
-	 *
-	 * This check is not clubbed in the if() statement above as we
-	 * might receive some data as well as the host could get
-	 * disconnected after we got woken up from our wait.  So we
-	 * really want to give off whatever data we have and only then
-	 * check for host_connected.
-	 */
-	if (!port_has_data(port) && !port->host_connected) {
-		return 0;
-	}
-
-	ret = fill_readbuf(port, ubuf, count, false);
-	return ret;
-}
-
-static int vtz_write_ioctl(struct file *filp, unsigned int cmd, struct vtz_buf_struct *vtz_buf)
-{
-	int ret = -EINVAL;
-	char *ubuf = vtz_buf->buf;
-	size_t count = vtz_buf->buf_size;
-
-	struct port *port;
-	struct port_buffer *buf;
-	bool nonblock;
-	struct scatterlist sg[1];
-	/* Userspace could be out to fool us */
-	if (!count)
-		return 0;
-
-	port = filp->private_data;
-
-	nonblock = filp->f_flags & O_NONBLOCK;
-
-	ret = wait_port_writable(port, nonblock);
-	if (ret < 0)
-		return ret;
-
-	count = min((size_t)(32 * 1024), count);
-
-	buf = alloc_buf(port->portdev->vdev, count, 0);
-	if (!buf)
-		return -ENOMEM;
-
-	memcpy(buf->buf, ubuf, count);
-	//ret = copy_from_user(buf->buf, ubuf, count);
-	//if (ret) {
-	//	ret = -EFAULT;
-	//	goto free_buf;
-	//}
-
-	/*
-	 * We now ask send_buf() to not spin for generic ports -- we
-	 * can re-use the same code path that non-blocking file
-	 * descriptors take for blocking file descriptors since the
-	 * wait is already done and we're certain the write will go
-	 * through to the host.
-	 */
-	nonblock = true;
-	sg_init_one(sg, buf->buf, count);
-	ret = __send_to_port(port, sg, 1, count, buf, nonblock);
-
-	if (nonblock && ret > 0)
-		goto out;
-
-free_buf:
-	free_buf(buf, true);
-out:
-	return ret;
-}
-
-static long vtz_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
-{
-	int ret = -EFAULT;
-	void *argp = (void *)(uintptr_t)arg;
-    struct vtz_buf_struct vtz_buf;
-    memcpy(&vtz_buf, argp, sizeof(vtz_buf));
-	switch (cmd) {
-	case TC_NS_CLIENT_IOCTL_READ_REQ:
-        ret = vtz_read_ioctl(file, cmd, &vtz_buf);
-        break;
-    case TC_NS_CLIENT_IOCTL_WRITE_REQ:
-        ret = vtz_write_ioctl(file, cmd, &vtz_buf);
-        break;
-	default:
-		break;
-	}
-	return ret;
-}
-
-#ifdef CONFIG_COMPAT
-long vtz_compat_ioctl(struct file *file, unsigned int cmd,
-	unsigned long arg)
-{
-	long ret;
-
-	if (!file)
-		return -EINVAL;
-
-	ret = vtz_ioctl(file, cmd, (unsigned long)(uintptr_t)compat_ptr(arg));
-	return ret;
-}
-#endif
 
 struct sg_list {
 	unsigned int n;
@@ -1236,6 +1092,24 @@ static int port_fops_fasync(int fd, struct file *filp, int mode)
 	return fasync_helper(fd, filp, mode, &port->async_queue);
 }
 
+
+static ssize_t port_fops_read_iter(struct kiocb *kiocbp, struct iov_iter *iovp)
+{
+	struct file *filp = kiocbp->ki_filp;
+	char *ubuf = iovp->iov->iov_base;
+	size_t count = iovp->iov->iov_len;
+	loff_t offp = 0;
+	return port_fops_read(filp, ubuf, count, &offp);
+}
+
+static ssize_t port_fops_write_iter(struct kiocb *kiocbp, struct iov_iter *iovp)
+{
+	struct file *filp = kiocbp->ki_filp;
+	char *ubuf = iovp->iov->iov_base;
+	size_t count = iovp->iov->iov_len;
+	loff_t offp = 0;
+	return port_fops_write(filp, ubuf, count, &offp);
+}
 /*
  * The file operations that we support: programs in the guest can open
  * a console device, read from it, write to it, poll for data and
@@ -1245,17 +1119,13 @@ static int port_fops_fasync(int fd, struct file *filp, int mode)
 static const struct file_operations port_fops = {
 	.owner = THIS_MODULE,
 	.open  = port_fops_open,
-	.read  = port_fops_read,
-	.write = port_fops_write,
+	.read_iter  = port_fops_read_iter,
+	.write_iter = port_fops_write_iter,
 	.splice_write = port_fops_splice_write,
 	.poll  = port_fops_poll,
 	.release = port_fops_release,
 	.fasync = port_fops_fasync,
 	.llseek = no_llseek,
-	.unlocked_ioctl = vtz_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl = vtz_compat_ioctl,
-#endif
 };
 
 /*

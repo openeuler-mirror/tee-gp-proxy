@@ -16,6 +16,7 @@ typedef struct {
     pthread_t thd;
 } struct_agent_args;
 
+void do_free_agent(struct_agent_args *agent_args);
 void free_agent_buf(int ptzfd, struct vm_file *vm_fp);
 void register_agent(struct_packet_cmd_regagent *packet_cmd, struct serial_port_file *serial_port);
 void wait_event(struct_packet_cmd_event *packet_cmd, struct serial_port_file *serial_port);
