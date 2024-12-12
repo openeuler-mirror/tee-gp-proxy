@@ -2016,6 +2016,10 @@ int public_ioctl(const struct file *file, unsigned int cmd,
 			tloge("copy from user failed\n");
 			return -EFAULT;
 		}
+		// no need to load kunpeng_sec_drv.sec in vm
+		if (ioctlArg.sec_file_info.secfile_type == LOAD_DYNAMIC_DRV) {
+			return 0;
+		}
 		ret = tc_ns_load_secfile(file->private_data, &ioctlArg);
 		if (copy_to_user(argp, &ioctlArg, sizeof(ioctlArg)) != 0 && ret == 0)
 			ret = -EFAULT;

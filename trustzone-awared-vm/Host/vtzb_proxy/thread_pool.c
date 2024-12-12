@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -5,12 +6,20 @@
 #include <pthread.h>
 #include <signal.h>
 #include <unistd.h>
+#include <sched.h>
+#include <sys/sysinfo.h>
+#include <errno.h>
 #include "thread_pool.h"
+#include "serial_port.h"
+#include "process_data.h"
+#include "vtzb_proxy.h"
 #include "debug.h"
 #include "vm.h"
 
+extern ThreadPool g_pool;
 ThreadFuncArgs g_thd_args[THREAD_POOL_SIZE];
 TimeOut g_time_out[THREAD_POOL_SIZE];
+static cpu_set_t g_cpuset;
 
 /* Custom signal handler for killing zombie threads. */
 void signal_handler(int signum) {
@@ -19,9 +28,27 @@ void signal_handler(int signum) {
     pthread_exit(NULL);
 }
 
+static void init_cpu_set()
+{
+    int cpu_num = get_nprocs();
+    CPU_ZERO(&g_cpuset);
+    for (int i = 1; i <= CPU_SET_NUM && i < cpu_num; i++) {
+        CPU_SET(cpu_num - i, &g_cpuset);
+    }
+}
+
+#define CPU_SET_AFFINITY() \
+do { \
+    if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &g_cpuset)) { \
+        tloge("set cpu affinity failed\n"); \
+    } \
+} while(0)
+
+
 /* Initialize the thread pool. */
 int thread_pool_init(ThreadPool *pool)
 {
+    char name[20] = {0};
     pool->task_cnt = 0;
     pool->busy_cnt = 0;
     pool->front = pool->rear = 0;
@@ -29,7 +56,10 @@ int thread_pool_init(ThreadPool *pool)
     memset(pool->task_queue, 0, sizeof(Task) * TASK_QUEUE_SIZE);
     memset(pool->kill_flag, 0, sizeof(bool) * THREAD_POOL_SIZE);
     memset(pool->session_ids, 0, sizeof(unsigned int) * THREAD_POOL_SIZE);
+    init_cpu_set();
+    CPU_SET_AFFINITY();
     pthread_create(&pool->admin_tid, NULL, admin_thread, pool);
+    pthread_setname_np(pool->admin_tid, "adminer");
     pthread_mutex_init(&pool->task_mutex, NULL);
     pthread_mutex_init(&pool->session_mutex, NULL);
     pthread_mutex_init(&pool->time_mutex, NULL);
@@ -40,6 +70,8 @@ int thread_pool_init(ThreadPool *pool)
         g_thd_args[i].index = i;
         g_thd_args[i].pool = pool;
         pthread_create(&pool->threads[i], NULL, thread_func, &g_thd_args[i]);
+        sprintf(name, "worker_%d", i);
+        pthread_setname_np(pool->threads[i], name);
         pthread_detach(pool->threads[i]);
     }
     return 0;
@@ -72,6 +104,7 @@ void *thread_func(void *arg)
         return NULL;
     }
 
+    CPU_SET_AFFINITY();
     while (1) {
         pthread_mutex_lock(&pool->task_mutex);
 
@@ -125,6 +158,8 @@ void *admin_thread(void *arg)
     ThreadPool *pool = (ThreadPool *)arg;
     struct timeval cur_time;
     long time_sec = 0;
+
+    CPU_SET_AFFINITY();
     while (!pool->destroying) {
         sleep(DEFAULT_TIME_SEC);
         gettimeofday(&cur_time, NULL);
@@ -139,6 +174,72 @@ void *admin_thread(void *arg)
         pthread_mutex_unlock(&pool->time_mutex);
     }
     return NULL;
+}
+
+static void *deal_packet_thread(void *arg)
+{
+    int ret;
+    int offset = 0;
+    int buf_len;
+    struct serial_port_file *serial_port = (struct serial_port_file *)arg;
+
+    CPU_SET_AFFINITY();
+    while (!g_pool.destroying) {
+        if (!serial_port || !serial_port->rd_buf || serial_port->sock <= 0) {
+            tloge("serial_port ptr or rd_buf or fd is invalid\n");
+            goto end;
+        }
+
+        ret = read(serial_port->sock, serial_port->rd_buf + serial_port->offset, BUF_LEN_MAX_RD - serial_port->offset);
+        if (ret < 0) {
+            tloge("read domain socket failed, err: %s\n", strerror(errno));
+            if (errno == ECONNRESET || errno == EBADF) {
+                goto end;
+            }
+            continue;
+        }
+        // when vm destroy, has many zero read
+        if (ret == 0) {
+            continue;
+        }
+        buf_len = ret + serial_port->offset;
+        while (1) {
+            void *packet = NULL;
+            packet = get_packet_item(serial_port->rd_buf, buf_len, &offset);
+            if (packet == NULL) {
+                break;
+            }
+
+            vm_trace_data *data = (vm_trace_data *)packet;
+            data->serial_port_ptr = (uint64_t)serial_port;
+            data->vmid = serial_port->index;
+            thread_pool_submit(&g_pool, thread_entry, (void *)((uint64_t)packet));
+        }
+        serial_port->offset = offset;
+    }
+
+end:
+    tlogd("reader thread %d exit\n", serial_port->index);
+    return NULL;
+}
+
+int create_reader_thread(struct serial_port_file *serial_port, int i)
+{
+    int ret;
+    char name[20] = {0};
+    if ((ret = pthread_create(&g_pool.reader_threads[i], NULL, deal_packet_thread, serial_port))) {
+        tloge("create reader thread failed\n");
+        return ret;
+    }
+    sprintf(name, "reader_%d", i);
+    if ((ret = pthread_setname_np(g_pool.reader_threads[i], name))) {
+        tloge("set thread name failed\n");
+        return ret;
+    }
+    if ((ret = pthread_detach(g_pool.reader_threads[i]))) {
+        tloge("thread detach failed\n");
+    }
+    return ret;
 }
 
 /* Submit the task to the thread pool. */

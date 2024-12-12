@@ -774,43 +774,7 @@ END:
     return NULL;
 }
 
-void proc_event(struct serial_port_file *serial_port)
-{
-    int ret;
-    int offset = 0;
-    int buf_len;
-    int fd;
-
-    if (!serial_port || !serial_port->rd_buf || serial_port->sock <= 0) {
-        tloge("serial_port ptr or rd_buf is NULL!\n");
-        return;
-    }
-    fd = serial_port->sock;
-    ret = read(fd, serial_port->rd_buf + serial_port->offset, BUF_LEN_MAX_RD - serial_port->offset);
-    if (ret < 0) {
-        tloge("read domain socket failed \n");
-        return;
-    }
-    if (ret == 0)
-        return;
-    buf_len = ret + serial_port->offset;
-    while (1) {
-        void *packet = NULL;
-        packet = get_packet_item(serial_port->rd_buf, buf_len, &offset);
-        if (packet == NULL)
-            break;
-        
-        vm_trace_data *data = (vm_trace_data *)packet;
-        data->serial_port_ptr = (uint64_t)serial_port;
-        data->vmid = serial_port->index;
-        thread_pool_submit(&g_pool, thread_entry, (void *)((uint64_t)packet));
-    }
-    serial_port->offset = offset;
-}
-
 int main() {
-    int ret = 0;
-    int i;
     serial_port_list_init();
     if (thread_pool_init(&g_pool))
         goto END2;
@@ -819,34 +783,6 @@ int main() {
 
     while (1) {
         check_stat_serial_port();
-        ret = safepoll(g_pollfd, SERIAL_PORT_NUM, 20*1000);
-        if (ret <= 0) {
-            tlogv("pollfd no event or failed, ret = %d\n", ret);
-            continue;
-        }
-        
-        tlogv("poll receive event %d\n", ret);
-        for (i = 0; i < SERIAL_PORT_NUM; i++) {
-            if (g_pollfd[i].revents == 0) {
-                continue;
-            }
-
-            tlogv("vm %d, event %x, fd %d\n", i, g_pollfd[i].revents, g_pollfd[i].fd);
-            if (g_pollfd[i].revents & POLLIN) {
-                proc_event(g_serial_array[i]);
-            }
-
-            if (g_pollfd[i].revents & POLLERR ||
-                g_pollfd[i].revents & POLLNVAL) {
-                tloge("vm %d got error event\n", i);
-                continue;
-            }
-
-            if (g_pollfd[i].revents & POLLHUP) {
-                tloge("vm %d got POLLHUP event\n", i);
-                release_vm_file(g_serial_array[i], i);
-            }
-        }
     }
 
 END1:

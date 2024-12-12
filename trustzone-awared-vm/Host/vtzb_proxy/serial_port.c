@@ -16,6 +16,7 @@
 #include "comm_structs.h"
 #include "vm.h"
 #include "debug.h"
+#include "thread_pool.h"
 #include "virt.h"
 
 struct serial_port_list g_serial_list;
@@ -165,12 +166,10 @@ static void do_check_stat_serial_port()
                 if (ret < 0) {
                     tloge("connect_domsock_chardev(%s) failed, ret = %d \n", serial_port->path, ret);
                 } else {
+                    tlogd("vm %d started, connect fd %d, create read thread\n", i, serial_port->sock);
                     serial_port->opened = true;
                     serial_port->offset = 0;
-                    g_serial_array[i] = serial_port;
-                    g_pollfd[i].fd = serial_port->sock;
-                    g_pollfd[i].events = POLLIN;
-                    tlogd("vm %d started, connect fd %d\n", i, serial_port->sock);
+                    create_reader_thread(serial_port, i);
                 }
             }
         } else {
@@ -191,6 +190,8 @@ void check_stat_serial_port()
     if (g_cur_time.tv_sec - g_last_time.tv_sec > CHECK_TIME_SEC) {
         do_check_stat_serial_port();
         gettimeofday(&g_last_time, NULL);
+    } else {
+        sleep(CHECK_TIME_SEC);
     }
 }
 

@@ -76,4 +76,6 @@ typedef union {
     }share;
 }struct_page_block;
 
+void *thread_entry(void *args);
+
 #endif /* __VTZB_PROXY_H__ */
