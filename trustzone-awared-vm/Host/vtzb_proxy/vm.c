@@ -35,14 +35,7 @@ void add_session_list(int ptzfd, struct vm_file *vm_fp, TC_NS_ClientContext *cli
 void *Kill_useless_thread(void *args)
 {
     pthread_t tid = (pthread_t)args;
-    tlogv("try to kill thread %lu\n", tid);
-    int result = pthread_kill(tid, SIGUSR1);
-    if (result == 0) {
-        pthread_mutex_lock(&g_pool.busy_mutex);
-        g_pool.busy_cnt--;
-        pthread_mutex_unlock(&g_pool.busy_mutex);
-        replenish_thread_pool(&g_pool, tid);
-    }
+    restart_pool_thread(&g_pool, tid);
     return NULL;
 }
 

@@ -25,6 +25,7 @@
 #define TASK_QUEUE_SIZE 32
 #define DEFAULT_TIME_SEC  30
 #define CPU_SET_NUM 8
+#define THREAD_NAME_LEN 32
 
 /* task structure */
 typedef struct {
@@ -65,7 +66,8 @@ void *thread_func(void *arg);
 void *admin_thread(void *arg);
 int create_reader_thread(struct serial_port_file *serial_port, int i);
 void thread_pool_submit(ThreadPool *pool, void *(*task_func)(void *), void *arg);
-void replenish_thread_pool(ThreadPool *pool, pthread_t thd);
+void replenish_thread_pool(ThreadPool *pool, pthread_t thd, char *name);
+void restart_pool_thread(ThreadPool *pool, pthread_t tid);
 void set_thread_session_id(ThreadPool *pool, pthread_t thd, unsigned int id);
 unsigned int get_thread_session_id(ThreadPool *pool, pthread_t thd, unsigned int session_id);
 #endif

@@ -23,6 +23,7 @@ extern ThreadPool g_pool;
 void do_free_agent(struct_agent_args *agent_args)
 {
     int ret = -1;
+    unsigned long buf[2] = {0};
 
     if (agent_args == NULL) {
         tloge("agent args is null\n");
@@ -31,14 +32,15 @@ void do_free_agent(struct_agent_args *agent_args)
 
     tlogv("free agent fd %u\n", agent_args->dev_fd);
     ListRemoveEntry(&(agent_args->node));
-    ret = ioctl(agent_args->dev_fd, TC_NS_CLIENT_IOCTL_UNREGISTER_AGENT, agent_args->args.id);
+    buf[0] = agent_args->args.id;
+    ret = ioctl(agent_args->dev_fd, TC_NS_CLIENT_IOCTL_UNREGISTER_AGENT, buf);
     if (ret) {
         tloge("ioctl failed\n");
     }
     close(agent_args->dev_fd);
     agent_args->dev_fd = -1;
 
-    if (agent_args->thd!= 0) {
+    if (agent_args->thd != 0) {
         thread_pool_submit(&g_pool, Kill_useless_thread, (void *)(agent_args->thd));
     }
     pthread_spin_destroy(&agent_args->spinlock);

@@ -48,7 +48,7 @@ do { \
 /* Initialize the thread pool. */
 int thread_pool_init(ThreadPool *pool)
 {
-    char name[20] = {0};
+    char name[THREAD_NAME_LEN] = {0};
     pool->task_cnt = 0;
     pool->busy_cnt = 0;
     pool->front = pool->rear = 0;
@@ -78,20 +78,39 @@ int thread_pool_init(ThreadPool *pool)
 }
 
 /* Recreate a new thread to fill the gap in the thread pool after killing a thread. */
-void replenish_thread_pool(ThreadPool *pool, pthread_t thd)
+void replenish_thread_pool(ThreadPool *pool, pthread_t thd, char *name)
 {
     for (int i = 0; i < THREAD_POOL_SIZE; i++) {
         if (pthread_equal(pool->threads[i], thd)) {
             g_thd_args[i].index = i;
             g_thd_args[i].pool = pool;
             pthread_create(&pool->threads[i], NULL, thread_func, &g_thd_args[i]);
+            pthread_setname_np(pool->threads[i], name);
             pthread_detach(pool->threads[i]);
             pool->kill_flag[i] = false;
-            tlogv("old id %lu, new id %lu\n", thd, pool->threads[i]);
+            tlogv("thread %s : old id %lu, new id %lu\n", name, thd, pool->threads[i]);
             return;
         }
     }
     tloge("can't found the killed thread %lu\n", thd);
+}
+
+void restart_pool_thread(ThreadPool *pool, pthread_t tid)
+{
+    char name[THREAD_NAME_LEN] = {0};
+    int result;
+
+    pthread_getname_np(tid, name, THREAD_NAME_LEN);
+    tlogv("try to kill thread %s: %lu\n", name, tid);
+    result = pthread_kill(tid, SIGUSR1);
+    if (result != 0) {
+        tloge("try to kill thread failed, ret %d\n", result);
+        return;
+    }
+    pthread_mutex_lock(&pool->busy_mutex);
+    pool->busy_cnt--;
+    pthread_mutex_unlock(&pool->busy_mutex);
+    replenish_thread_pool(pool, tid, name);
 }
 
 /* Thread function */
@@ -192,10 +211,10 @@ static void *deal_packet_thread(void *arg)
 
         ret = read(serial_port->sock, serial_port->rd_buf + serial_port->offset, BUF_LEN_MAX_RD - serial_port->offset);
         if (ret < 0) {
-            tloge("read domain socket failed, err: %s\n", strerror(errno));
             if (errno == ECONNRESET || errno == EBADF) {
                 goto end;
             }
+            tloge("read domain socket failed, err: %s\n", strerror(errno));
             continue;
         }
         // when vm destroy, has many zero read
@@ -226,7 +245,7 @@ end:
 int create_reader_thread(struct serial_port_file *serial_port, int i)
 {
     int ret;
-    char name[20] = {0};
+    char name[THREAD_NAME_LEN] = {0};
     if ((ret = pthread_create(&g_pool.reader_threads[i], NULL, deal_packet_thread, serial_port))) {
         tloge("create reader thread failed\n");
         return ret;
@@ -283,14 +302,6 @@ void thread_pool_destroy(ThreadPool *pool)
 
     pthread_mutex_destroy(&pool->task_mutex);
     pthread_cond_destroy(&pool->queue_not_empty);
-}
-
-bool check_if_thd_exist(pthread_t thd)
-{
-    int kill_rc = pthread_kill(thd, 0);
-    if(kill_rc != 0)
-        return false;
-    return true;
 }
 
 void set_thread_session_id(ThreadPool *pool, pthread_t thd, unsigned int id)
