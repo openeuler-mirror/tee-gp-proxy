@@ -238,7 +238,12 @@ static void *deal_packet_thread(void *arg)
     }
 
 end:
-    tlogd("reader thread %d exit\n", serial_port->index);
+    if (serial_port) {
+        serial_port->opened = false;
+        tlogi("reader thread %d exited\n", serial_port->index);
+    } else {
+        tloge("serial_port is null, and reader thread exit\n");
+    }
     return NULL;
 }
 

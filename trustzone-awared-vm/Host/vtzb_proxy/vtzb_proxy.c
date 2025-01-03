@@ -775,6 +775,8 @@ END:
 }
 
 int main() {
+    int ret = 0;
+
     serial_port_list_init();
     if (thread_pool_init(&g_pool))
         goto END2;
@@ -783,6 +785,18 @@ int main() {
 
     while (1) {
         check_stat_serial_port();
+        ret = safepoll(g_pollfd, SERIAL_PORT_NUM, 20*1000);
+        if (ret <= 0) {
+            continue;
+        }
+        for (int i = 0; i < SERIAL_PORT_NUM; i++) {
+            // when vm restart quickly, use poll can capture this event
+            if (g_pollfd[i].revents & POLLHUP) {
+                tlogi("vm %d got POLLHUP event, release vm\n", i);
+                release_vm_file(g_serial_array[i], i);
+            }
+        }
+
     }
 
 END1:
