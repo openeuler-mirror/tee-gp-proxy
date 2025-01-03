@@ -19,10 +19,13 @@
 #include <pthread.h>
 #include <signal.h>
 #include <unistd.h>
+#include "serial_port.h"
 
 #define THREAD_POOL_SIZE 196
 #define TASK_QUEUE_SIZE 32
 #define DEFAULT_TIME_SEC  30
+#define CPU_SET_NUM 8
+#define THREAD_NAME_LEN 32
 
 /* task structure */
 typedef struct {
@@ -34,6 +37,7 @@ typedef struct {
 typedef struct {
     pthread_t admin_tid;
     pthread_t threads[THREAD_POOL_SIZE]; // Thread array
+    pthread_t reader_threads[SERIAL_PORT_NUM];
     unsigned int session_ids[THREAD_POOL_SIZE]; // Session ID of the ongoing command
     bool kill_flag[THREAD_POOL_SIZE];
     void *task_args[THREAD_POOL_SIZE];
@@ -60,8 +64,10 @@ int thread_pool_init(ThreadPool *pool);
 void thread_pool_destroy(ThreadPool *pool);
 void *thread_func(void *arg);
 void *admin_thread(void *arg);
+int create_reader_thread(struct serial_port_file *serial_port, int i);
 void thread_pool_submit(ThreadPool *pool, void *(*task_func)(void *), void *arg);
-void replenish_thread_pool(ThreadPool *pool, pthread_t thd);
+void replenish_thread_pool(ThreadPool *pool, pthread_t thd, char *name);
+void restart_pool_thread(ThreadPool *pool, pthread_t tid);
 void set_thread_session_id(ThreadPool *pool, pthread_t thd, unsigned int id);
 unsigned int get_thread_session_id(ThreadPool *pool, pthread_t thd, unsigned int session_id);
 #endif

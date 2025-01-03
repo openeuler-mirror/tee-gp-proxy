@@ -31,7 +31,6 @@
 #include "tlogcat.h"
 
 ThreadPool g_pool = {0};
-extern int g_pollfd_len;
 extern struct pollfd g_pollfd[SERIAL_PORT_NUM];
 extern struct serial_port_file *g_serial_array[SERIAL_PORT_NUM];
 
@@ -45,6 +44,7 @@ static void open_tzdriver(struct_packet_cmd_open_tzd *packet_cmd,
     packet_rsp.seq_num = packet_cmd->seq_num + 1;
     packet_rsp.packet_size = sizeof(packet_rsp);
     packet_rsp.vmid = packet_cmd->vmid;
+
     if (packet_cmd->flag == TLOG_DEV_THD_FLAG) {
         if (!serial_port->vm_file || !serial_port->vm_file->log_fd) {
             fd = open(TC_LOGGER_DEV_NAME, O_RDONLY);
@@ -74,6 +74,7 @@ static void open_tzdriver(struct_packet_cmd_open_tzd *packet_cmd,
             ret = ioctl(fd, TC_NS_CLIENT_IOCTL_SET_VM_FLAG, packet_cmd->vmid);
     }
 
+    tlogv("vmid %d flag %d open tzdriver, fd %d\n", packet_cmd->vmid, packet_cmd->flag, fd);
     packet_rsp.ptzfd = fd;
     if (fd < 0) {
         tloge("open tee client dev failed, fd is %d\n", fd);
@@ -90,7 +91,7 @@ END:
         } else {
             vm_fp = serial_port->vm_file;
         }
-        add_fd_list(fd, vm_fp);
+        add_fd_list(fd, packet_cmd->flag, vm_fp);
         if (packet_cmd->flag == TLOG_DEV_THD_FLAG) {
             vm_fp->log_fd = fd;
         }
@@ -98,7 +99,6 @@ END:
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp) && fd > 0) {
         remove_fd(fd, vm_fp);
-        (void)close(fd);
     }
 }
 
@@ -111,14 +111,17 @@ static void close_tzdriver(struct_packet_cmd_close_tzd *packet_cmd,
     packet_rsp.packet_size = sizeof(packet_rsp);
     packet_rsp.ret = 0;
     (void)ret;
-    if (!serial_port->vm_file)
+    if (!serial_port->vm_file) {
+        tloge("serial_port->vm_file is null\n");
         return;
-
-    if (packet_cmd->ptzfd > 2) {
-        free_agent_buf(packet_cmd->ptzfd, serial_port->vm_file);
-        if (remove_fd(packet_cmd->ptzfd, serial_port->vm_file) == 0)
-            ret = close(packet_cmd->ptzfd);
     }
+    if (packet_cmd->ptzfd <= 2) {
+        tloge("invalid ptzfd %d\n", packet_cmd->ptzfd);
+        return;
+    }
+
+    free_agent_buf(packet_cmd->ptzfd, serial_port->vm_file);
+    ret = remove_fd(packet_cmd->ptzfd, serial_port->vm_file);
 
     if (send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp)) != sizeof(packet_rsp))
         tloge("close_tzdriver send to VM failed \n");
@@ -519,12 +522,16 @@ static void do_set_thread_id(struct fd_file *fd_p, unsigned int session_id, int 
 static void set_thread_id(int ptzfd, unsigned int session_id, int flag, struct vm_file *vm_fp)
 {
     struct fd_file *fd_p;
-    if (!vm_fp)
+    if (!vm_fp) {
+        tloge("vm_file is null\n");
         return;
-    fd_p  = find_fd_file(ptzfd, vm_fp);
-    if (fd_p) {
-        do_set_thread_id(fd_p, session_id, flag);
     }
+    fd_p  = find_fd_file(ptzfd, vm_fp);
+    if (!fd_p) {
+        tloge("found the fd %d 's fd_file failed\n", ptzfd);
+        return;
+    }
+    do_set_thread_id(fd_p, session_id, flag);
 }
 
 static void send_cmd(struct_packet_cmd_send_cmd *packet_cmd,
@@ -673,14 +680,18 @@ static void vtz_nothing(struct_packet_cmd_nothing *packet_cmd,
     }
 }
 
+
 void *thread_entry(void *args)
 {
     struct_packet_cmd_general *packet_general = NULL;
     uint32_t ui32_cmd = 0;
-    uint64_t u64 = *(uint64_t *)(args);
-    struct serial_port_file *serial_port = (struct serial_port_file *)u64;
-    char *rd_buf = (char *)(args) + sizeof(uint64_t);
+    vm_trace_data *data = (vm_trace_data *)args;
+    struct serial_port_file *serial_port = (struct serial_port_file *)data->serial_port_ptr;
+    char *rd_buf = (char *)(args) + sizeof(vm_trace_data);
     ui32_cmd = *(uint32_t *)(rd_buf + sizeof(uint32_t));
+
+    struct_packet_cmd_nothing *p = (struct_packet_cmd_nothing *)rd_buf;
+    tlogd("vm %u cmd %u, size %u, seq %u\n", data->vmid, p->cmd, p->packet_size, p->seq_num);
 
     if (ui32_cmd == VTZ_OPEN_TZD) {
         (void)open_tzdriver((struct_packet_cmd_open_tzd *)rd_buf, serial_port);
@@ -695,11 +706,11 @@ void *thread_entry(void *args)
     packet_general = (struct_packet_cmd_general *)rd_buf;
     if (!serial_port || !packet_general ||
         !find_fd_file(packet_general->ptzfd, serial_port->vm_file)) {
+        tloge("invalid params\n");
         goto END;
     }
 
-    switch (ui32_cmd)
-    {
+    switch (ui32_cmd) {
     case VTZ_CLOSE_TZD:
         (void)close_tzdriver((struct_packet_cmd_close_tzd *)rd_buf, serial_port);
         break;
@@ -753,6 +764,7 @@ void *thread_entry(void *args)
         (void)tlog(ui32_cmd, (void *)rd_buf, serial_port);
         break;
     default:
+        tloge("invalid cmd %d\n", ui32_cmd);
         break;
     }
 
@@ -762,40 +774,7 @@ END:
     return NULL;
 }
 
-void proc_event(struct serial_port_file *serial_port)
-{
-    int ret;
-    int offset = 0;
-    int buf_len;
-    int fd;
-    if (!serial_port || !serial_port->rd_buf || serial_port->sock <= 0){
-        tloge("serial_port ptr or rd_buf is NULL!\n");
-        return;
-    }
-    fd = serial_port->sock;
-    ret = read(fd, serial_port->rd_buf + serial_port->offset, BUF_LEN_MAX_RD - serial_port->offset);
-
-    if (ret < 0) {
-        tloge("read domain socket failed \n");
-        return;
-    }
-    if (ret == 0)
-        return;
-    buf_len = ret + serial_port->offset;
-    while(1) {
-        void *packet = NULL;
-        packet = get_packet_item(serial_port->rd_buf, buf_len, &offset);
-        if (packet == NULL)
-            break;
-        *(uint64_t *)(packet) = (uint64_t)serial_port;
-        thread_pool_submit(&g_pool, thread_entry, (void *)((uint64_t)packet));
-    }
-    serial_port->offset = offset;
-}
-
 int main() {
-    int ret = 0;
-    int i;
     serial_port_list_init();
     if (thread_pool_init(&g_pool))
         goto END2;
@@ -804,31 +783,6 @@ int main() {
 
     while (1) {
         check_stat_serial_port();
-        ret = safepoll(g_pollfd, SERIAL_PORT_NUM, 20*1000);
-        if (ret == -1) {
-            tloge("pollfd failed, ret = %d \n", ret);
-            return -1;
-        }
-        if (ret == 0) {
-            continue;
-        }
-
-        for (i = 0; i < SERIAL_PORT_NUM; i++) {
-            if (g_pollfd[i].revents & POLLIN) {
-                proc_event(g_serial_array[i]);
-            }
-
-            if (g_pollfd[i].revents & POLLERR ||
-                g_pollfd[i].revents & POLLNVAL) {
-                continue;
-            }
-
-            if (g_pollfd[i].revents & POLLHUP) {
-                g_serial_array[i]->opened = false;
-                close(g_serial_array[i]->sock);
-                g_pollfd[i].fd = -1;
-            }
-        }
     }
 
 END1:

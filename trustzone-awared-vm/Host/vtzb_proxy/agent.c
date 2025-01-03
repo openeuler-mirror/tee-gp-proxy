@@ -20,37 +20,53 @@
 
 extern ThreadPool g_pool;
 
+void do_free_agent(struct_agent_args *agent_args)
+{
+    int ret = -1;
+    unsigned long buf[2] = {0};
+
+    if (agent_args == NULL) {
+        tloge("agent args is null\n");
+        return;
+    }
+
+    tlogv("free agent fd %u\n", agent_args->dev_fd);
+    ListRemoveEntry(&(agent_args->node));
+    buf[0] = agent_args->args.id;
+    ret = ioctl(agent_args->dev_fd, TC_NS_CLIENT_IOCTL_UNREGISTER_AGENT, buf);
+    if (ret) {
+        tloge("ioctl failed\n");
+    }
+    close(agent_args->dev_fd);
+    agent_args->dev_fd = -1;
+
+    if (agent_args->thd != 0) {
+        thread_pool_submit(&g_pool, Kill_useless_thread, (void *)(agent_args->thd));
+    }
+    pthread_spin_destroy(&agent_args->spinlock);
+    free(agent_args);
+}
+
 void free_agent_buf(int ptzfd, struct vm_file *vm_fp)
 {
-    int ret;
     struct ListNode *ptr = NULL;
     struct ListNode *n = NULL;
-    struct_agent_args *agent_args = NULL;
-    unsigned long buf[2];
-    if (!vm_fp)
+    if (!vm_fp) {
+        tloge("vm file is NULL\n");
         return;
+    }
     pthread_mutex_lock(&vm_fp->agents_lock);
-    if (LIST_EMPTY(&vm_fp->agents_head))
+    if (LIST_EMPTY(&vm_fp->agents_head)) {
+        // when teecd init, this is possible
+        tlogd("agent list is empty\n");
         goto END;
+    }
 
     LIST_FOR_EACH_SAFE(ptr, n, &vm_fp->agents_head) {
         struct_agent_args *tmp =
             CONTAINER_OF(ptr, struct_agent_args, node);
         if (tmp->dev_fd == ptzfd) {
-            ListRemoveEntry(&(tmp->node));
-            agent_args = tmp;
-            if (agent_args) {
-                buf[0] = agent_args->args.id;
-                ret = ioctl(ptzfd, TC_NS_CLIENT_IOCTL_UNREGISTER_AGENT, buf);
-                if (ret) {
-                    tloge("ioctl failed\n");
-                }
-                if (agent_args->thd!= 0) {
-                    thread_pool_submit(&g_pool, Kill_useless_thread, (void *)(agent_args->thd));
-                }
-                pthread_spin_destroy(&agent_args->spinlock);
-                free(agent_args);
-            }
+            do_free_agent(tmp);
         }
     }
 END:

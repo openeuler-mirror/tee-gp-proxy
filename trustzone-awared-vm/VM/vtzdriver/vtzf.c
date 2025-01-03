@@ -860,6 +860,7 @@ static int alloc_for_tmp_mem(struct tc_ns_client_context *clicontext,
 	user_buf_size = (uintptr_t)(clicontext->params[index].memref.size_addr
 			| (uint64_t)clicontext->params[index].memref.size_h_addr << ADDR_TRANS_NUM);
 
+	tlogv("buf_addr %lx, size_addr %lx\n", user_buf, user_buf_size);
 	if (copy_from_user(&buf_size, (void *)user_buf_size, sizeof(uint32_t)) != 0) {
 		tloge("copy from user failed\n");
 		return -EFAULT;
@@ -895,6 +896,7 @@ static int alloc_for_val_mem(struct tc_ns_client_context *clicontext,
 			| (uint64_t)clicontext->params[index].value.a_h_addr << ADDR_TRANS_NUM);
 	user_val_b = (uintptr_t)(clicontext->params[index].value.b_addr 
 			| (uint64_t)clicontext->params[index].value.b_h_addr << ADDR_TRANS_NUM);
+	tlogv("a_val_addr %lx, b_val_addr %lx\n", user_val_a, user_val_b);
 	if (copy_from_user(&val_a, (void *)user_val_a, sizeof(uint32_t)) != 0) {
 		tloge("copy from user failed\n");
 		return -EFAULT;
@@ -925,7 +927,8 @@ static int alloc_for_ref_mem(struct vtzf_dev_file *dev_file,
 			| (uint64_t)clicontext->params[index].memref.size_h_addr << ADDR_TRANS_NUM);
 	user_buffer = (void *)(clicontext->params[index].memref.buffer
 				| (uint64_t)clicontext->params[index].memref.buffer_h_addr << ADDR_TRANS_NUM);
-
+	
+	tlogv("buf_addr %p, size_addr %lx\n", user_buffer, user_size_addr);
 	if (copy_from_user(&buf_size, (void *)user_size_addr, sizeof(uint32_t)) != 0) {
 		tloge("copy from user failed\n");
 		return -EFAULT;
@@ -2012,6 +2015,10 @@ int public_ioctl(const struct file *file, unsigned int cmd,
 		if (copy_from_user(&ioctlArg, argp, sizeof(ioctlArg)) != 0) {
 			tloge("copy from user failed\n");
 			return -EFAULT;
+		}
+		// no need to load kunpeng_sec_drv.sec in vm
+		if (ioctlArg.sec_file_info.secfile_type == LOAD_DYNAMIC_DRV) {
+			return 0;
 		}
 		ret = tc_ns_load_secfile(file->private_data, &ioctlArg);
 		if (copy_to_user(argp, &ioctlArg, sizeof(ioctlArg)) != 0 && ret == 0)
