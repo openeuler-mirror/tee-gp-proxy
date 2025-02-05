@@ -222,6 +222,11 @@ static void *deal_packet_thread(void *arg)
             continue;
         }
         buf_len = ret + serial_port->offset;
+        /*
+         * while loop will deal all complete packets, left the incomplete one in the
+         * starting position of rd_buf, so the offset should be 0 echo read times
+         */
+        offset = 0;
         while (1) {
             void *packet = NULL;
             packet = get_packet_item(serial_port->rd_buf, buf_len, &offset);
