@@ -169,6 +169,8 @@ static void do_check_stat_serial_port()
                     tlogd("vm %d started, connect fd %d, create read thread\n", i, serial_port->sock);
                     serial_port->opened = true;
                     serial_port->offset = 0;
+                    g_pollfd[i].fd = serial_port->sock;
+                    g_serial_array[i] = serial_port;
                     create_reader_thread(serial_port, i);
                 }
             }
@@ -176,6 +178,9 @@ static void do_check_stat_serial_port()
             ret = access(serial_port->path, R_OK | W_OK);
             if (ret) {
                 tlogd("vm %d closed, fd %d is invalid, should close\n", i, serial_port->sock);
+                g_pollfd[i].fd = -1;
+                serial_port->opened = false;
+                g_serial_array[i] = NULL;
                 release_vm_file(serial_port, i);
             }
         }
