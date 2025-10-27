@@ -1,0 +1,83 @@
+diff --color -purN '--exclude=.git' qemu/hw/char/virtio-console.c qemu_new/hw/char/virtio-console.c
+--- qemu/hw/char/virtio-console.c	2025-10-25 17:27:48.207807540 +0800
++++ qemu_new/hw/char/virtio-console.c	2025-10-25 17:16:55.091807540 +0800
+@@ -235,6 +235,7 @@ static ssize_t flush_buf(VirtIOSerialPor
+                 struct_packet_cmd_load_sec* vtzf_packet_cmd = (struct_packet_cmd_load_sec *)buf;
+                 debug("   vtzf_packet_cmd->cliContext.file_buffer      = 0x%016lx \n", vtzf_packet_cmd->ioctlArg.fileBuffer);
+                 hwaddr gpa = (uint64_t)vtzf_packet_cmd->ioctlArg.fileBuffer;
++                local_err = NULL;
+                 ptr_hva = gpa2hva(&mr, gpa, 1, &local_err);
+                 if (local_err) {
+                     debug("   gpa2hva failed \n");
+@@ -253,6 +254,7 @@ static ssize_t flush_buf(VirtIOSerialPor
+                 struct_packet_cmd_regagent* vtzf_packet_cmd = (struct_packet_cmd_regagent *)buf;
+                 debug("   vtzf_packet_cmd->cliContext.file_buffer      = 0x%016lx \n", vtzf_packet_cmd->vmaddr);
+                 hwaddr gpa = (uint64_t)vtzf_packet_cmd->vmaddr;
++                local_err = NULL;
+                 ptr_hva = gpa2hva(&mr, gpa, 1, &local_err);
+                 if (local_err) {
+                     debug("   gpa2hva failed \n");
+@@ -278,6 +280,7 @@ static ssize_t flush_buf(VirtIOSerialPor
+                     break;
+                 }
+                 hwaddr gpa = (uint64_t)vtzf_packet_cmd->cliContext.file_buffer;
++                local_err = NULL;
+                 ptr_hva = gpa2hva(&mr, gpa, 1, &local_err);
+                 if (local_err) {
+                     debug("   gpa2hva failed \n");
+@@ -297,6 +300,7 @@ static ssize_t flush_buf(VirtIOSerialPor
+                     check_value = (param_type == TEEC_ION_INPUT || param_type == TEEC_ION_SGLIST_INPUT);
+                     if (IS_TEMP_MEM(param_type)) {
+                         gpa_param = (uint64_t)vtzf_packet_cmd->cliContext.params[i].memref.buffer;
++                        local_err = NULL;
+                         ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
+                         if (local_err) {
+                             debug("   gpa2hva params[%d].memref.buffer failed \n", i);
+@@ -309,6 +313,7 @@ static ssize_t flush_buf(VirtIOSerialPor
+                         }
+                     } else if (IS_PARTIAL_MEM(param_type)) {
+                         gpa_param = (uint64_t)vtzf_packet_cmd->cliContext.params[i].memref.buffer;
++                        local_err = NULL;
+                         ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
+                         if (local_err) {
+                             debug("   gpa2hva params[%d].memref.buffer failed \n", i);
+@@ -334,6 +339,7 @@ static ssize_t flush_buf(VirtIOSerialPor
+                     for(j = 0; j < fragment_block_num; j++){
+                         gpa_param = page_block[j].phy_addr;
+                         debug("page_block[%d].phy_addr = %llx\n", j, page_block[j].phy_addr);
++                        local_err = NULL;
+                         ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
+                         if (local_err) {
+                             debug("   gpa2hva params[%d].memref.buffer failed \n", i);
+@@ -366,6 +372,7 @@ static ssize_t flush_buf(VirtIOSerialPor
+                     check_value = (param_type == TEEC_ION_INPUT || param_type == TEEC_ION_SGLIST_INPUT);
+                     if (IS_TEMP_MEM(param_type)) {
+                         gpa_param = (uint64_t)vtzf_packet_cmd->cliContext.params[i].memref.buffer;
++                        local_err = NULL;
+                         ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
+                         if (local_err) {
+                             debug("   gpa2hva params[%d].memref.buffer failed \n", i);
+@@ -378,6 +385,7 @@ static ssize_t flush_buf(VirtIOSerialPor
+                         }
+                     } else if (IS_PARTIAL_MEM(param_type)) {
+                         gpa_param = (uint64_t)vtzf_packet_cmd->cliContext.params[i].memref.buffer;
++                        local_err = NULL;
+                         ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
+                         if (local_err) {
+                             debug("   gpa2hva params[%d].memref.buffer failed \n", i);
+@@ -403,6 +411,7 @@ static ssize_t flush_buf(VirtIOSerialPor
+                     for(j = 0; j < fragment_block_num; j++){
+                         gpa_param = page_block[j].phy_addr;
+                         debug("page_block[%d].phy_addr = %llx\n", j, page_block[j].phy_addr);
++                        local_err = NULL;
+                         ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
+                         if (local_err) {
+                             debug("   gpa2hva params[%d].memref.buffer failed \n", i);
+@@ -426,6 +435,7 @@ static ssize_t flush_buf(VirtIOSerialPor
+                     for(j = 0; j < fragment_block_num; j++){
+                         gpa_param = page_block[j].phy_addr;
+                         debug("page_block[%d].phy_addr = %llx\n", j, page_block[j].phy_addr);
++                        local_err = NULL;
+                         ptr_hva = gpa2hva(&mr, gpa_param, 1, &local_err);
+                         if (local_err) {
+                             debug("   gpa2hva params[%d].memref.buffer failed \n", i);
