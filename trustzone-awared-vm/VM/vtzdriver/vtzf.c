@@ -724,10 +724,12 @@ static int tc_ns_open_session(struct vtzf_dev_file *dev_file,
 	file_size = (size_t)packet_cmd.cliContext.file_size;
 	tlogd("file_size = %lu \n", file_size);
 	buffer = (char *)alloc_res_shm(file_size);
+	/*
 	if (ZERO_OR_NULL_PTR((unsigned long)(uintptr_t)buffer)) {
 		tloge("vtzf_dev_file malloc failed\n");
 		return -ENOMEM;
 	}
+        */
 
 	tmp_buffer = packet_cmd.cliContext.file_buffer;
 	tlogd("buffer addr = %016llx ,tmp_buffer =%016llx \n",
