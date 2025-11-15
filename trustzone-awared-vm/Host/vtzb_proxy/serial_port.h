@@ -20,7 +20,7 @@
 #include "vm.h"
 
 #define VTZB_CHAR_DEV            "/tmp/vm_vtzb_sock"
-#define SERIAL_PORT_NUM          33
+#define SERIAL_PORT_NUM          64
 #define BUF_LEN_MAX_RD           1024 *512
 #define UNIX_PATH_MAX            108
 #define CHECK_TIME_SEC           2
