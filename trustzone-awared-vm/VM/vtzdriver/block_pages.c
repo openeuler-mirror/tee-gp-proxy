@@ -159,7 +159,13 @@ int fill_shared_mem_info(uint64_t start_vaddr, uint32_t pages_no,
 		return -EFAULT;
 
 	down_read(&mm_sem_lock(current->mm));
-	page_num = get_user_pages((uintptr_t)start_vaddr, pages_no, FOLL_WRITE, pages, NULL);
+#if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
+	page_num = pin_user_pages((uintptr_t)start_vaddr, pages_no, FOLL_WRITE | FOLL_PIN , pages);
+#elif (KERNEL_VERSION(5, 9, 0) <= LINUX_VERSION_CODE)
+	page_num = pin_user_pages((uintptr_t)start_vaddr, pages_no, FOLL_WRITE | FOLL_PIN , pages, NULL);
+#elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
+    page_num = get_user_pages((uintptr_t)start_vaddr, pages_no, FOLL_WRITE, pages, NULL);
+#endif
 	up_read(&mm_sem_lock(current->mm));
 	if (page_num != pages_no) {
 		tloge("get page phy addr failed\n");
