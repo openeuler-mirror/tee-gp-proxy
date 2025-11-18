@@ -134,7 +134,11 @@ void release_shared_mem_page(uint64_t buf, uint32_t buf_size)
 		if (page == NULL)
 			continue;
 		set_bit(PG_dirty, &page->flags);
+#if (KERNEL_VERSION(5, 9, 0) <= LINUX_VERSION_CODE)
+		unpin_user_page(page);
+#elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
 		put_page(page);
+#endif
 	}
 	kfree((void *)buf);
 }
