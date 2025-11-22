@@ -1,0 +1,77 @@
+<domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
+    <!-- 虚拟机名称 -->
+    <name>nvm-ta-1</name>
+    <!-- 虚拟机内存 -->
+    <memory unit='GiB'>32</memory>
+    <!-- 虚拟处理器的个数 -->
+    <vcpu>16</vcpu>
+    <os>
+        <type arch='aarch64' machine='virt'>hvm</type>
+        <!-- 这里是arm架构的 -->
+        <loader readonly='yes' type='pflash'>/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw</loader>
+        <!-- 指定nvram文件路径，用于存储UEFI启动配置 保证文件名不冲突即可 -->
+        <nvram>/var/lib/libvirt/qemu/nvram/openEulerVM.fd</nvram>
+    </os>
+    <features>
+        <acpi/>
+        <gic version='3'/>
+    </features>
+    <cpu mode='host-passthrough'>
+    </cpu>
+    <iothreads>1</iothreads>
+    <clock offset='utc'/>
+    <on_poweroff>destroy</on_poweroff>
+    <on_reboot>restart</on_reboot>
+    <on_crash>restart</on_crash>
+    <devices>
+        <!-- 创建软链接指向编译qemu后build目录下的qemu-system-aarch64 -->
+            <emulator>/home/zhangqiang/qemu/build/aarch64-softmmu/qemu-system-aarch64</emulator>
+        <disk type='file' device='disk'>
+            <driver name='qemu' type='qcow2' iothread="1"/>
+            <!-- 镜像路径 -->
+            <source file='/home/zhangqiang/xunihua/openEuler-22.03-LTS-SP4-aarch64.qcow2'/>
+            <target dev='vda' bus='virtio'/>
+            <boot order='1'/>
+        </disk>
+        <!--
+        <disk type='file' device='cdrom'>
+            <driver name='qemu' type='raw'/>
+            <source file='/home/z50040113/target/openEuler-22.03-LTS-SP1-aarch64-dvd.iso'/>
+            <readonly/>
+            <target dev='sdb' bus='scsi'/>
+            <boot order='2'/>
+        </disk>
+        -->
+        <interface type='network'>
+            <!-- 建议配置network NAT网络模式 -->
+            <source network='default'/>
+            <model type='virtio'/>
+        </interface>
+        <console type='pty'/>
+        <video>
+               <model type='virtio'/>
+        </video>
+        <controller type='scsi' index='0' model='virtio-scsi'/>
+        <controller type='usb' model='ehci'/>
+        <input type='tablet' bus='usb'/>
+        <input type='keyboard' bus='usb'/>
+        <!-- port 为vnc连接端口，auth 为连接密码 -->
+        <!--
+        <graphics type='vnc' port='5901' listen='0.0.0.0' password='on' auth='passwd1234!'/>
+        -->
+    </devices>
+    <qemu:commandline>
+     <!-- 添加一个虚拟串口，映射到host路径/tmp/vm_vtzb_sock0 -->
+     <qemu:arg value='-chardev'/>
+     <qemu:arg value='socket,path=/tmp/vm_vtzb_sock1,server=on,wait=off,id=vm01_vtzb_sock'/>
+     <qemu:arg value='-device'/>
+     <qemu:arg value='virtio-serial'/>
+     <qemu:arg value='-device'/>
+     <qemu:arg value='virtserialport,chardev=vm01_vtzb_sock,name=vtzf_serialport0'/>
+     <!--
+     <qemu:arg value='-monitor'/>
+     <qemu:arg value='telnet:127.0.0.1:5556,server=on,wait=off'/>
+     -->
+    </qemu:commandline>
+    <seclabel type='dynamic' model='dac' relabel='yes'/>
+</domain>
