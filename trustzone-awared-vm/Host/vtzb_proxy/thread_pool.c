@@ -186,8 +186,8 @@ void *admin_thread(void *arg)
         pthread_mutex_lock(&pool->time_mutex);
         for (i = 0; i < THREAD_POOL_SIZE; i++) {
             if (g_time_out[i].flag != 0 && (time_sec - g_time_out[i].start_time) > DEFAULT_TIME_SEC) {
-                kill_open_session_thd(&g_time_out[i]);
-                g_time_out[i].flag = 0;
+                tlogw("check tid is %lu, seq_num is %d, it has been doing for %ld seconds.\n", \
+                    g_time_out[i].tid, g_time_out[i].seq_num, time_sec - g_time_out[i].start_time);
             }
         }
         pthread_mutex_unlock(&pool->time_mutex);
