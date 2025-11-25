@@ -742,7 +742,7 @@ int send_to_proxy(void * wrt_buf, size_t size_wrt_buf, void * rd_buf, size_t siz
 	ret = wait_event_interruptible(event_data->wait_event_wq,
 		event_data->ret_flag);
 	if (ret != 0) {
-		tloge("wait event interruptible failed!, ret = %d\n", ret);
+		tlogw("wait event interruptible failed!, ret = %d\n", ret);
 		ret = -EINTR;
 	} else {
 		ret = event_data->rd_ret;
