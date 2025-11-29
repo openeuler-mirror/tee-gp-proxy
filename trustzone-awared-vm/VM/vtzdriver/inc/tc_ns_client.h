@@ -88,6 +88,7 @@ struct tc_ns_client_context {
 			uint32_t file_h_addr;
 		} memref;
 	};
+	__u32 vm_uid;
 };
 
 struct tc_ns_client_time {

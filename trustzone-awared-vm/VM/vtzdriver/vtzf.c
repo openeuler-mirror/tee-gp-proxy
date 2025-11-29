@@ -831,7 +831,7 @@ static int tc_ns_close_session(struct vtzf_dev_file *dev_file, void __user *argp
 		tloge("copy from user failed\n");
 		return -ENOMEM;
 	}
-
+	packet_cmd.cliContext.vm_uid = current_uid().val;
 	packet_cmd.packet_size = sizeof(packet_cmd);
 	packet_cmd.seq_num = seq_num;
 	packet_cmd.cmd = VTZF_CLOSE_SESSION;
@@ -1499,6 +1499,7 @@ int tc_client_session_ioctl(struct vtzf_dev_file *dev_file, unsigned int cmd,
 		return -EFAULT;
 	}
 
+	context.vm_uid = current_uid().val;
 	switch (cmd) {
 	case TC_NS_CLIENT_IOCTL_SES_OPEN_REQ:
 		ret = tc_ns_open_session(dev_file, &context);
