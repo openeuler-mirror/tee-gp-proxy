@@ -1,6 +1,44 @@
-diff -uprN itrustee_tzdriver/auth/auth_base_impl.c itrustee_tzdriver_new/auth/auth_base_impl.c
---- itrustee_tzdriver/auth/auth_base_impl.c	2024-09-25 14:59:38.671977710 +0800
-+++ itrustee_tzdriver_new/auth/auth_base_impl.c	2024-09-25 14:56:17.511977710 +0800
+From 206efb3f35e8c4a6b3bcf13c7b3ab3a2bb3500cd Mon Sep 17 00:00:00 2001
+From: gongchangsui <gongchangsui@outlook.com>
+Date: Sat, 29 Nov 2025 01:14:07 -0500
+Subject: [PATCH] support virtual machine
+
+Signed-off-by: gongchangsui <gongchangsui@outlook.com>
+---
+ Makefile                |   1 +
+ auth/auth_base_impl.c   |  14 ++
+ auth/auth_base_impl.h   |   6 +
+ core/agent.c            |  19 ++-
+ core/agent.h            |   6 +-
+ core/gp_ops.c           | 335 +++++++++++++++++++++++++++++++++++++++++++-----
+ core/gp_ops.h           |   4 +
+ core/session_manager.c  | 133 +++++++++++++++++--
+ core/shared_mem.c       |  30 +++++
+ core/shared_mem.h       |   2 +-
+ core/tc_client_driver.c | 117 +++++++++++++++--
+ core/tc_client_driver.h |   1 +
+ core/tc_cvm_driver.c    |   4 +
+ tc_ns_client.h          |   2 +
+ teek_ns_client.h        |   3 +
+ tlogger/tlogger.c       |  54 +++++++-
+ 16 files changed, 664 insertions(+), 67 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index ac40f80..1a07db1 100644
+--- a/Makefile
++++ b/Makefile
+@@ -50,6 +50,7 @@ EXTRA_CFLAGS += -DCONFIG_CPU_AFF_NR=0 -DCONFIG_BIG_SESSION=200 -DCONFIG_NOTIFY_P
+ EXTRA_CFLAGS += -DCONFIG_TEE_LOG_ACHIVE_PATH=\"/var/log/tee/last_teemsg\"
+ EXTRA_CFLAGS += -DNOT_TRIGGER_AP_RESET -DLAST_TEE_MSG_ROOT_GID -DCONFIG_NOCOPY_SHAREDMEM -DCONFIG_REGISTER_SHAREDMEM -DCONFIG_TA_AFFINITY=y -DCONFIG_TA_AFFINITY_CPU_NUMS=128
+ EXTRA_CFLAGS += -DTEECD_PATH_UID_AUTH_CTX=\"/usr/bin/teecd:0\"
++EXTRA_CFLAGS += -DPROXY_PATH_UID_AUTH_CTX=\"/usr/bin/vtz_proxy:0\"
+ EXTRA_CFLAGS += -DCONFIG_AUTH_SUPPORT_UNAME -DCONFIG_AUTH_HASH -std=gnu99
+ EXTRA_CFLAGS += -DCONFIG_TEE_UPGRADE -DCONFIG_TEE_REBOOT -DCONFIG_CONFIDENTIAL_TEE
+ EXTRA_CFLAGS += -I$(PWD)/tzdriver_internal/tee_reboot
+diff --git a/auth/auth_base_impl.c b/auth/auth_base_impl.c
+index 9be75c0..f57b41a 100644
+--- a/auth/auth_base_impl.c
++++ b/auth/auth_base_impl.c
 @@ -336,11 +336,25 @@ int check_teecd_auth(void)
  
  	return CHECK_ACCESS_SUCC;
@@ -27,9 +65,10 @@ diff -uprN itrustee_tzdriver/auth/auth_base_impl.c itrustee_tzdriver_new/auth/au
  #endif
  
  #ifdef CONFIG_TEE_TELEPORT_AUTH
-diff -uprN itrustee_tzdriver/auth/auth_base_impl.h itrustee_tzdriver_new/auth/auth_base_impl.h
---- itrustee_tzdriver/auth/auth_base_impl.h	2024-09-25 14:59:38.671977710 +0800
-+++ itrustee_tzdriver_new/auth/auth_base_impl.h	2024-09-25 14:56:17.511977710 +0800
+diff --git a/auth/auth_base_impl.h b/auth/auth_base_impl.h
+index fe8da14..4e7c12d 100644
+--- a/auth/auth_base_impl.h
++++ b/auth/auth_base_impl.h
 @@ -84,6 +84,7 @@ void mutex_crypto_hash_lock(void);
  void mutex_crypto_hash_unlock(void);
  int check_hidl_auth(void);
@@ -38,22 +77,23 @@ diff -uprN itrustee_tzdriver/auth/auth_base_impl.h itrustee_tzdriver_new/auth/au
  #else
  
  static inline void free_shash_handle(void)
-@@ -100,6 +101,11 @@ int check_teecd_auth(void)
- {
+@@ -101,6 +102,11 @@ int check_teecd_auth(void)
  	return 0;
  }
-+
+ 
 +int check_proxy_auth(void)
 +{
 +	return 0;
 +}
- 
++
  #endif /* CLIENT_AUTH || TEECD_AUTH */
  
-diff -uprN itrustee_tzdriver/core/agent.c itrustee_tzdriver_new/core/agent.c
---- itrustee_tzdriver/core/agent.c	2024-09-25 14:59:38.671977710 +0800
-+++ itrustee_tzdriver_new/core/agent.c	2024-09-25 14:56:17.511977710 +0800
-@@ -298,7 +298,8 @@ int tc_ns_set_native_hash(unsigned long
+ #ifdef CONFIG_TEE_TELEPORT_AUTH
+diff --git a/core/agent.c b/core/agent.c
+index d570a80..4a4972b 100644
+--- a/core/agent.c
++++ b/core/agent.c
+@@ -298,7 +298,8 @@ int tc_ns_set_native_hash(unsigned long arg, unsigned int cmd_id)
  	return ret;
  }
  
@@ -72,7 +112,7 @@ diff -uprN itrustee_tzdriver/core/agent.c itrustee_tzdriver_new/core/agent.c
  	if (tc_ns_smc(&smc_cmd)) {
  		ret = -EPERM;
  		tloge("late int failed\n");
-@@ -597,7 +600,8 @@ int tc_ns_wait_event(unsigned int agent_
+@@ -597,7 +600,8 @@ int tc_ns_wait_event(unsigned int agent_id, unsigned int nsid)
  	return ret;
  }
  
@@ -82,7 +122,7 @@ diff -uprN itrustee_tzdriver/core/agent.c itrustee_tzdriver_new/core/agent.c
  {
  	struct tc_ns_smc_cmd smc_cmd = { {0}, 0 };
  	int ret = 0;
-@@ -623,6 +627,8 @@ int tc_ns_sync_sys_time(const struct tc_
+@@ -623,6 +627,8 @@ int tc_ns_sync_sys_time(const struct tc_ns_client_time *tc_ns_time)
  	smc_cmd.operation_phys = mailbox_virt_to_phys((uintptr_t)&mb_pack->operation);
  	smc_cmd.operation_h_phys =
  		(uint64_t)mailbox_virt_to_phys((uintptr_t)&mb_pack->operation) >> ADDR_TRANS_NUM;
@@ -91,7 +131,7 @@ diff -uprN itrustee_tzdriver/core/agent.c itrustee_tzdriver_new/core/agent.c
  	if (tc_ns_smc(&smc_cmd)) {
  		tloge("tee adjust time failed, return error\n");
  		ret = -EPERM;
-@@ -632,7 +638,8 @@ int tc_ns_sync_sys_time(const struct tc_
+@@ -632,7 +638,8 @@ int tc_ns_sync_sys_time(const struct tc_ns_client_time *tc_ns_time)
  	return ret;
  }
  
@@ -101,7 +141,7 @@ diff -uprN itrustee_tzdriver/core/agent.c itrustee_tzdriver_new/core/agent.c
  {
  	int ret = 0;
  	struct tc_ns_client_time time = { 0 };
-@@ -647,7 +654,7 @@ int sync_system_time_from_user(const str
+@@ -647,7 +654,7 @@ int sync_system_time_from_user(const struct tc_ns_client_time *user_time)
  		return -EFAULT;
  	}
  
@@ -119,7 +159,7 @@ diff -uprN itrustee_tzdriver/core/agent.c itrustee_tzdriver_new/core/agent.c
  	if (ret != 0)
  		tloge("sync system time from kernel failed, ret = 0x%x\n", ret);
  
-@@ -949,6 +956,8 @@ int tc_ns_register_agent(struct tc_ns_de
+@@ -950,6 +957,8 @@ int tc_ns_register_agent(struct tc_ns_dev_file *dev_file,
  	nsid = task_active_pid_ns(current)->ns.inum;
  	if (dev_file != NULL && dev_file->nsid == 0)
  		dev_file->nsid = nsid;
@@ -128,10 +168,11 @@ diff -uprN itrustee_tzdriver/core/agent.c itrustee_tzdriver_new/core/agent.c
  #endif
  
  	if (is_agent_already_exist(agent_id, nsid, &event_data, dev_file, &find_flag))
-diff -uprN itrustee_tzdriver/core/agent.h itrustee_tzdriver_new/core/agent.h
---- itrustee_tzdriver/core/agent.h	2024-09-25 14:59:38.671977710 +0800
-+++ itrustee_tzdriver_new/core/agent.h	2024-09-25 14:56:17.511977710 +0800
-@@ -118,7 +118,8 @@ int agent_process_work(const struct tc_n
+diff --git a/core/agent.h b/core/agent.h
+index 1fc1ec8..98b5b95 100644
+--- a/core/agent.h
++++ b/core/agent.h
+@@ -118,7 +118,8 @@ int agent_process_work(const struct tc_ns_smc_cmd *smc_cmd,
  	unsigned int agent_id, unsigned int nsid);
  int is_agent_alive(unsigned int agent_id, unsigned int nsid);
  int tc_ns_set_native_hash(unsigned long arg, unsigned int cmd_id);
@@ -141,7 +182,7 @@ diff -uprN itrustee_tzdriver/core/agent.h itrustee_tzdriver_new/core/agent.h
  int tc_ns_register_agent(struct tc_ns_dev_file *dev_file, unsigned int agent_id,
  	unsigned int buffer_size, void **buffer, bool user_agent);
  int tc_ns_unregister_agent(unsigned int agent_id, unsigned int nsid);
-@@ -126,7 +127,8 @@ void send_crashed_event_response_all(con
+@@ -126,7 +127,8 @@ void send_crashed_event_response_all(const struct tc_ns_dev_file *dev_file);
  int tc_ns_wait_event(unsigned int agent_id, unsigned int nsid);
  int tc_ns_send_event_response(unsigned int agent_id, unsigned int nsid);
  void send_crashed_event_response_single(const struct tc_ns_dev_file *dev_file);
@@ -151,10 +192,11 @@ diff -uprN itrustee_tzdriver/core/agent.h itrustee_tzdriver_new/core/agent.h
  void sync_system_time_from_kernel(void);
  int tee_agent_clear_work(struct tc_ns_client_context *context,
  	unsigned int dev_file_id);
-diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
---- itrustee_tzdriver/core/gp_ops.c	2024-09-25 14:59:38.671977710 +0800
-+++ itrustee_tzdriver_new/core/gp_ops.c	2024-09-25 14:56:17.511977710 +0800
-@@ -231,6 +231,84 @@ int write_to_client(void __user *dest, s
+diff --git a/core/gp_ops.c b/core/gp_ops.c
+index 864c5a0..0d42a6c 100644
+--- a/core/gp_ops.c
++++ b/core/gp_ops.c
+@@ -231,6 +231,84 @@ int write_to_client(void __user *dest, size_t dest_size,
  	return 0;
  }
  
@@ -239,7 +281,7 @@ diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
  static bool is_input_tempmem(unsigned int param_type)
  {
  	if (param_type == TEEC_MEMREF_TEMP_INPUT ||
-@@ -240,7 +318,8 @@ static bool is_input_tempmem(unsigned in
+@@ -240,7 +318,8 @@ static bool is_input_tempmem(unsigned int param_type)
  	return false;
  }
  
@@ -249,7 +291,7 @@ diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
  	uint32_t buffer_size, void *temp_buf,
  	unsigned int param_type, uint8_t kernel_params)
  {
-@@ -250,11 +329,22 @@ static int update_input_data(const union
+@@ -250,11 +329,22 @@ static int update_input_data(const union tc_ns_client_param *client_param,
  
  	buffer_addr = client_param->memref.buffer |
  		((uint64_t)client_param->memref.buffer_h_addr << ADDR_TRANS_NUM);
@@ -277,7 +319,7 @@ diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
  	}
  	return 0;
  }
-@@ -312,7 +402,7 @@ static int alloc_for_tmp_mem(const struc
+@@ -312,7 +402,7 @@ static int alloc_for_tmp_mem(const struct tc_call_params *call_params,
  	op_params->local_tmpbuf[index].temp_buffer = temp_buf;
  	op_params->local_tmpbuf[index].size = buffer_size;
  
@@ -286,7 +328,7 @@ diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
  		param_type, kernel_params) != 0)
  		return -EFAULT;
  
-@@ -324,8 +414,9 @@ static int alloc_for_tmp_mem(const struc
+@@ -324,8 +414,9 @@ static int alloc_for_tmp_mem(const struct tc_call_params *call_params,
  	return 0;
  }
  
@@ -298,7 +340,7 @@ diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
  {
  	uint64_t size_addr = client_param->memref.size_addr |
  		((uint64_t)client_param->memref.size_h_addr << ADDR_TRANS_NUM);
-@@ -416,7 +507,7 @@ static int alloc_for_ref_mem(const struc
+@@ -416,7 +507,7 @@ static int alloc_for_ref_mem(const struct tc_call_params *call_params,
  		return -EINVAL;
  
  	client_param = &(call_params->context->params[index]);
@@ -307,7 +349,7 @@ diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
  		return -EINVAL;
  
  	op_params->mb_pack->operation.params[index].memref.buffer = 0;
-@@ -491,6 +582,134 @@ static int check_buffer_for_sharedmem(ui
+@@ -491,6 +582,134 @@ static int check_buffer_for_sharedmem(uint32_t *buffer_size,
  	return 0;
  }
  
@@ -442,7 +484,7 @@ diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
  static int transfer_shared_mem(const struct tc_call_params *call_params,
  	struct tc_op_params *op_params, uint8_t kernel_params,
  	uint32_t param_type, unsigned int index)
-@@ -499,10 +718,11 @@ static int transfer_shared_mem(const str
+@@ -499,10 +718,11 @@ static int transfer_shared_mem(const struct tc_call_params *call_params,
  	void *start_vaddr = NULL;
  	union tc_ns_client_param *client_param = NULL;
  	uint32_t buffer_size;
@@ -455,7 +497,7 @@ diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
  
  	if (index >= TEE_PARAM_NUM)
  		return -EINVAL;
-@@ -518,19 +738,57 @@ static int transfer_shared_mem(const str
+@@ -518,19 +738,57 @@ static int transfer_shared_mem(const struct tc_call_params *call_params,
  
  	buffer_addr = client_param->memref.buffer |
  		((uint64_t)client_param->memref.buffer_h_addr << ADDR_TRANS_NUM);
@@ -525,7 +567,7 @@ diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
  	}
  
  	op_params->local_tmpbuf[index].temp_buffer = buff;
-@@ -707,13 +965,24 @@ static int update_tmp_mem(const struct t
+@@ -707,13 +965,24 @@ static int update_tmp_mem(const struct tc_call_params *call_params,
  	if (buffer_size == 0)
  		return 0;
  	/* Only update the buffer when the buffer size is valid in complete case */
@@ -557,7 +599,7 @@ diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
  	}
  	return 0;
  }
-@@ -863,7 +1132,11 @@ static void free_operation_sharedmem_par
+@@ -863,7 +1132,11 @@ static void free_operation_sharedmem_params(const struct tc_call_params *call_pa
  		}
  	}
  #endif
@@ -570,10 +612,11 @@ diff -uprN itrustee_tzdriver/core/gp_ops.c itrustee_tzdriver_new/core/gp_ops.c
  	mailbox_free(temp_buf);
  }
  #endif
-diff -uprN itrustee_tzdriver/core/gp_ops.h itrustee_tzdriver_new/core/gp_ops.h
---- itrustee_tzdriver/core/gp_ops.h	2024-09-25 14:59:38.671977710 +0800
-+++ itrustee_tzdriver_new/core/gp_ops.h	2024-09-25 14:56:17.511977710 +0800
-@@ -28,5 +28,9 @@ int tc_client_call(const struct tc_call_
+diff --git a/core/gp_ops.h b/core/gp_ops.h
+index bc2446e..05bdcd2 100644
+--- a/core/gp_ops.h
++++ b/core/gp_ops.h
+@@ -28,5 +28,9 @@ int tc_client_call(const struct tc_call_params *call_params);
  bool is_tmp_mem(uint32_t param_type);
  bool is_ref_mem(uint32_t param_type);
  bool is_val_param(uint32_t param_type);
@@ -583,10 +626,11 @@ diff -uprN itrustee_tzdriver/core/gp_ops.h itrustee_tzdriver_new/core/gp_ops.h
 +	const void __user *src, size_t size, pid_t vm_pid);
  
  #endif
-diff -uprN itrustee_tzdriver/core/session_manager.c itrustee_tzdriver_new/core/session_manager.c
---- itrustee_tzdriver/core/session_manager.c	2024-09-25 14:59:38.671977710 +0800
-+++ itrustee_tzdriver_new/core/session_manager.c	2024-09-25 14:56:17.511977710 +0800
-@@ -605,7 +605,7 @@ static struct tc_ns_service *tc_ref_serv
+diff --git a/core/session_manager.c b/core/session_manager.c
+index 6b7de16..e218ebd 100644
+--- a/core/session_manager.c
++++ b/core/session_manager.c
+@@ -606,7 +606,7 @@ static struct tc_ns_service *tc_ref_service_in_dev(struct tc_ns_dev_file *dev,
  }
  
  static int tc_ns_service_init(const unsigned char *uuid, uint32_t uuid_len,
@@ -595,7 +639,7 @@ diff -uprN itrustee_tzdriver/core/session_manager.c itrustee_tzdriver_new/core/s
  {
  	int ret = 0;
  	struct tc_ns_service *service = NULL;
-@@ -626,7 +626,7 @@ static int tc_ns_service_init(const unsi
+@@ -627,7 +627,7 @@ static int tc_ns_service_init(const unsigned char *uuid, uint32_t uuid_len,
  	}
  
  #ifdef CONFIG_CONFIDENTIAL_CONTAINER
@@ -604,7 +648,7 @@ diff -uprN itrustee_tzdriver/core/session_manager.c itrustee_tzdriver_new/core/s
  #else
  	service->nsid = PROC_PID_INIT_INO;
  #endif
-@@ -664,7 +664,11 @@ static struct tc_ns_service *find_servic
+@@ -665,7 +665,11 @@ static struct tc_ns_service *find_service(struct tc_ns_dev_file *dev_file,
  	struct tc_ns_service *service = NULL;
  	bool is_full = false;
  #ifdef CONFIG_CONFIDENTIAL_CONTAINER
@@ -617,7 +661,7 @@ diff -uprN itrustee_tzdriver/core/session_manager.c itrustee_tzdriver_new/core/s
  #else
  	unsigned int nsid = PROC_PID_INIT_INO;
  #endif
-@@ -693,7 +697,7 @@ static struct tc_ns_service *find_servic
+@@ -694,7 +698,7 @@ static struct tc_ns_service *find_service(struct tc_ns_dev_file *dev_file,
  		goto add_service;
  	}
  	/* Create a new service if we couldn't find it in list */
@@ -626,7 +670,7 @@ diff -uprN itrustee_tzdriver/core/session_manager.c itrustee_tzdriver_new/core/s
  	/* unlock after init to make sure find service from all is correct */
  	mutex_unlock(&g_service_list_lock);
  	if (ret != 0) {
-@@ -807,10 +811,19 @@ static int32_t load_image_copy_file(stru
+@@ -808,10 +812,19 @@ static int32_t load_image_copy_file(struct load_img_params *params, uint32_t loa
  		}
  		return 0;
  	}
@@ -650,7 +694,7 @@ diff -uprN itrustee_tzdriver/core/session_manager.c itrustee_tzdriver_new/core/s
  	}
  	return 0;
  }
-@@ -1409,10 +1422,109 @@ find_session:
+@@ -1418,10 +1431,109 @@ find_session:
  	return ret;
  }
  
@@ -760,7 +804,7 @@ diff -uprN itrustee_tzdriver/core/session_manager.c itrustee_tzdriver_new/core/s
  
  	ret = tc_ns_send_cmd(dev_file, context);
  	if (ret != 0)
-@@ -1421,6 +1533,11 @@ static int ioctl_session_send_cmd(struct
+@@ -1430,6 +1542,11 @@ static int ioctl_session_send_cmd(struct tc_ns_dev_file *dev_file,
  		if (ret == 0)
  			ret = -EFAULT;
  	}
@@ -772,10 +816,11 @@ diff -uprN itrustee_tzdriver/core/session_manager.c itrustee_tzdriver_new/core/s
  	return ret;
  }
  
-diff -uprN itrustee_tzdriver/core/shared_mem.c itrustee_tzdriver_new/core/shared_mem.c
---- itrustee_tzdriver/core/shared_mem.c	2024-09-25 14:59:38.671977710 +0800
-+++ itrustee_tzdriver_new/core/shared_mem.c	2024-09-25 14:56:17.511977710 +0800
-@@ -120,6 +120,36 @@ void release_shared_mem_page(uint64_t bu
+diff --git a/core/shared_mem.c b/core/shared_mem.c
+index ab815ac..860fd87 100644
+--- a/core/shared_mem.c
++++ b/core/shared_mem.c
+@@ -120,6 +120,36 @@ void release_shared_mem_page(uint64_t buf, uint32_t buf_size)
  		put_page(page);
  	}
  }
@@ -812,9 +857,10 @@ diff -uprN itrustee_tzdriver/core/shared_mem.c itrustee_tzdriver_new/core/shared
  #else
  
  int fill_shared_mem_info(uint64_t start_vaddr, uint32_t pages_no,
-diff -uprN itrustee_tzdriver/core/shared_mem.h itrustee_tzdriver_new/core/shared_mem.h
---- itrustee_tzdriver/core/shared_mem.h	2024-09-25 14:59:38.671977710 +0800
-+++ itrustee_tzdriver_new/core/shared_mem.h	2024-09-25 14:56:17.511977710 +0800
+diff --git a/core/shared_mem.h b/core/shared_mem.h
+index aece31e..5065cd4 100644
+--- a/core/shared_mem.h
++++ b/core/shared_mem.h
 @@ -64,5 +64,5 @@ void free_spi_mem(uint64_t spi_vaddr);
  int fill_shared_mem_info(uint64_t start_vaddr, uint32_t pages_no,
  	uint32_t offset, uint32_t buffer_size, uint64_t info_addr);
@@ -822,10 +868,11 @@ diff -uprN itrustee_tzdriver/core/shared_mem.h itrustee_tzdriver_new/core/shared
 -
 +void release_vm_shared_mem_page(uint64_t buf, uint32_t buf_size, uint32_t vm_page_size);
  #endif
-diff -uprN itrustee_tzdriver/core/tc_client_driver.c itrustee_tzdriver_new/core/tc_client_driver.c
---- itrustee_tzdriver/core/tc_client_driver.c	2024-09-25 14:59:38.671977710 +0800
-+++ itrustee_tzdriver_new/core/tc_client_driver.c	2024-09-25 14:56:17.511977710 +0800
-@@ -186,6 +186,8 @@ static int tc_ns_get_tee_version(const s
+diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
+index a9455ae..b7423b4 100644
+--- a/core/tc_client_driver.c
++++ b/core/tc_client_driver.c
+@@ -183,6 +183,8 @@ static int tc_ns_get_tee_version(const struct tc_ns_dev_file *dev_file,
  	smc_cmd.operation_h_phys =
  		(uint64_t)mailbox_virt_to_phys((uintptr_t)&mb_pack->operation) >> ADDR_TRANS_NUM;
  
@@ -834,7 +881,7 @@ diff -uprN itrustee_tzdriver/core/tc_client_driver.c itrustee_tzdriver_new/core/
  	if (tc_ns_smc(&smc_cmd) != 0) {
  		ret = -EPERM;
  		tloge("smc call returns error ret 0x%x\n", smc_cmd.ret_val);
-@@ -312,10 +314,14 @@ static int client_login_prepare(uint8_t
+@@ -309,10 +311,14 @@ static int client_login_prepare(uint8_t *cert_buffer,
  
  static int tc_login_check(const struct tc_ns_dev_file *dev_file)
  {
@@ -853,7 +900,7 @@ diff -uprN itrustee_tzdriver/core/tc_client_driver.c itrustee_tzdriver_new/core/
  	}
  
  	if (!dev_file)
-@@ -718,12 +724,55 @@ static int ioctl_check_is_ccos(void __us
+@@ -715,12 +721,55 @@ static int ioctl_check_is_ccos(void __user *argp)
  	return ret;
  }
  
@@ -909,7 +956,7 @@ diff -uprN itrustee_tzdriver/core/tc_client_driver.c itrustee_tzdriver_new/core/
  	void *argp = (void __user *)(uintptr_t)arg;
  	if (file == NULL || file->private_data == NULL) {
  		tloge("invalid params\n");
-@@ -731,18 +780,34 @@ int public_ioctl(const struct file *file
+@@ -728,18 +777,34 @@ int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, b
  	}
  	dev_file = file->private_data;
  #ifdef CONFIG_CONFIDENTIAL_CONTAINER
@@ -945,7 +992,7 @@ diff -uprN itrustee_tzdriver/core/tc_client_driver.c itrustee_tzdriver_new/core/
  		ret = tc_ns_send_event_response((unsigned int)arg, nsid);
  		break;
  	case TC_NS_CLIENT_IOCTL_REGISTER_AGENT:
-@@ -839,6 +904,14 @@ static int tc_client_agent_ioctl(const s
+@@ -836,6 +901,14 @@ static int tc_client_agent_ioctl(const struct file *file, unsigned int cmd,
  	return ret;
  }
  
@@ -960,7 +1007,7 @@ diff -uprN itrustee_tzdriver/core/tc_client_driver.c itrustee_tzdriver_new/core/
  void handle_cmd_prepare(unsigned int cmd)
  {
  	if (cmd != TC_NS_CLIENT_IOCTL_WAIT_EVENT &&
-@@ -858,6 +931,10 @@ static long tc_private_ioctl(struct file
+@@ -855,6 +928,10 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
@@ -971,7 +1018,7 @@ diff -uprN itrustee_tzdriver/core/tc_client_driver.c itrustee_tzdriver_new/core/
  	handle_cmd_prepare(cmd);
  	switch (cmd) {
  	case TC_NS_CLIENT_IOCTL_GET_TEE_VERSION:
-@@ -872,10 +949,10 @@ static long tc_private_ioctl(struct file
+@@ -869,10 +946,10 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
  		mutex_unlock(&g_set_ca_hash_lock);
  		break;
  	case TC_NS_CLIENT_IOCTL_LATEINIT:
@@ -984,7 +1031,7 @@ diff -uprN itrustee_tzdriver/core/tc_client_driver.c itrustee_tzdriver_new/core/
  			(struct tc_ns_client_time *)(uintptr_t)arg);
  		break;
  	default:
-@@ -894,6 +971,10 @@ static long tc_client_ioctl(struct file
+@@ -891,6 +968,10 @@ static long tc_client_ioctl(struct file *file, unsigned int cmd,
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
  
@@ -995,7 +1042,7 @@ diff -uprN itrustee_tzdriver/core/tc_client_driver.c itrustee_tzdriver_new/core/
  	handle_cmd_prepare(cmd);
  	switch (cmd) {
  	case TC_NS_CLIENT_IOCTL_SES_OPEN_REQ:
-@@ -925,20 +1006,30 @@ static int tc_client_open(struct inode *
+@@ -922,20 +1003,30 @@ static int tc_client_open(struct inode *inode, struct file *file)
  {
  	int ret;
  	struct tc_ns_dev_file *dev = NULL;
@@ -1032,10 +1079,11 @@ diff -uprN itrustee_tzdriver/core/tc_client_driver.c itrustee_tzdriver_new/core/
  #endif
  	return ret;
  }
-diff -uprN itrustee_tzdriver/core/tc_client_driver.h itrustee_tzdriver_new/core/tc_client_driver.h
---- itrustee_tzdriver/core/tc_client_driver.h	2024-09-25 14:59:38.671977710 +0800
-+++ itrustee_tzdriver_new/core/tc_client_driver.h	2024-09-25 14:56:17.511977710 +0800
-@@ -47,6 +47,7 @@ int tc_ns_client_open(struct tc_ns_dev_f
+diff --git a/core/tc_client_driver.h b/core/tc_client_driver.h
+index 774fbd3..9c17d63 100644
+--- a/core/tc_client_driver.h
++++ b/core/tc_client_driver.h
+@@ -47,6 +47,7 @@ int tc_ns_client_open(struct tc_ns_dev_file **dev_file, uint8_t kernel_api);
  int tc_ns_client_close(struct tc_ns_dev_file *dev);
  int is_agent_alive(unsigned int agent_id, unsigned int nsid);
  int tc_ns_register_host_nsid(void);
@@ -1043,10 +1091,11 @@ diff -uprN itrustee_tzdriver/core/tc_client_driver.h itrustee_tzdriver_new/core/
  int init_dev_node(struct dev_node *node, const char *node_name,
  		struct class *driver_class, const struct file_operations *fops);
  void destory_dev_node(struct dev_node *node, struct class *driver_class);
-diff -uprN itrustee_tzdriver/core/tc_cvm_driver.c itrustee_tzdriver_new/core/tc_cvm_driver.c
---- itrustee_tzdriver/core/tc_cvm_driver.c	2024-09-25 14:59:38.675977710 +0800
-+++ itrustee_tzdriver_new/core/tc_cvm_driver.c	2024-09-25 14:56:17.511977710 +0800
-@@ -104,6 +104,10 @@ static long tc_cvm_ioctl(struct file *fi
+diff --git a/core/tc_cvm_driver.c b/core/tc_cvm_driver.c
+index 47d6fe8..967a288 100644
+--- a/core/tc_cvm_driver.c
++++ b/core/tc_cvm_driver.c
+@@ -96,6 +96,10 @@ static long tc_cvm_ioctl(struct file *file, unsigned int cmd,
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
@@ -1057,22 +1106,11 @@ diff -uprN itrustee_tzdriver/core/tc_cvm_driver.c itrustee_tzdriver_new/core/tc_
  	handle_cmd_prepare(cmd);
  
  	switch (cmd) {
-Binary files itrustee_tzdriver/.git/index and itrustee_tzdriver_new/.git/index differ
-diff -uprN itrustee_tzdriver/Makefile itrustee_tzdriver_new/Makefile
---- itrustee_tzdriver/Makefile	2024-09-25 14:59:38.671977710 +0800
-+++ itrustee_tzdriver_new/Makefile	2024-09-25 14:56:17.511977710 +0800
-@@ -54,6 +54,7 @@ EXTRA_CFLAGS += -DCONFIG_CPU_AFF_NR=0 -D
- EXTRA_CFLAGS += -DCONFIG_TEE_LOG_ACHIVE_PATH=\"/var/log/tee/last_teemsg\"
- EXTRA_CFLAGS += -DNOT_TRIGGER_AP_RESET -DLAST_TEE_MSG_ROOT_GID -DCONFIG_NOCOPY_SHAREDMEM -DCONFIG_REGISTER_SHAREDMEM -DCONFIG_TA_AFFINITY=y -DCONFIG_TA_AFFINITY_CPU_NUMS=128
- EXTRA_CFLAGS += -DTEECD_PATH_UID_AUTH_CTX=\"/usr/bin/teecd:0\"
-+EXTRA_CFLAGS += -DPROXY_PATH_UID_AUTH_CTX=\"/usr/bin/vtz_proxy:0\"
- EXTRA_CFLAGS += -DCONFIG_AUTH_SUPPORT_UNAME -DCONFIG_AUTH_HASH -std=gnu99
- EXTRA_CFLAGS += -DCONFIG_TEE_UPGRADE -DCONFIG_TEE_REBOOT -DCONFIG_CONFIDENTIAL_TEE
- EXTRA_CFLAGS += -I$(PWD)/tzdriver_internal/tee_reboot
-diff -uprN itrustee_tzdriver/tc_ns_client.h itrustee_tzdriver_new/tc_ns_client.h
---- itrustee_tzdriver/tc_ns_client.h	2024-09-25 14:59:38.675977710 +0800
-+++ itrustee_tzdriver_new/tc_ns_client.h	2024-09-25 14:56:17.511977710 +0800
-@@ -230,6 +230,8 @@ struct tc_ns_log_pool {
+diff --git a/tc_ns_client.h b/tc_ns_client.h
+index 1152a32..72dc8e3 100644
+--- a/tc_ns_client.h
++++ b/tc_ns_client.h
+@@ -210,6 +210,8 @@ struct tc_ns_log_pool {
  #define TC_NS_CLIENT_IOCTL_GET_TEE_INFO \
  	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 26, struct tc_ns_tee_info)
  
@@ -1081,9 +1119,10 @@ diff -uprN itrustee_tzdriver/tc_ns_client.h itrustee_tzdriver_new/tc_ns_client.h
  #define TC_NS_CLIENT_IOCTL_CHECK_CCOS \
  	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 32, unsigned int)
  
-diff -uprN itrustee_tzdriver/teek_ns_client.h itrustee_tzdriver_new/teek_ns_client.h
---- itrustee_tzdriver/teek_ns_client.h	2024-09-25 14:59:38.675977710 +0800
-+++ itrustee_tzdriver_new/teek_ns_client.h	2024-09-25 14:56:17.515977710 +0800
+diff --git a/teek_ns_client.h b/teek_ns_client.h
+index b866b64..33eca6f 100644
+--- a/teek_ns_client.h
++++ b/teek_ns_client.h
 @@ -129,6 +129,9 @@ struct tc_ns_dev_file {
  	int load_app_flag;
  #ifdef CONFIG_CONFIDENTIAL_CONTAINER
@@ -1094,9 +1133,10 @@ diff -uprN itrustee_tzdriver/teek_ns_client.h itrustee_tzdriver_new/teek_ns_clie
  #endif
  	struct completion close_comp; /* for kthread close unclosed session */
  #ifdef CONFIG_TEE_TELEPORT_SUPPORT
-diff -uprN itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdriver_new/tlogger/tlogger.c
---- itrustee_tzdriver/tlogger/tlogger.c	2024-09-25 14:59:38.675977710 +0800
-+++ itrustee_tzdriver_new/tlogger/tlogger.c	2024-09-25 14:56:17.511977710 +0800
+diff --git a/tlogger/tlogger.c b/tlogger/tlogger.c
+index bf1251c..ce981f6 100644
+--- a/tlogger/tlogger.c
++++ b/tlogger/tlogger.c
 @@ -61,6 +61,7 @@
  #define SET_TLOGCAT_STAT_BASE  7
  #define GET_TLOGCAT_STAT_BASE  8
@@ -1123,7 +1163,7 @@ diff -uprN itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdriver_new/tlogger/tlo
  {
  	struct tlogger_group *group = NULL;
  #ifdef CONFIG_CONFIDENTIAL_CONTAINER
-@@ -524,6 +527,9 @@ static struct tlogger_group *get_tlogger
+@@ -524,6 +527,9 @@ static struct tlogger_group *get_tlogger_group(void)
  	uint32_t nsid = PROC_PID_INIT_INO;
  #endif
  
@@ -1133,7 +1173,7 @@ diff -uprN itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdriver_new/tlogger/tlo
  	list_for_each_entry(group, &g_reader_group_list, node) {
  		if (group->nsid == nsid)
  			return group;
-@@ -596,7 +602,7 @@ static int process_tlogger_open(struct i
+@@ -596,7 +602,7 @@ static int process_tlogger_open(struct inode *inode,
  		return -ENODEV;
  
  	mutex_lock(&g_reader_group_mutex);
@@ -1142,7 +1182,7 @@ diff -uprN itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdriver_new/tlogger/tlo
  	if (group == NULL) {
  		group = kzalloc(sizeof(*group), GFP_KERNEL);
  		if (ZERO_OR_NULL_PTR((unsigned long)(uintptr_t)group)) {
-@@ -808,6 +814,35 @@ static int get_teeos_version(uint32_t cm
+@@ -808,6 +814,35 @@ static int get_teeos_version(uint32_t cmd, unsigned long arg)
  	return 0;
  }
  
@@ -1178,7 +1218,7 @@ diff -uprN itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdriver_new/tlogger/tlo
  static long process_tlogger_ioctl(struct file *file,
  	unsigned int cmd, unsigned long arg)
  {
-@@ -845,6 +880,9 @@ static long process_tlogger_ioctl(struct
+@@ -845,6 +880,9 @@ static long process_tlogger_ioctl(struct file *file,
  	case TEELOGGER_GET_TEE_INFO:
  		ret = tc_ns_get_tee_info(file, (void *)(uintptr_t)arg);
  		break;
@@ -1188,7 +1228,7 @@ diff -uprN itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdriver_new/tlogger/tlo
  	default:
  		tloge("ioctl error default\n");
  		break;
-@@ -1023,11 +1061,13 @@ static int write_part_log_to_msg(struct
+@@ -1023,11 +1061,13 @@ static int write_part_log_to_msg(struct file *filep,
  
  	while (next_item && read_off <= read_off_end) {
  		item_len = next_item->buffer_len + sizeof(*next_item);
@@ -1207,3 +1247,6 @@ diff -uprN itrustee_tzdriver/tlogger/tlogger.c itrustee_tzdriver_new/tlogger/tlo
  		}
  
  		tlogd("Succeed to Write last teemsg, len=%zd\n", write_len);
+-- 
+1.8.3.1
+

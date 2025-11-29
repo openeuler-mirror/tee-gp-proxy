@@ -1,6 +1,26 @@
-diff -purN qemu/hw/char/tc_ns_client.h qemu_new/hw/char/tc_ns_client.h
---- qemu/hw/char/tc_ns_client.h	1970-01-01 08:00:00.000000000 +0800
-+++ qemu_new/hw/char/tc_ns_client.h	2024-09-10 11:48:21.650599250 +0800
+From 0cd568d0c0ba217f5851371f834ab527c0fd9c1c Mon Sep 17 00:00:00 2001
+From: gongchangsui <gongchangsui@outlook.com>
+Date: Sat, 29 Nov 2025 01:17:24 -0500
+Subject: [PATCH] support trustzone virtual deploy
+
+Signed-off-by: gongchangsui <gongchangsui@outlook.com>
+---
+ hw/char/tc_ns_client.h         | 162 +++++++++++++++++
+ hw/char/tee_client_constants.h | 127 ++++++++++++++
+ hw/char/tee_client_list.h      | 101 +++++++++++
+ hw/char/tee_client_type.h      | 134 ++++++++++++++
+ hw/char/virtio-console.c       | 386 ++++++++++++++++++++++++++++++++++++++++-
+ 5 files changed, 909 insertions(+), 1 deletion(-)
+ create mode 100644 hw/char/tc_ns_client.h
+ create mode 100644 hw/char/tee_client_constants.h
+ create mode 100644 hw/char/tee_client_list.h
+ create mode 100644 hw/char/tee_client_type.h
+
+diff --git a/hw/char/tc_ns_client.h b/hw/char/tc_ns_client.h
+new file mode 100644
+index 0000000..657a51b
+--- /dev/null
++++ b/hw/char/tc_ns_client.h
 @@ -0,0 +1,162 @@
 +/*
 + * Copyright (c) Huawei Technologies Co., Ltd. 2012-2023. All rights reserved.
@@ -164,9 +184,11 @@ diff -purN qemu/hw/char/tc_ns_client.h qemu_new/hw/char/tc_ns_client.h
 +#endif
 +
 +
-diff -purN qemu/hw/char/tee_client_constants.h qemu_new/hw/char/tee_client_constants.h
---- qemu/hw/char/tee_client_constants.h	1970-01-01 08:00:00.000000000 +0800
-+++ qemu_new/hw/char/tee_client_constants.h	2024-09-10 11:50:22.282599250 +0800
+diff --git a/hw/char/tee_client_constants.h b/hw/char/tee_client_constants.h
+new file mode 100644
+index 0000000..1696b88e
+--- /dev/null
++++ b/hw/char/tee_client_constants.h
 @@ -0,0 +1,127 @@
 +/*
 + * Copyright (c) Huawei Technologies Co., Ltd. 2013-2022. All rights reserved.
@@ -295,9 +317,11 @@ diff -purN qemu/hw/char/tee_client_constants.h qemu_new/hw/char/tee_client_const
 +
 +#define TEEC_PARAM_NUM 4 /* teec param max number */
 +#endif
-diff -purN qemu/hw/char/tee_client_list.h qemu_new/hw/char/tee_client_list.h
---- qemu/hw/char/tee_client_list.h	1970-01-01 08:00:00.000000000 +0800
-+++ qemu_new/hw/char/tee_client_list.h	2024-09-10 11:48:21.650599250 +0800
+diff --git a/hw/char/tee_client_list.h b/hw/char/tee_client_list.h
+new file mode 100644
+index 0000000..58e75b4
+--- /dev/null
++++ b/hw/char/tee_client_list.h
 @@ -0,0 +1,101 @@
 +/*
 + * Copyright (c) Huawei Technologies Co., Ltd. 2013-2021. All rights reserved.
@@ -400,9 +424,11 @@ diff -purN qemu/hw/char/tee_client_list.h qemu_new/hw/char/tee_client_list.h
 +#endif
 +
 +
-diff -purN qemu/hw/char/tee_client_type.h qemu_new/hw/char/tee_client_type.h
---- qemu/hw/char/tee_client_type.h	1970-01-01 08:00:00.000000000 +0800
-+++ qemu_new/hw/char/tee_client_type.h	2024-09-10 11:48:21.650599250 +0800
+diff --git a/hw/char/tee_client_type.h b/hw/char/tee_client_type.h
+new file mode 100644
+index 0000000..bbb0600
+--- /dev/null
++++ b/hw/char/tee_client_type.h
 @@ -0,0 +1,134 @@
 +/*
 + * Copyright (c) Huawei Technologies Co., Ltd. 2013-2022. All rights reserved.
@@ -538,9 +564,10 @@ diff -purN qemu/hw/char/tee_client_type.h qemu_new/hw/char/tee_client_type.h
 +#endif
 +
 +
-diff -purN qemu/hw/char/virtio-console.c qemu_new/hw/char/virtio-console.c
---- qemu/hw/char/virtio-console.c	2024-09-10 11:56:07.870599250 +0800
-+++ qemu_new/hw/char/virtio-console.c	2024-09-10 11:52:50.618599250 +0800
+diff --git a/hw/char/virtio-console.c b/hw/char/virtio-console.c
+index dd5a02e..98d8842 100644
+--- a/hw/char/virtio-console.c
++++ b/hw/char/virtio-console.c
 @@ -22,6 +22,13 @@
  #include "qapi/qapi-events-char.h"
  #include "qom/object.h"
@@ -555,7 +582,7 @@ diff -purN qemu/hw/char/virtio-console.c qemu_new/hw/char/virtio-console.c
  #define TYPE_VIRTIO_CONSOLE_SERIAL_PORT "virtserialport"
  typedef struct VirtConsole VirtConsole;
  DECLARE_INSTANCE_CHECKER(VirtConsole, VIRTIO_CONSOLE,
-@@ -48,18 +55,395 @@ static gboolean chr_write_unblocked(void
+@@ -48,18 +55,395 @@ static gboolean chr_write_unblocked(void *do_not_use, GIOCondition cond,
      return FALSE;
  }
  
@@ -952,3 +979,6 @@ diff -purN qemu/hw/char/virtio-console.c qemu_new/hw/char/virtio-console.c
      ret = qemu_chr_fe_write(&vcon->chr, buf, len);
      trace_virtio_console_flush_buf(port->id, len, ret);
  
+-- 
+1.8.3.1
+
