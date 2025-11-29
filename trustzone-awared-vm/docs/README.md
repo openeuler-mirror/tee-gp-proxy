@@ -22,11 +22,13 @@ yum install openssl-devel
     sudo cp ./vtz_proxy /usr/bin/vtz_proxy
     ```	
 5. `tzdriver`和`client`编译安装
-    1. 进入`itrustee_tzdriver`的父级目录，确保补丁文件和目标目录在同一级目录下， 补丁文件路径按照实际路径修改。
-        1. ``` patch -p0 < tee-gp-proxy/trustzone-awared-vm/Host/itrustee_tzdriver.patch```
-    1. 920 机型请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/trustzone/fg/kunpengtrustzone_20_0019.html)。
-    2. 920 新型号请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/cca/devg/Kunpeng_ommercialcryptography_16_0015.html)
-    3. 在`tzdriver`编译后，将`tzdriver.ko` 复制到指定目录
+    1. 进入`itrustee_tzdriver`的根目录，补丁文件路径按照实际路径修改。
+        1. ``` git am  tee-gp-proxy/trustzone-awared-vm/Host/tzdriver-0001-support-virtual-machine.patch```
+    2. 进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改。
+        1. ``` git am  tee-gp-proxy/trustzone-awared-vm/Host/client-0001-add-vm-uid-in-TC_NS_ClientContext.patch```
+    3. 920 机型请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/trustzone/fg/kunpengtrustzone_20_0019.html)。
+    4. 920 新型号请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/cca/devg/Kunpeng_ommercialcryptography_16_0015.html)
+    5. 在`tzdriver`编译后，将`tzdriver.ko` 复制到指定目录
     ```bash 
     mkdir -p "/lib/modules/$(uname -r)/kernel/drivers/trustzone/"
     cp tzdriver.ko /lib/modules/$(uname -r)/kernel/drivers/trustzone
@@ -38,10 +40,9 @@ yum install openssl-devel
     git clone -b v6.2.0 https://git.qemu.org/git/qemu.git
     ```
 4. Patch Application
-    1. 进入目标目录 `qemu` 的父级目录，确保补丁文件和目标目录在同一级目录下，补丁文件路径按照实际路径修改。
+    1. 进入目标目录 `qemu` 的根目录，补丁文件路径按照实际路径修改。
     ```bash
-    patch -p0 < tee-gp-proxy/trustzone-awared-vm/Host/qemu.patch
-    patch -p0 < tee-gp-proxy/trustzone-awared-vm/Host/qemu-2.patch
+    git am  tee-gp-proxy/trustzone-awared-vm/Host/qemu-0001-support-trustzone-virtual-deploy.patch
     ```
 5. 编译`qemu`
     ```bash
@@ -89,15 +90,17 @@ yum install openssl-devel
 ```shell
 yum install make kernel-devel-$(uname -r) kernel-headers-$(uname -r) git gcc openssl-devel 
 ```
-1. `itrustee_client`编译安装
-    1. 920 机型请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/trustzone/fg/kunpengtrustzone_20_0019.html)。
-    2. 920 新型号请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/cca/devg/Kunpeng_ommercialcryptography_16_0015.html)
-2. 下载`tee-gp-proxy`仓库，其中包含`vtzdriver`与`virtio`(5.10内核)源码。
+1. 下载`tee-gp-proxy`仓库，其中包含`vtzdriver`与`virtio`(5.10内核)源码。
     ```
     git clone https://gitee.com/openeuler/tee-gp-proxy.git
     git clone https://gitee.com/openeuler/libboundscheck.git
     cp -rf libboundscheck tee-gp-proxy/trustzone-awared-vm/VM/vtzdriver
     ```
+2. `itrustee_client`编译安装
+    1. 进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改。
+        1. ``` git am tee-gp-proxy/trustzone-awared-vm/Host/client-0001-add-vm-uid-in-TC_NS_ClientContext.patch```
+    2. 920 机型请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/trustzone/fg/kunpengtrustzone_20_0019.html)。
+    3. 920 新型号请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/cca/devg/Kunpeng_ommercialcryptography_16_0015.html)
 3.	编译`virtio_console.ko`并加载（仅5.10内核需要执行此步骤）
 	1. 编译`virtio_console` 并替换内核默认的`virtio_console`！
     ```
