@@ -82,6 +82,7 @@ typedef struct {
             uint32_t file_h_addr;
         } memref;
     };
+    unsigned int vm_uid;
 } TC_NS_ClientContext;
 
 typedef struct {

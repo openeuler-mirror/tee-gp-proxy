@@ -1,0 +1,40 @@
+From 970a4e5fe73cb127edc2bdb0b1ba6ba49ccce871 Mon Sep 17 00:00:00 2001
+From: ZhangQiang <gongchangsui@outlook.com>
+Date: Fri, 28 Nov 2025 11:29:28 +0800
+Subject: [PATCH] add vm uid in TC_NS_ClientContext
+
+Signed-off-by: ZhangQiang <gongchangsui@outlook.com>
+---
+ Makefile               | 1 +
+ src/inc/tc_ns_client.h | 3 +++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/Makefile b/Makefile
+index 9fd8baa..0c04451 100644
+--- a/Makefile
++++ b/Makefile
+@@ -13,6 +13,7 @@ COMMON_CFLAGS :=
+ ifeq ($(WITH_CONFIDENTIAL_CONTAINER), true)
+ 	COMMON_CFLAGS += -DCONFIG_PATH_NAMED_SOCKET=\"/var/itrustee/teecd/teecd.sock\"
+ endif
++COMMON_CFLAGS += -DVM_DEPLOY
+ 
+ ifeq ($(TOOL_CHAIN),1)
+ 	CC := aarch64-linux-gnu-gcc
+diff --git a/src/inc/tc_ns_client.h b/src/inc/tc_ns_client.h
+index 9608482..7ec1828 100644
+--- a/src/inc/tc_ns_client.h
++++ b/src/inc/tc_ns_client.h
+@@ -83,6 +83,9 @@ typedef struct {
+             uint32_t file_h_addr;
+         } memref;
+     };
++#ifdef VM_DEPLOY
++    unsigned int vm_uid;
++#endif
+ } TC_NS_ClientContext;
+ 
+ typedef struct {
+-- 
+2.27.0
+
