@@ -96,18 +96,18 @@
     ```shell
     yum install make kernel-devel-$(uname -r) kernel-headers-$(uname -r) git gcc openssl-devel 
     ```
-1. 下载`tee-gp-proxy`仓库，其中包含`vtzdriver`与`virtio`(5.10内核)源码。
+2. 下载`tee-gp-proxy`仓库，其中包含`vtzdriver`与`virtio`(5.10内核)源码。
     ```
     git clone https://gitee.com/openeuler/tee-gp-proxy.git
     git clone https://gitee.com/openeuler/libboundscheck.git
     cp -rf libboundscheck tee-gp-proxy/trustzone-awared-vm/VM/vtzdriver
     ```
-2. `itrustee_client`编译安装
+3. `itrustee_client`编译安装
     1. 进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改。
         1. ``` git am tee-gp-proxy/trustzone-awared-vm/Host/client-0001-add-vm-uid-in-TC_NS_ClientContext.patch```
     2. 920 机型请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/trustzone/fg/kunpengtrustzone_20_0019.html)。
     3. 920 新型号请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/cca/devg/Kunpeng_ommercialcryptography_16_0015.html)
-3.	编译`virtio_console.ko`并加载（仅5.10内核需要执行此步骤）
+4.	编译`virtio_console.ko`并加载（仅5.10内核需要执行此步骤）
 	1. 编译`virtio_console` 并替换内核默认的`virtio_console`！
     ```shell
     cd tee-gp-proxy/trustzone-awared-vm/VM/virtio/char
@@ -117,17 +117,6 @@
     rmmod virtio_console
     insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/virtio_console.ko
     ```
-    2. 设置虚机启动自动替换`virtio_console`模块
-    - 编辑`rc.local`文件
-        ```shell
-        vi /etc/rc.local
-        ```
-    - 在文件末尾添加如下内容
-
-        ```shell
-        rmmod virtio_console
-        insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/virtio_console.ko
-        ```
 5.	编译`vtzdriver`并加载`vtzfdriver.ko`, `vtzfdriver`加载后不可卸载, 如需卸载请重启
     ```bash
     cd tee-gp-proxy/trustzone-awared-vm/VM/vtzdriver
@@ -147,7 +136,14 @@ nohup /usr/bin/teecd &
 nohup /usr/bin/vtz_proxy &
 ```
 #### 在`VM`中需要执行以下命令
+
+1. 重新加载`virtio_console`模块（仅5.10内核需要执行此步骤）
 ```shell
+rmmod virtio_console
+insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/virtio_console.ko
+```
+2. 加载`vtzfdriver.ko`和`teecd`
+```bash
 insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/vtzfdriver.ko
 nohup /usr/bin/teecd &
 ```
