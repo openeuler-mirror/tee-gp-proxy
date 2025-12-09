@@ -21,7 +21,7 @@
 #include <unistd.h>
 #include "serial_port.h"
 
-#define THREAD_POOL_SIZE 196
+#define THREAD_POOL_SIZE 2048
 #define TASK_QUEUE_SIZE 32
 #define DEFAULT_TIME_SEC  30
 #define CPU_SET_NUM 8
