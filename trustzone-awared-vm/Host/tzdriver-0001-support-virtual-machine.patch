@@ -1,9 +1,8 @@
-From 206efb3f35e8c4a6b3bcf13c7b3ab3a2bb3500cd Mon Sep 17 00:00:00 2001
+From db1416b9a170095d4d896728e55d0841cf458e2f Mon Sep 17 00:00:00 2001
 From: gongchangsui <gongchangsui@outlook.com>
-Date: Sat, 29 Nov 2025 01:14:07 -0500
-Subject: [PATCH] support virtual machine
+Date: Tue, 9 Dec 2025 04:50:47 -0500
+Subject: [PATCH 2/2] support virtual machine
 
-Signed-off-by: gongchangsui <gongchangsui@outlook.com>
 ---
  Makefile                |   1 +
  auth/auth_base_impl.c   |  14 ++
@@ -13,7 +12,7 @@ Signed-off-by: gongchangsui <gongchangsui@outlook.com>
  core/gp_ops.c           | 335 +++++++++++++++++++++++++++++++++++++++++++-----
  core/gp_ops.h           |   4 +
  core/session_manager.c  | 133 +++++++++++++++++--
- core/shared_mem.c       |  30 +++++
+ core/shared_mem.c       |  29 +++++
  core/shared_mem.h       |   2 +-
  core/tc_client_driver.c | 117 +++++++++++++++--
  core/tc_client_driver.h |   1 +
@@ -21,7 +20,7 @@ Signed-off-by: gongchangsui <gongchangsui@outlook.com>
  tc_ns_client.h          |   2 +
  teek_ns_client.h        |   3 +
  tlogger/tlogger.c       |  54 +++++++-
- 16 files changed, 664 insertions(+), 67 deletions(-)
+ 16 files changed, 663 insertions(+), 67 deletions(-)
 
 diff --git a/Makefile b/Makefile
 index ac40f80..1a07db1 100644
@@ -36,7 +35,7 @@ index ac40f80..1a07db1 100644
  EXTRA_CFLAGS += -DCONFIG_TEE_UPGRADE -DCONFIG_TEE_REBOOT -DCONFIG_CONFIDENTIAL_TEE
  EXTRA_CFLAGS += -I$(PWD)/tzdriver_internal/tee_reboot
 diff --git a/auth/auth_base_impl.c b/auth/auth_base_impl.c
-index 9be75c0..f57b41a 100644
+index 552b473..ccd942d 100644
 --- a/auth/auth_base_impl.c
 +++ b/auth/auth_base_impl.c
 @@ -336,11 +336,25 @@ int check_teecd_auth(void)
@@ -627,7 +626,7 @@ index bc2446e..05bdcd2 100644
  
  #endif
 diff --git a/core/session_manager.c b/core/session_manager.c
-index 6b7de16..e218ebd 100644
+index 0195519..1c98bcc 100644
 --- a/core/session_manager.c
 +++ b/core/session_manager.c
 @@ -606,7 +606,7 @@ static struct tc_ns_service *tc_ref_service_in_dev(struct tc_ns_dev_file *dev,
@@ -817,14 +816,13 @@ index 6b7de16..e218ebd 100644
  }
  
 diff --git a/core/shared_mem.c b/core/shared_mem.c
-index ab815ac..860fd87 100644
+index cb5102d..4cbb0b2 100644
 --- a/core/shared_mem.c
 +++ b/core/shared_mem.c
-@@ -120,6 +120,36 @@ void release_shared_mem_page(uint64_t buf, uint32_t buf_size)
- 		put_page(page);
+@@ -126,6 +126,35 @@ void release_shared_mem_page(uint64_t buf, uint32_t buf_size)
+ #endif
  	}
  }
-+
 +
 +void release_vm_shared_mem_page(uint64_t buf, uint32_t buf_size, uint32_t vm_page_size)
 +{
