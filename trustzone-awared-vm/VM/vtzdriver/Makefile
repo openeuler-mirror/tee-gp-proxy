@@ -12,7 +12,7 @@ vtzfdriver-objs += libboundscheck/src/memcpy_s.o libboundscheck/src/memset_s.o l
 libboundscheck/src/memmove_s.o libboundscheck/src/strcat_s.o libboundscheck/src/strncat_s.o libboundscheck/src/strtok_s.o \
 libboundscheck/src/securecutil.o libboundscheck/src/secureprintoutput_a.o libboundscheck/src/snprintf_s.o libboundscheck/src/vsnprintf_s.o
 # endif
-vtzfdriver-objs += tlogger.o serialport.o tee_info.o reserved_shm.o process_data.o block_pages.o
+vtzfdriver-objs += tlogger.o serialport.o tee_info.o reserved_shm.o process_data.o block_pages.o reg_mem_ht.o
 
 KERN_VER = $(shell uname -r)
 KERN_DIR = /lib/modules/$(KERN_VER)/build

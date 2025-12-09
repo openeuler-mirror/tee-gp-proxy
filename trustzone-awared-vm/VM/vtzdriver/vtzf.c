@@ -23,6 +23,7 @@
 #include "tc_ns_log.h"
 #include "teek_client_constants.h"
 #include "block_pages.h"
+#include "reg_mem_ht.h"
 
 #define CONFIG_CONFIDENTIAL_CONTAINER
 
@@ -694,7 +695,41 @@ static void update_free_params_sess(struct tc_ns_client_context *clicontext,
 	struct tc_ns_client_context *context, uintptr_t addrs[4][3]);
 static void free_for_params(struct tc_ns_client_context *clicontext,
 	uintptr_t addrs[4][3]);
-	
+
+static void keep_reg_mem(struct_packet_cmd_session *packet_cmd, uintptr_t addrs[4][3], unsigned int session_id) 
+{
+	struct reg_mem *ptr = NULL; 
+	int index;
+	uint32_t param_type;
+	for (index = 0; index < TEE_PARAM_NUM; index++) {
+		param_type = teec_param_type_get(packet_cmd->cliContext.param_types, index);
+		if (param_type != TEEC_MEMREF_REGISTER_INOUT) {
+			continue;
+		}
+		if(ptr == NULL) {
+			ptr = (struct reg_mem *)kzalloc(sizeof(struct reg_mem), GFP_KERNEL);
+			if (ptr == NULL) {
+				tloge("kzalloc failed for reg mem in open session\n");
+				return;
+			}
+		}
+		ptr->block_addrs[index] = packet_cmd->block_addrs[index];
+		ptr->block_size[index] = packet_cmd->block_size[index];
+		if (memcpy_s(ptr->addrs[index], 3 * sizeof(uintptr_t), addrs[index], 3 * sizeof(uintptr_t)) ) {
+				tloge("memcpy_s faild in keep_reg_mem\n");
+				kfree(ptr);
+				return;
+		}
+	}
+	if (ptr == NULL) return;
+	ptr->page_size = packet_cmd->vm_page_size;
+	ptr->session_id = session_id;
+	if (add_reg_mem(ptr)) {
+		tloge("add ret mem failed\n");
+		return;
+	}
+}
+
 static int tc_ns_open_session(struct vtzf_dev_file *dev_file,
 	struct tc_ns_client_context *clicontext)
 {
@@ -784,6 +819,7 @@ static int tc_ns_open_session(struct vtzf_dev_file *dev_file,
 			packet_rsp.cliContext.file_buffer = tmp_buffer;
 			update_free_params_sess(&packet_rsp.cliContext, clicontext, addrs);
 			*clicontext = packet_rsp.cliContext;
+			keep_reg_mem(&packet_cmd, addrs, clicontext->session_id);
 		} else {
 			tloge("open session failed ret is %d\n", ret);
 			clicontext->returns = packet_rsp.cliContext.returns;
@@ -821,6 +857,7 @@ static int tc_ns_close_session(struct vtzf_dev_file *dev_file, void __user *argp
 	uint32_t seq_num = get_seq_num(0);
 	struct_packet_cmd_session packet_cmd = {0};
 	struct_packet_rsp_general packet_rsp = {0};
+	uintptr_t addrs[4][3];
 	
 	if (!argp || !dev_file || dev_file->ptzfd <= 0) {
 		tloge("invalid params\n");
@@ -845,6 +882,20 @@ static int tc_ns_close_session(struct vtzf_dev_file *dev_file, void __user *argp
 		}
 	} else if(ret != -EINTR) {
 		tloge("send to proxy failed ret is %d\n", ret);
+	}
+
+	struct reg_mem *  ptr = find_reg_mem(packet_cmd.cliContext.session_id);
+	if (ptr) {
+		tlogd("find reg mem when close, session id is %u\n", packet_cmd.cliContext.session_id);
+		if (memcpy_s(addrs, TEE_PARAM_NUM * 3 * sizeof(uintptr_t), ptr->addrs, TEE_PARAM_NUM * 3 * sizeof(uintptr_t))) {
+			tloge("copy addrs failed in close session\n");
+			return -EFAULT;
+		}
+		free_for_params(&packet_cmd.cliContext, addrs);
+		if (del_reg_mem(packet_cmd.cliContext.session_id)) {
+			tloge("delete reg mem failed\n");
+			return -EFAULT;
+		}
 	}
 
 	return ret;
@@ -1159,6 +1210,7 @@ static int alloc_for_params(struct vtzf_dev_file *dev_file,
 	int index;
 	uint32_t param_type;
 	bool checkValue;
+	struct reg_mem * ptr = find_reg_mem(packet_cmd->cliContext.session_id);
 	for (index = 0; index < TEE_PARAM_NUM; index++) {
 		param_type = teec_param_type_get(packet_cmd->cliContext.param_types, index);
 		checkValue = (param_type == TEEC_ION_INPUT || param_type == TEEC_ION_SGLIST_INPUT);
@@ -1169,10 +1221,23 @@ static int alloc_for_params(struct vtzf_dev_file *dev_file,
 			ret = alloc_for_ref_mem(dev_file , packet_cmd, index, addrs);
 		else if (teec_value_type(param_type, INOUT) || checkValue)
 			ret = alloc_for_val_mem(&packet_cmd->cliContext, index, addrs);
-		else if (param_type == TEEC_MEMREF_SHARED_INOUT || 
-					param_type == TEEC_MEMREF_REGISTER_INOUT)
-			ret = alloc_for_share_mem(dev_file , packet_cmd, index, addrs);
-		else
+		else if (param_type == TEEC_MEMREF_SHARED_INOUT )
+			ret = alloc_for_share_mem(dev_file , packet_cmd, index, addrs); 
+		else if (param_type == TEEC_MEMREF_REGISTER_INOUT) {
+			tlogd("cmd use register memeory!\n");
+			if (!ptr) {
+			    tloge("can not find register memeory of session id %u\n", packet_cmd->cliContext.session_id);
+			    ret = -EFAULT;
+			    goto ERR;
+			}
+			packet_cmd->block_addrs[index] = ptr->block_addrs[index];
+			packet_cmd->block_size[index] = ptr->block_size[index];
+			if (memcpy_s(addrs[index], 3 * sizeof(uintptr_t), ptr->addrs[index], 3 * sizeof(uintptr_t))) {
+				return -EFAULT;
+			}
+			packet_cmd->vm_page_size = ptr->page_size;
+		}
+		else 
 			tlogd("param type = TEEC_NONE\n");
 		if (ret != 0) {
 			goto ERR;
@@ -1270,8 +1335,7 @@ static void update_free_params(struct tc_ns_client_context *clicontext,
 				ret = -EFAULT;
 			if (copy_to_user((void *)user_addr_val_b, &val_b, sizeof(uint32_t)) != 0)
 				ret = -EFAULT;
-		} else if (param_type == TEEC_MEMREF_SHARED_INOUT || 
-					param_type == TEEC_MEMREF_REGISTER_INOUT){
+		} else if (param_type == TEEC_MEMREF_SHARED_INOUT){
 			pages_buf = (void *)addrs[index][1];
 			pages_buf_size = (uint32_t)addrs[index][0];
 			release_shared_mem_page((uint64_t)pages_buf, pages_buf_size);
@@ -1337,8 +1401,7 @@ static void update_free_params_sess(struct tc_ns_client_context *clicontext,
 				ret = -EFAULT;
 			if (copy_to_user((void *)user_addr_val_b, &val_b, sizeof(uint32_t)) != 0)
 				ret = -EFAULT;
-		} else if (param_type == TEEC_MEMREF_SHARED_INOUT || 
-					param_type == TEEC_MEMREF_REGISTER_INOUT){
+		} else if (param_type == TEEC_MEMREF_SHARED_INOUT){
 			pages_buf = (void *)addrs[index][1];
 			pages_buf_size = (uint32_t)addrs[index][0];
 			release_shared_mem_page((uint64_t)pages_buf, pages_buf_size);
