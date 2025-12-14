@@ -19,6 +19,7 @@
 #include "thread_pool.h"
 #include "virt.h"
 
+extern ThreadPool g_pool;
 struct serial_port_list g_serial_list;
 struct pollfd g_pollfd[SERIAL_PORT_NUM];
 struct timeval g_last_time, g_cur_time;
@@ -147,7 +148,7 @@ void release_vm_file(struct serial_port_file *serial_port, int i)
     serial_port->opened = false;
     serial_port->offset = 0;
     if (serial_port->vm_file) {
-        destroy_vm_file(serial_port->vm_file);
+        thread_pool_submit(&g_pool, destroy_vm_file, (void *)(serial_port->vm_file));
     }
     serial_port->vm_file = NULL;
 }

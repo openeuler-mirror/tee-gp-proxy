@@ -223,14 +223,15 @@ END:
     return tmp;
 }
 
-int destroy_vm_file(struct vm_file *vm_file)
+void *destroy_vm_file(void *args)
 {
     int ret = 0;
     struct ListNode *ptr = NULL;
     struct ListNode *n = NULL;
     struct fd_file *fd_p = NULL;
+    struct vm_file * vm_file = (struct vm_file *)args;
     if (!vm_file)
-        return 0;
+        return NULL;
 
     // release agent in vm
     pthread_mutex_lock(&vm_file->agents_lock);
@@ -258,7 +259,7 @@ int destroy_vm_file(struct vm_file *vm_file)
     ListRemoveEntry(&(vm_file->head));
     free(vm_file);
     pthread_mutex_unlock(&g_mutex_vm);
-    return ret;
+    return NULL;
 }
 
 void kill_open_session_thd(TimeOut *t_out)
