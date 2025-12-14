@@ -40,9 +40,6 @@ void do_free_agent(struct_agent_args *agent_args)
     close(agent_args->dev_fd);
     agent_args->dev_fd = -1;
 
-    if (agent_args->thd != 0) {
-        thread_pool_submit(&g_pool, Kill_useless_thread, (void *)(agent_args->thd));
-    }
     pthread_spin_destroy(&agent_args->spinlock);
     free(agent_args);
 }

@@ -32,24 +32,6 @@ void add_session_list(int ptzfd, struct vm_file *vm_fp, TC_NS_ClientContext *cli
     pthread_mutex_unlock(&fd_p->session_lock);
 }
 
-void *Kill_useless_thread(void *args)
-{
-    pthread_t tid = (pthread_t)args;
-    restart_pool_thread(&g_pool, tid);
-    return NULL;
-}
-
-static void try_kill_thread(struct session *sp)
-{
-    if (!sp) {
-        tloge("session is null\n");
-        return;
-    }
-    if (sp->thread_id != 0 && get_thread_session_id(&g_pool, sp->thread_id, sp->session_id)) {
-        thread_pool_submit(&g_pool, Kill_useless_thread, (void *)(sp->thread_id));
-    }
-}
-
 static void do_remove_session(unsigned int session_id, struct fd_file *fd_p)
 {
     struct ListNode *ptr = NULL;
@@ -64,7 +46,6 @@ static void do_remove_session(unsigned int session_id, struct fd_file *fd_p)
             struct session *sp = CONTAINER_OF(ptr, struct session, head);
             if (sp->session_id == session_id) {
                 ListRemoveEntry(&(sp->head));
-                try_kill_thread(sp);
                 free(sp);
             }
         }
@@ -153,15 +134,12 @@ static void do_remove_fd(struct fd_file *fd_p)
         LIST_FOR_EACH_SAFE(ptr, n, &fd_p->session_head) {
             struct session *sp = CONTAINER_OF(ptr, struct session, head);
             ListRemoveEntry(&(sp->head));
-            try_kill_thread(sp);
             free(sp);
         }
     }
     pthread_mutex_unlock(&fd_p->session_lock);
-    //if (fd_p->fd_type != TC_PRIVATE_DEV_FLAG) {
-        close(fd_p->ptzfd);
-        fd_p->ptzfd = -1;
-    //}
+    close(fd_p->ptzfd);
+    fd_p->ptzfd = -1;
 }
 
 
@@ -225,7 +203,6 @@ END:
 
 void *destroy_vm_file(void *args)
 {
-    int ret = 0;
     struct ListNode *ptr = NULL;
     struct ListNode *n = NULL;
     struct fd_file *fd_p = NULL;
@@ -260,17 +237,6 @@ void *destroy_vm_file(void *args)
     free(vm_file);
     pthread_mutex_unlock(&g_mutex_vm);
     return NULL;
-}
-
-void kill_open_session_thd(TimeOut *t_out)
-{
-    struct_packet_rsp_session packet_rsp;
-    pthread_t tid = t_out->tid;
-    packet_rsp.packet_size = sizeof(packet_rsp);
-    packet_rsp.seq_num = t_out->seq_num + 1;
-    packet_rsp.ret = -1;
-    thread_pool_submit(&g_pool, Kill_useless_thread, (void *)tid);
-    (void)send_to_vm(t_out->serial_port, &packet_rsp, sizeof(packet_rsp));
 }
 
 int set_start_time(pthread_t tid, int seq_num,
