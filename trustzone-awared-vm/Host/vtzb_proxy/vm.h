@@ -59,10 +59,8 @@ int remove_fd(int ptzfd, struct vm_file *vm_fp);
 void add_fd_list(int fd, uint32_t fd_type, struct vm_file *vm_fp);
 void remove_session(int ptzfd, int session_id, struct vm_file *vm_fp);
 void add_session_list(int ptzfd, struct vm_file *vm_fp, TC_NS_ClientContext *clicontext);
-int destroy_vm_file(struct vm_file *vm_file);
+void *destroy_vm_file(void *args);
 struct vm_file *create_vm_file(uint32_t vmid);
-void *Kill_useless_thread(void *args);
 int set_start_time(pthread_t tid, int seq_num, struct serial_port_file *serial_port);
 void remove_start_time(int i);
-void kill_open_session_thd(TimeOut *t_out);
 #endif

@@ -10,6 +10,8 @@
 #include "block_pages.h"
 #include "tc_ns_log.h"
 #include "tlogger.h"
+#include <linux/kernel.h>
+#define TIMEOUT_60_SECONDS (60 * HZ)
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(5, 0, 0)   
 #include <linux/timekeeping.h>
@@ -739,13 +741,16 @@ int send_to_proxy(void * wrt_buf, size_t size_wrt_buf, void * rd_buf, size_t siz
 		goto err;
 	wake_up_wr_thread();
 
-	ret = wait_event_interruptible(event_data->wait_event_wq,
-		event_data->ret_flag);
-	if (ret != 0) {
-		tlogw("wait event interruptible failed!, ret = %d\n", ret);
+	ret = wait_event_interruptible_timeout(event_data->wait_event_wq,
+		event_data->ret_flag, TIMEOUT_60_SECONDS * 5);
+	if (ret > 0) {
+		ret = event_data->rd_ret;
+	} else if (ret == 0) {
+		tloge("wait event interruptible time out, seq_num is %u\n", seq_num);
 		ret = -EINTR;
 	} else {
-		ret = event_data->rd_ret;
+		tlogw("wait event interruptible failed!, ret = %d\n", ret);
+		ret = -EINTR;
 	}
 	destroy_event_data(event_data);
 	return ret;

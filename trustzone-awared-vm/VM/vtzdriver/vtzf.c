@@ -695,6 +695,7 @@ static void update_free_params_sess(struct tc_ns_client_context *clicontext,
 	struct tc_ns_client_context *context, uintptr_t addrs[4][3]);
 static void free_for_params(struct tc_ns_client_context *clicontext,
 	uintptr_t addrs[4][3]);
+static void free_for_params_reg_mem(uintptr_t addrs[4][3]);
 
 static void keep_reg_mem(struct_packet_cmd_session *packet_cmd, uintptr_t addrs[4][3], unsigned int session_id) 
 {
@@ -891,7 +892,7 @@ static int tc_ns_close_session(struct vtzf_dev_file *dev_file, void __user *argp
 			tloge("copy addrs failed in close session\n");
 			return -EFAULT;
 		}
-		free_for_params(&packet_cmd.cliContext, addrs);
+		free_for_params_reg_mem(addrs);
 		if (del_reg_mem(packet_cmd.cliContext.session_id)) {
 			tloge("delete reg mem failed\n");
 			return -EFAULT;
@@ -1438,6 +1439,22 @@ static void free_for_params(struct tc_ns_client_context *clicontext,
 			/* nothing */
 		}
 	}	
+}
+
+static void free_for_params_reg_mem(uintptr_t addrs[4][3])
+{
+	int index;
+	uintptr_t buf;
+
+	void *pages_buf = NULL;
+	uint32_t pages_buf_size = 0;
+	for (index = 0; index < TEE_PARAM_NUM; index++) {
+		pages_buf = (void *)addrs[index][1];
+		pages_buf_size = (uint32_t)addrs[index][0];
+		if (pages_buf == NULL)
+			continue;
+		release_shared_mem_page((uint64_t)pages_buf, pages_buf_size);
+	}
 }
 
 static int tc_ns_send_cmd(struct vtzf_dev_file *dev_file,
