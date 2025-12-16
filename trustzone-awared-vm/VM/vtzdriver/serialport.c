@@ -20,6 +20,7 @@ struct timeval start, end;
 #endif
 
 #define SEQ_NUM_AGENT_MAX 65536u
+#define PACKET_LEN_MAX 32 * 1024
 extern int g_log_ret_flag;
 extern wait_queue_head_t g_log_wait_event_wq;
 uint32_t g_seq_num_normal;
@@ -355,7 +356,7 @@ static int do_write(struct file *fp_serialport, void *buf, uint32_t buf_size)
 	int ret = 0;
 	loff_t off =0;
 
-	if (!fp_serialport || !buf || buf_size > 32 * 1024)
+	if (!fp_serialport || !buf || buf_size > PACKET_LEN_MAX)
 		return -EINVAL;
 
 	ret = kernel_write(fp_serialport, buf, buf_size, &off);
@@ -727,7 +728,10 @@ int send_to_proxy(void * wrt_buf, size_t size_wrt_buf, void * rd_buf, size_t siz
 	struct vhc_event_data *event_data;
 
 	tlogd("send data, wr_len %ld, rd_len %ld, seq %d\n", size_wrt_buf, size_rd_buf, seq_num);
-
+	if(size_wrt_buf > PACKET_LEN_MAX) {
+		tloge("send data length over max, size is %u, seq_num is %u\n", size_wrt_buf, seq_num);
+		return -EINTR;
+	}
 	ret = creat_wr_data(wrt_buf, size_wrt_buf);
 	if (ret != 0) {
 		tloge("creat_wr_data failed\n");
