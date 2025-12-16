@@ -10,8 +10,6 @@
 #include "block_pages.h"
 #include "tc_ns_log.h"
 #include "tlogger.h"
-#include <linux/kernel.h>
-#define TIMEOUT_60_SECONDS (60 * HZ)
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(5, 0, 0)   
 #include <linux/timekeeping.h>
@@ -22,6 +20,7 @@ struct timeval start, end;
 #endif
 
 #define SEQ_NUM_AGENT_MAX 65536u
+#define PACKET_LEN_MAX 32 * 1024
 extern int g_log_ret_flag;
 extern wait_queue_head_t g_log_wait_event_wq;
 uint32_t g_seq_num_normal;
@@ -357,7 +356,7 @@ static int do_write(struct file *fp_serialport, void *buf, uint32_t buf_size)
 	int ret = 0;
 	loff_t off =0;
 
-	if (!fp_serialport || !buf || buf_size > 32 * 1024)
+	if (!fp_serialport || !buf || buf_size > PACKET_LEN_MAX)
 		return -EINVAL;
 
 	ret = kernel_write(fp_serialport, buf, buf_size, &off);
@@ -729,7 +728,10 @@ int send_to_proxy(void * wrt_buf, size_t size_wrt_buf, void * rd_buf, size_t siz
 	struct vhc_event_data *event_data;
 
 	tlogd("send data, wr_len %ld, rd_len %ld, seq %d\n", size_wrt_buf, size_rd_buf, seq_num);
-
+	if(size_wrt_buf > PACKET_LEN_MAX) {
+		tloge("send data length over max, size is %u, seq_num is %u\n", size_wrt_buf, seq_num);
+		return -EINTR;
+	}
 	ret = creat_wr_data(wrt_buf, size_wrt_buf);
 	if (ret != 0) {
 		tloge("creat_wr_data failed\n");
@@ -741,16 +743,13 @@ int send_to_proxy(void * wrt_buf, size_t size_wrt_buf, void * rd_buf, size_t siz
 		goto err;
 	wake_up_wr_thread();
 
-	ret = wait_event_interruptible_timeout(event_data->wait_event_wq,
-		event_data->ret_flag, TIMEOUT_60_SECONDS * 5);
-	if (ret > 0) {
-		ret = event_data->rd_ret;
-	} else if (ret == 0) {
-		tloge("wait event interruptible time out, seq_num is %u\n", seq_num);
-		ret = -EINTR;
-	} else {
+	ret = wait_event_interruptible(event_data->wait_event_wq,
+		event_data->ret_flag);
+	if (ret != 0) {
 		tlogw("wait event interruptible failed!, ret = %d\n", ret);
 		ret = -EINTR;
+	} else {
+		ret = event_data->rd_ret;
 	}
 	destroy_event_data(event_data);
 	return ret;

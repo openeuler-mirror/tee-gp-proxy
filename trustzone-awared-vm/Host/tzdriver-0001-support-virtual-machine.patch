@@ -1,11 +1,12 @@
-From db1416b9a170095d4d896728e55d0841cf458e2f Mon Sep 17 00:00:00 2001
+From 29f94899fdf5c2f2430cd97f0715c315883e8b95 Mon Sep 17 00:00:00 2001
 From: gongchangsui <gongchangsui@outlook.com>
 Date: Tue, 9 Dec 2025 04:50:47 -0500
-Subject: [PATCH 2/2] support virtual machine
+Subject: [PATCH 1/2] support virtual machine
 
+Signed-off-by: gongchangsui <gongchangsui@outlook.com>
 ---
  Makefile                |   1 +
- auth/auth_base_impl.c   |  14 ++
+ auth/auth_base_impl.c   |  17 +++
  auth/auth_base_impl.h   |   6 +
  core/agent.c            |  19 ++-
  core/agent.h            |   6 +-
@@ -20,7 +21,7 @@ Subject: [PATCH 2/2] support virtual machine
  tc_ns_client.h          |   2 +
  teek_ns_client.h        |   3 +
  tlogger/tlogger.c       |  54 +++++++-
- 16 files changed, 663 insertions(+), 67 deletions(-)
+ 16 files changed, 666 insertions(+), 67 deletions(-)
 
 diff --git a/Makefile b/Makefile
 index ac40f80..1a07db1 100644
@@ -35,13 +36,14 @@ index ac40f80..1a07db1 100644
  EXTRA_CFLAGS += -DCONFIG_TEE_UPGRADE -DCONFIG_TEE_REBOOT -DCONFIG_CONFIDENTIAL_TEE
  EXTRA_CFLAGS += -I$(PWD)/tzdriver_internal/tee_reboot
 diff --git a/auth/auth_base_impl.c b/auth/auth_base_impl.c
-index 552b473..ccd942d 100644
+index fdc15f3..56ee47f 100644
 --- a/auth/auth_base_impl.c
 +++ b/auth/auth_base_impl.c
-@@ -336,11 +336,25 @@ int check_teecd_auth(void)
+@@ -336,11 +336,28 @@ int check_teecd_auth(void)
  
  	return CHECK_ACCESS_SUCC;
  }
++
 +int check_proxy_auth(void)
 +{
 +	int ret = check_proc_uid_path(PROXY_PATH_UID_AUTH_CTX);
@@ -51,6 +53,7 @@ index 552b473..ccd942d 100644
 +
 +	return CHECK_ACCESS_SUCC;
 +}
++
  #else
  int check_teecd_auth(void)
  {
@@ -61,11 +64,12 @@ index 552b473..ccd942d 100644
 +{
 +	return 0;
 +}
++
  #endif
  
- #ifdef CONFIG_TEE_TELEPORT_AUTH
+ bool is_hidl_or_cadaemon(void)
 diff --git a/auth/auth_base_impl.h b/auth/auth_base_impl.h
-index fe8da14..4e7c12d 100644
+index 82d950f..e06c4eb 100644
 --- a/auth/auth_base_impl.h
 +++ b/auth/auth_base_impl.h
 @@ -84,6 +84,7 @@ void mutex_crypto_hash_lock(void);
@@ -87,7 +91,7 @@ index fe8da14..4e7c12d 100644
 +
  #endif /* CLIENT_AUTH || TEECD_AUTH */
  
- #ifdef CONFIG_TEE_TELEPORT_AUTH
+ bool is_hidl_or_cadaemon(void);
 diff --git a/core/agent.c b/core/agent.c
 index d570a80..4a4972b 100644
 --- a/core/agent.c
