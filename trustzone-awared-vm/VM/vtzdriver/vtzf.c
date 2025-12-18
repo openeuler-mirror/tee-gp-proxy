@@ -725,6 +725,16 @@ static void keep_reg_mem(struct_packet_cmd_session *packet_cmd, uintptr_t addrs[
 	if (ptr == NULL) return;
 	ptr->page_size = packet_cmd->vm_page_size;
 	ptr->session_id = session_id;
+
+	struct reg_mem *  ptr_find = find_reg_mem(ptr->session_id);
+	if (ptr_find) {
+		tlogd("find reg mem when add, session id is %u\n", ptr->session_id);
+		free_for_params_reg_mem(ptr_find->addrs);
+		if (del_reg_mem(ptr_find->session_id)) {
+			tloge("delete reg mem failed\n");
+		}
+	}
+
 	if (add_reg_mem(ptr)) {
 		tloge("add ret mem failed\n");
 		return;
