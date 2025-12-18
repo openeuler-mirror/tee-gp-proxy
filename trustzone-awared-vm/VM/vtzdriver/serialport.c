@@ -269,6 +269,18 @@ int rd_thread_func(void *arg)
 	int buf_len = 0;
 	int offset = 0;
 	struct file *fp_serialport = NULL;
+	unsigned int old_f_flags;
+	void *tmp;
+
+	old_f_flags = file->filep->f_flags;
+	file->filep->f_flags |= O_NONBLOCK;
+	tmp = kzalloc(1024, GFP_KERNEL);
+	while(1) {
+		ret = kernel_read(file->filep, tmp, 1024, NULL);
+		if (ret <= 0) break;	
+	}
+	file->filep->f_flags = old_f_flags;
+
 
 	fp_serialport = file->filep;
 	while (!kthread_should_stop()) {
