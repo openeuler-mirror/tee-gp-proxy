@@ -271,14 +271,20 @@ int rd_thread_func(void *arg)
 	struct file *fp_serialport = NULL;
 	unsigned int old_f_flags;
 	void *tmp;
+	loff_t pos = 0;
 
 	old_f_flags = file->filep->f_flags;
 	file->filep->f_flags |= O_NONBLOCK;
 	tmp = kzalloc(1024, GFP_KERNEL);
+	if (tmp == NULL) {
+		return -ENOMEM;
+	}
+
 	while(1) {
-		ret = kernel_read(file->filep, tmp, 1024, NULL);
+		ret = kernel_read(file->filep, tmp, 1024, &pos);
 		if (ret <= 0) break;	
 	}
+	kfree(tmp);
 	file->filep->f_flags = old_f_flags;
 
 
@@ -741,7 +747,7 @@ int send_to_proxy(void * wrt_buf, size_t size_wrt_buf, void * rd_buf, size_t siz
 
 	tlogd("send data, wr_len %ld, rd_len %ld, seq %d\n", size_wrt_buf, size_rd_buf, seq_num);
 	if(size_wrt_buf > PACKET_LEN_MAX) {
-		tloge("send data length over max, size is %u, seq_num is %u\n", size_wrt_buf, seq_num);
+		tloge("send data length over max, size is %lu, seq_num is %u\n", size_wrt_buf, seq_num);
 		return -EINTR;
 	}
 	ret = creat_wr_data(wrt_buf, size_wrt_buf);
