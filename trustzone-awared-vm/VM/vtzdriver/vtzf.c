@@ -702,6 +702,7 @@ static void keep_reg_mem(struct_packet_cmd_session *packet_cmd, uintptr_t addrs[
 	struct reg_mem *ptr = NULL; 
 	int index;
 	uint32_t param_type;
+	struct reg_mem *ptr_find;
 	for (index = 0; index < TEE_PARAM_NUM; index++) {
 		param_type = teec_param_type_get(packet_cmd->cliContext.param_types, index);
 		if (param_type != TEEC_MEMREF_REGISTER_INOUT) {
@@ -726,7 +727,7 @@ static void keep_reg_mem(struct_packet_cmd_session *packet_cmd, uintptr_t addrs[
 	ptr->page_size = packet_cmd->vm_page_size;
 	ptr->session_id = session_id;
 
-	struct reg_mem *  ptr_find = find_reg_mem(ptr->session_id);
+	ptr_find = find_reg_mem(ptr->session_id);
 	if (ptr_find) {
 		tlogd("find reg mem when add, session id is %u\n", ptr->session_id);
 		free_for_params_reg_mem(ptr_find->addrs);
@@ -869,6 +870,7 @@ static int tc_ns_close_session(struct vtzf_dev_file *dev_file, void __user *argp
 	struct_packet_cmd_session packet_cmd = {0};
 	struct_packet_rsp_general packet_rsp = {0};
 	uintptr_t addrs[4][3];
+	struct reg_mem *ptr;
 	
 	if (!argp || !dev_file || dev_file->ptzfd <= 0) {
 		tloge("invalid params\n");
@@ -895,7 +897,7 @@ static int tc_ns_close_session(struct vtzf_dev_file *dev_file, void __user *argp
 		tloge("send to proxy failed ret is %d\n", ret);
 	}
 
-	struct reg_mem *  ptr = find_reg_mem(packet_cmd.cliContext.session_id);
+	ptr = find_reg_mem(packet_cmd.cliContext.session_id);
 	if (ptr) {
 		tlogd("find reg mem when close, session id is %u\n", packet_cmd.cliContext.session_id);
 		if (memcpy_s(addrs, TEE_PARAM_NUM * 3 * sizeof(uintptr_t), ptr->addrs, TEE_PARAM_NUM * 3 * sizeof(uintptr_t))) {
@@ -1454,10 +1456,9 @@ static void free_for_params(struct tc_ns_client_context *clicontext,
 static void free_for_params_reg_mem(uintptr_t addrs[4][3])
 {
 	int index;
-	uintptr_t buf;
-
 	void *pages_buf = NULL;
 	uint32_t pages_buf_size = 0;
+
 	for (index = 0; index < TEE_PARAM_NUM; index++) {
 		pages_buf = (void *)addrs[index][1];
 		pages_buf_size = (uint32_t)addrs[index][0];
