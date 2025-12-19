@@ -784,8 +784,8 @@ int main() {
         goto END1;
 
     while (1) {
-        check_stat_serial_port();
-        ret = safepoll(g_pollfd, SERIAL_PORT_NUM, 20*1000);
+        do_check_stat_serial_port();
+        ret = safepoll(g_pollfd, SERIAL_PORT_NUM, 2*1000);
         if (ret <= 0) {
             continue;
         }

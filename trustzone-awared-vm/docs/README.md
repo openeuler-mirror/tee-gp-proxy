@@ -4,6 +4,7 @@
     yum install gcc patch make  kernel-devel-$(uname -r) ninja-build
     yum install glib2 glib2-devel pixman-devel
     yum install openssl-devel
+    yum install libxml2-devel libvirt-devel
     ```
 2. `vtzb_proxy`编译
     ```shell
