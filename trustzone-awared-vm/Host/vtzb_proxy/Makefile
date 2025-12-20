@@ -13,9 +13,10 @@ $(TARGET_LIBSEC):
 
 APP_CFLAGS += -DSECURITY_AUTH_ENHANCE
 APP_CFLAGS += -Ilibboundscheck/include
+APP_CFLAGS += -I/usr/include/libxml2
 APP_CFLAGS += -Iinclude -Iinclude/cloud
 APP_CFLAGS += -Werror -Wall -Wextra -fstack-protector-all -Wl,-z,relro,-z,now,-z,noexecstack -s -fPIE -pie -D_FORTIFY_SOURCE=2 -O2
-APP_LDFLAGS += -lboundscheck -Llibboundscheck/lib -lpthread
+APP_LDFLAGS += -lboundscheck -Llibboundscheck/lib -lpthread -lxml2 -lvirt
 
 APP_SOURCES := ./vtzb_proxy.c \
 				./thread_pool.c \
@@ -26,6 +27,7 @@ APP_SOURCES := ./vtzb_proxy.c \
 				./agent.c \
 				./process_data.c \
 				./tlogcat.c \
+				./libvirt_api_wrap.c
 
 APP_OBJECTS := $(APP_SOURCES:.c=.o)
 

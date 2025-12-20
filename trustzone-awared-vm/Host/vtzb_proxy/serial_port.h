@@ -49,6 +49,7 @@ int send_to_vm(struct serial_port_file *serial_port, void *packet_rsp, size_t si
 void *get_rd_buf(int serial_port_fd);
 void *get_serial_port_file(int serial_port_fd);
 void check_stat_serial_port();
+void do_check_stat_serial_port();
 int check_stat_serial_port_first();
 void release_vm_file(struct serial_port_file *serial_port, int i);
 #endif

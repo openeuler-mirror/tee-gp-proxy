@@ -153,7 +153,7 @@ void release_vm_file(struct serial_port_file *serial_port, int i)
     serial_port->vm_file = NULL;
 }
 
-static void do_check_stat_serial_port()
+void do_check_stat_serial_port()
 {
     int ret;
     int i = 0;
@@ -173,6 +173,7 @@ static void do_check_stat_serial_port()
                     g_pollfd[i].fd = serial_port->sock;
                     g_serial_array[i] = serial_port;
                     create_reader_thread(serial_port, i);
+                    create_rebootmonitor_thread(serial_port, i);
                 }
             }
         } else {

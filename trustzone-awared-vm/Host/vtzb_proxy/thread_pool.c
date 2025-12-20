@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <sched.h>
 #include <sys/sysinfo.h>
+#include <sys/socket.h>
 #include <errno.h>
 #include "thread_pool.h"
 #include "serial_port.h"
@@ -15,6 +16,7 @@
 #include "vtzb_proxy.h"
 #include "debug.h"
 #include "vm.h"
+#include "libvirt_api_wrap.h"
 
 extern ThreadPool g_pool;
 ThreadFuncArgs g_thd_args[THREAD_POOL_SIZE];
@@ -195,6 +197,149 @@ void *admin_thread(void *arg)
     return NULL;
 }
 
+static __thread int reboot_flag = 0;
+static int domain_reboot_callback(virConnectPtr conn, virDomainPtr dom, void *opaque)
+{
+    (void)conn;
+    const char *name = virDomainGetName(dom);
+    struct serial_port_file *file = (struct serial_port_file *)opaque;
+    shutdown(file->sock, SHUT_RDWR);
+    reboot_flag = 1;
+    tlogi("release_vm_file1, domain name is %s ,index is %d \n", name, file->index);
+    return 0;
+}
+
+static void timeout_callback(int timer, void *opaque)
+{
+    (void)timer;
+    (void)opaque;
+    return;
+}
+
+static int life_cycle_callback(virConnectPtr conn,
+                  virDomainPtr dom,
+                  int event,
+                  int detail,
+                  void *opaque)
+{
+    (void)conn;
+    (void)opaque;
+    const char *name = virDomainGetName(dom);
+    if (name == NULL)
+        return -1;
+
+    switch (event) {
+        case VIR_DOMAIN_EVENT_STOPPED:
+            switch (detail) {
+                case VIR_DOMAIN_EVENT_STOPPED_SHUTDOWN:
+                case VIR_DOMAIN_EVENT_STOPPED_DESTROYED:
+                case VIR_DOMAIN_EVENT_STOPPED_CRASHED:
+                    reboot_flag = 1;
+                    tlogi("Shutdown & Destroyed & Crashed happend\n");
+                    break;
+                default:
+                    tlogw("Reason: Other (%d)\n", detail);
+            }
+            break;
+    }
+    return 0;
+}
+
+static void *deal_rebootmonitor_thread(void *arg)
+{
+    struct serial_port_file *serial_port = (struct serial_port_file *)arg;
+
+    virConnectPtr conn = init_virt_conn();
+    if(conn == NULL){
+        tloge("conn init failed \n");
+        return NULL;
+    }
+    // domain ptr
+    virDomainPtr domain_ptr = init_domain_by_socket_path(conn, serial_port->path);
+    if(domain_ptr == NULL){
+        tloge("domain ptr failed \n");
+        return NULL;
+    }
+
+    int lifecycleCallbackID = virConnectDomainEventRegisterAny(
+        conn,
+        domain_ptr,
+        VIR_DOMAIN_EVENT_ID_LIFECYCLE,
+        VIR_DOMAIN_EVENT_CALLBACK(life_cycle_callback),
+        NULL, NULL
+    );
+
+    int callbackID = virConnectDomainEventRegisterAny(
+        conn,
+        domain_ptr,
+        VIR_DOMAIN_EVENT_ID_REBOOT,
+        VIR_DOMAIN_EVENT_CALLBACK(domain_reboot_callback),
+        (void *)serial_port,
+        NULL
+    );
+    tlogv("callback_id %d \n", callbackID);
+    if(callbackID < 0){
+        tloge("callbackID error \n");
+        return NULL;
+    }
+
+    int timeout_id = virEventAddTimeout(10, timeout_callback, NULL, NULL);
+    tlogv("timeout_id %d \n", timeout_id);
+    if (timeout_id < 0) {
+        tloge("[Thread] Failed to add timeout\n");
+        virConnectDomainEventDeregisterAny(conn, callbackID);
+        return NULL;
+    }
+
+    while (1) {
+        if(reboot_flag == 1) {
+            if (virEventRemoveTimeout(timeout_id) == 0) {
+                tlogi("Timer %d removed successfully.\n", timeout_id);
+            }
+            if(virConnectDomainEventDeregisterAny(conn, callbackID) == 0) {
+                tlogi("Deregister reboot successfully %d \n", callbackID);
+            }
+            if(virConnectDomainEventDeregisterAny(conn, lifecycleCallbackID) == 0) {
+                tlogi("Deregister lifecycle successfully %d \n", lifecycleCallbackID);
+            }
+            if(virEventRunDefaultImpl() < 0){
+                tloge("[Thread] Event loop error\n");
+            }
+            tlogi("reboot succedd\n");
+            break;
+        }
+        if(virEventRunDefaultImpl() < 0) {
+            tloge("[Thread] Event loop error\n");
+            break;
+        }
+    }
+    reboot_flag = 0;
+    deinit_domain(domain_ptr);
+    deinit_virt_conn(conn);
+    tlogi("deinit thread \n");
+    return NULL;
+}
+
+int create_rebootmonitor_thread(struct serial_port_file *serial_port, int i)
+{
+    int ret;
+    char name[THREAD_NAME_LEN] = {0};
+    if ((ret = pthread_create(&g_pool.rebootmonitor_threads[i], NULL, deal_rebootmonitor_thread, serial_port))) {
+        tloge("create reboot monitor thread failed\n");
+        return ret;
+    }
+    sprintf(name, "reboot_%d", i);
+    if ((ret = pthread_setname_np(g_pool.rebootmonitor_threads[i], name))) {
+        tloge("set thread name failed\n");
+        return ret;
+    }
+    if ((ret = pthread_detach(g_pool.rebootmonitor_threads[i]))) {
+        tloge("thread detach failed\n");
+    }
+    return ret;
+}
+
+
 static void *deal_packet_thread(void *arg)
 {
     int ret;
@@ -211,15 +356,15 @@ static void *deal_packet_thread(void *arg)
 
         ret = read(serial_port->sock, serial_port->rd_buf + serial_port->offset, BUF_LEN_MAX_RD - serial_port->offset);
         if (ret < 0) {
+            tloge("read failed , serial_sock %d , ret %d \n", serial_port->sock, ret);
             if (errno == ECONNRESET || errno == EBADF) {
                 goto end;
             }
             tloge("read domain socket failed, err: %s\n", strerror(errno));
             continue;
-        }
-        // when vm destroy, has many zero read
-        if (ret == 0) {
-            continue;
+        } else if (ret == 0) {
+            tlogw("read domain socket return zero value \n" );
+            goto end;
         }
         buf_len = ret + serial_port->offset;
         /*
