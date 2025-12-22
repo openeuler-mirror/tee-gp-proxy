@@ -34,7 +34,7 @@ struct reg_mem * find_reg_mem(uint32_t session_id) {
     return NULL;
 }
 
-int del_reg_mem(uint32_t session_id) {
+struct reg_mem* del_reg_mem(uint32_t session_id) {
     struct reg_mem * p_reg;
     unsigned long flags;
 
@@ -44,11 +44,9 @@ int del_reg_mem(uint32_t session_id) {
             hash_del(&p_reg->node);
             spin_unlock_irqrestore(&ht_lock, flags);
             tlogd("delete success: id=%u\n", p_reg->session_id);
-            kfree(p_reg);
-            return 0;
+            return p_reg;
         }
     }
     spin_unlock_irqrestore(&ht_lock, flags);
-    tloge("delete failed: id=%u not found\n", session_id);
-    return -1;
+    return NULL;
 }

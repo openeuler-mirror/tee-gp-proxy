@@ -727,13 +727,11 @@ static void keep_reg_mem(struct_packet_cmd_session *packet_cmd, uintptr_t addrs[
 	ptr->page_size = packet_cmd->vm_page_size;
 	ptr->session_id = session_id;
 
-	ptr_find = find_reg_mem(ptr->session_id);
+	ptr_find = del_reg_mem(ptr->session_id);
 	if (ptr_find) {
 		tlogd("find reg mem when add, session id is %u\n", ptr->session_id);
 		free_for_params_reg_mem(ptr_find->addrs);
-		if (del_reg_mem(ptr_find->session_id)) {
-			tloge("delete reg mem failed\n");
-		}
+		kfree(ptr_find);
 	}
 
 	if (add_reg_mem(ptr)) {
@@ -869,7 +867,6 @@ static int tc_ns_close_session(struct vtzf_dev_file *dev_file, void __user *argp
 	uint32_t seq_num = get_seq_num(0);
 	struct_packet_cmd_session packet_cmd = {0};
 	struct_packet_rsp_general packet_rsp = {0};
-	uintptr_t addrs[4][3];
 	struct reg_mem *ptr;
 	
 	if (!argp || !dev_file || dev_file->ptzfd <= 0) {
@@ -897,18 +894,11 @@ static int tc_ns_close_session(struct vtzf_dev_file *dev_file, void __user *argp
 		tloge("send to proxy failed ret is %d\n", ret);
 	}
 
-	ptr = find_reg_mem(packet_cmd.cliContext.session_id);
+	ptr = del_reg_mem(packet_cmd.cliContext.session_id);
 	if (ptr) {
 		tlogd("find reg mem when close, session id is %u\n", packet_cmd.cliContext.session_id);
-		if (memcpy_s(addrs, TEE_PARAM_NUM * 3 * sizeof(uintptr_t), ptr->addrs, TEE_PARAM_NUM * 3 * sizeof(uintptr_t))) {
-			tloge("copy addrs failed in close session\n");
-			return -EFAULT;
-		}
-		free_for_params_reg_mem(addrs);
-		if (del_reg_mem(packet_cmd.cliContext.session_id)) {
-			tloge("delete reg mem failed\n");
-			return -EFAULT;
-		}
+		free_for_params_reg_mem(ptr->addrs);
+		kfree(ptr);
 	}
 
 	return ret;

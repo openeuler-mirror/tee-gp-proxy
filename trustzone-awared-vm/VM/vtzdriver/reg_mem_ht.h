@@ -12,4 +12,4 @@ struct reg_mem {
 };
 int add_reg_mem(struct reg_mem * p_reg);
 struct reg_mem * find_reg_mem(uint32_t session_id);
-int del_reg_mem(uint32_t session_id);
+struct reg_mem * del_reg_mem(uint32_t session_id);
