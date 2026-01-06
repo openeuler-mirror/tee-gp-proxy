@@ -40,6 +40,9 @@
 #define VTZ_GET_LOG             63
 #define VTZ_NOTHING             67
 
+#define VTZ_REGISTER_VM_VMID_NSID 69
+#define VTZ_UNREGISTER_VM_VMID_NSID 71
+
 typedef struct {
     uint32_t packet_size;
     uint32_t cmd;
@@ -59,6 +62,7 @@ typedef struct {
     uint32_t seq_num;
     uint32_t vmid;
     uint32_t flag;
+    uint32_t nsid;
 } struct_packet_cmd_open_tzd;
 
 typedef struct {
@@ -212,6 +216,7 @@ typedef struct {
     uint64_t block_addrs[4];//qemu and proxy don't use
     uint32_t block_size[4];
     unsigned long long addrs[4]; //used by ref mem mmap
+    uint32_t nsid;
     TC_NS_ClientContext cliContext;
 } struct_packet_cmd_session;
 
@@ -289,4 +294,8 @@ typedef struct {
     uint32_t ret;
 } struct_packet_rsp_nothing;
 
+typedef struct {
+    uint32_t nsid;
+    uint32_t vmid;
+} struct_vm_group_info;
 #endif

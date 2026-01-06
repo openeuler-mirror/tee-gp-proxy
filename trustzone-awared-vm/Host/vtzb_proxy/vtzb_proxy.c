@@ -44,18 +44,21 @@ static void open_tzdriver(struct_packet_cmd_open_tzd *packet_cmd,
     struct vm_file *vm_fp = NULL;
     packet_rsp.seq_num = packet_cmd->seq_num + 1;
     packet_rsp.packet_size = sizeof(packet_rsp);
-    packet_rsp.vmid = packet_cmd->vmid;
+    packet_rsp.vmid = serial_port->vm_file->vmpid;
+    struct_vm_group_info vm_info;
+    vm_info.vmid = serial_port->vm_file->vmpid;
+    vm_info.nsid = packet_cmd->nsid;
 
     if (packet_cmd->flag == TLOG_DEV_THD_FLAG) {
         if (!serial_port->vm_file || !serial_port->vm_file->log_fd) {
             fd = open(TC_LOGGER_DEV_NAME, O_RDONLY);
-            ret = ioctl(fd, TEELOGGER_SET_VM_FLAG, packet_cmd->vmid);
+            ret = ioctl(fd, TEELOGGER_SET_VM_FLAG, &vm_info);
         } else {
             fd = serial_port->vm_file->log_fd;
         }
     } else if(packet_cmd->flag == TLOG_DEV_FLAG) {
             fd = open(TC_LOGGER_DEV_NAME, O_RDONLY);
-            ret = ioctl(fd, TEELOGGER_SET_VM_FLAG, packet_cmd->vmid);
+            ret = ioctl(fd, TEELOGGER_SET_VM_FLAG, &vm_info);
     } else{
         switch (packet_cmd->flag)
         {
@@ -72,10 +75,10 @@ static void open_tzdriver(struct_packet_cmd_open_tzd *packet_cmd,
             break;
         }
         if (fd != -1)
-            ret = ioctl(fd, TC_NS_CLIENT_IOCTL_SET_VM_FLAG, packet_cmd->vmid);
+            ret = ioctl(fd, TC_NS_CLIENT_IOCTL_SET_VM_FLAG, &vm_info);
     }
 
-    tlogv("vmid %d flag %d open tzdriver, fd %d\n", packet_cmd->vmid, packet_cmd->flag, fd);
+    tlogd("vmid %d, proxy-vmid %u flag %d open tzdriver, fd %d, nsid is %u\n", packet_cmd->vmid, serial_port->vm_file->vmpid, packet_cmd->flag, fd, packet_cmd->nsid);
     packet_rsp.ptzfd = fd;
     if (fd < 0) {
         tloge("open tee client dev failed, fd is %d\n", fd);
@@ -86,12 +89,7 @@ static void open_tzdriver(struct_packet_cmd_open_tzd *packet_cmd,
 
 END:
     if (fd > 0) {
-        if (!serial_port->vm_file) {
-            vm_fp = create_vm_file(packet_cmd->vmid);
-            serial_port->vm_file = vm_fp;
-        } else {
-            vm_fp = serial_port->vm_file;
-        }
+        vm_fp = serial_port->vm_file;
         add_fd_list(fd, packet_cmd->flag, vm_fp);
         if (packet_cmd->flag == TLOG_DEV_THD_FLAG) {
             vm_fp->log_fd = fd;
@@ -216,8 +214,17 @@ static void open_session(struct_packet_cmd_session *packet_cmd,
     int index;
     struct_packet_rsp_session packet_rsp;
     ClientParam params[TEEC_PARAM_NUM];
+    struct_vm_group_info vm_info;
     packet_rsp.seq_num = packet_cmd->seq_num + 1;
     packet_rsp.packet_size = sizeof(packet_rsp);
+    vm_info.vmid = serial_port->vm_file->vmpid;
+    vm_info.nsid = packet_cmd->nsid;
+    tlogd("proxy-vmid %u nsid is %u\n", serial_port->vm_file->vmpid, packet_cmd->nsid);
+    ret = ioctl(packet_cmd->ptzfd, TC_NS_CLIENT_IOCTL_SET_VM_FLAG, &vm_info);
+    if (ret != 0) {
+        tloge("set vmid %u, nsid %u failed, ret is %d",serial_port->vm_file->vmpid, packet_cmd->nsid, ret);
+        goto END;
+    }
     index = set_start_time(pthread_self(), packet_cmd->seq_num, serial_port);
     if (!process_address_sess(packet_cmd, params, serial_port->vm_file)) {
         set_thread_id(packet_cmd->ptzfd, packet_cmd->cliContext.session_id, 1, serial_port->vm_file);
@@ -227,6 +234,7 @@ static void open_session(struct_packet_cmd_session *packet_cmd,
         process_address_end_sess(packet_cmd, params);
     }
     remove_start_time(index);
+END:
     packet_rsp.ret = ret;
     packet_rsp.cliContext = packet_cmd->cliContext;
     if (ret == 0)
@@ -681,6 +689,38 @@ static void vtz_nothing(struct_packet_cmd_nothing *packet_cmd,
     }
 }
 
+static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
+    struct serial_port_file *serial_port)
+{
+    int ret;
+    struct_packet_rsp_open_tzd packet_rsp;
+    struct_vm_group_info vm_info;
+    packet_rsp.seq_num = packet_cmd->seq_num + 1;
+    packet_rsp.packet_size = sizeof(packet_rsp);
+    packet_rsp.vmid = serial_port->vm_file->vmpid;
+    serial_port->vm_file->nsid = packet_cmd->nsid;
+
+    int fd = open(TC_TEECD_PRIVATE_DEV_NAME, O_RDWR);
+    if (fd < 0) {
+        tloge("open %s failed\n", TC_TEECD_PRIVATE_DEV_NAME);
+	ret = -1;
+	goto END;
+    }
+    vm_info.vmid = serial_port->vm_file->vmpid;
+    vm_info.nsid = packet_cmd->nsid;
+    ret = ioctl(fd, TC_NS_CLIENT_IOCTL_REGISTER_VM_VMID_NSID, &vm_info);
+    if (!ret) {
+        tloge("vtz register nsid vmid failed vmid = %d, nsid = %d, ret = %d\n", packet_cmd->vmid, packet_cmd->nsid, ret);
+    }
+    close(fd);
+END:
+    packet_rsp.ret = ret;
+    ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
+    if (ret != sizeof(packet_rsp)) {
+        tloge("vtz register nsid vmid send to vm failed\n");
+    }
+    return;
+}
 
 void *thread_entry(void *args)
 {
@@ -693,6 +733,11 @@ void *thread_entry(void *args)
 
     struct_packet_cmd_nothing *p = (struct_packet_cmd_nothing *)rd_buf;
     tlogd("vm %u cmd %u, size %u, seq %u\n", data->vmid, p->cmd, p->packet_size, p->seq_num);
+
+    if (ui32_cmd == VTZ_REGISTER_VM_VMID_NSID) {
+        (void)vtz_register_nsid_vmid((struct_packet_cmd_open_tzd *)rd_buf, serial_port);
+        goto END;
+    }
 
     if (ui32_cmd == VTZ_OPEN_TZD) {
         (void)open_tzdriver((struct_packet_cmd_open_tzd *)rd_buf, serial_port);

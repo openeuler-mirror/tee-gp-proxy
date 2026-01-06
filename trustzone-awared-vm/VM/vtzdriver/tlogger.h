@@ -56,13 +56,14 @@
 #define TEELOGGER_GET_TEE_INFO \
 	_IOR(LOGGERIOCTL, GET_TEE_INFO_BASE, struct tc_ns_tee_info)
 
-#define NEVER_USED_LEN 28U
+#define NEVER_USED_LEN 24U
 #define LOG_ITEM_RESERVED_LEN 1U
 
 /* 64 byte head + user log */
 struct log_item {
 	unsigned char never_used[NEVER_USED_LEN];
 	unsigned int nsid;
+	unsigned int vmid;
 	unsigned short magic;
 	unsigned short reserved0;
 	uint32_t serial_no;

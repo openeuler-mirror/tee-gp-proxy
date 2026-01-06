@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "serial_port.h"
 #include <pthread.h>
 #include <stdio.h>
@@ -104,9 +105,11 @@ int send_to_vm(struct serial_port_file *serial_port, void *packet_rsp, size_t si
     return ret;
 }
 
-static int connect_domsock_chardev(char *dev_path, int *sock)
+static int connect_domsock_chardev(char *dev_path, int *sock, int *vmid)
 {
     int ret;
+    struct ucred cred;
+    socklen_t cred_len = sizeof(cred);
     ret = socket(AF_UNIX, SOCK_STREAM, 0);
     if (ret == -1) {
         tloge("execute socket() failed \n");
@@ -127,6 +130,14 @@ static int connect_domsock_chardev(char *dev_path, int *sock)
         tloge("connect domain socket %s failed \n", dev_path);
         goto CLOSE;
     }
+
+    if (getsockopt(*sock, SOL_SOCKET, SO_PEERCRED, &cred, &cred_len) == -1) {
+        tloge("domain socket %s get pid failed", dev_path);
+        ret = -1;
+        goto CLOSE;
+    }
+    *vmid = cred.pid;
+
     return ret;
 
 CLOSE:
@@ -161,12 +172,13 @@ void do_check_stat_serial_port()
     int ret;
     int i = 0;
     struct serial_port_file *serial_port;
+    int vmid = -1;
     (void)pthread_mutex_lock(&g_serial_list.lock);
     LIST_FOR_EACH_ENTRY(serial_port, &g_serial_list.head, head) {
         if (serial_port->opened == false) {
             ret = access(serial_port->path, R_OK | W_OK);
             if (ret == 0) {
-                ret = connect_domsock_chardev(serial_port->path, &(serial_port->sock));
+                ret = connect_domsock_chardev(serial_port->path, &(serial_port->sock), &vmid);
                 if (ret < 0) {
                     tloge("connect_domsock_chardev(%s) failed, ret = %d \n", serial_port->path, ret);
                 } else {
@@ -175,6 +187,7 @@ void do_check_stat_serial_port()
                     serial_port->offset = 0;
                     g_pollfd[i].fd = serial_port->sock;
                     g_serial_array[i] = serial_port;
+                    serial_port->vm_file = create_vm_file(vmid);
                     create_reader_thread(serial_port, i);
                     create_rebootmonitor_thread(serial_port, i);
                 }
