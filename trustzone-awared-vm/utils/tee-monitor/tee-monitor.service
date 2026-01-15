@@ -1,0 +1,35 @@
+[Unit]
+Description=TEE Services Monitor
+Documentation=man:tee-monitor(8)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/tee-monitor.sh
+Restart=always
+RestartSec=5
+
+# Environment configuration
+Environment=CHECK_INTERVAL=30
+
+# Host-only mode: disable vtz_proxy (enabled by default for VM communication)
+# To disable vtz_proxy monitoring (Host without VM), uncomment the following line:
+#Environment=ENABLE_VTZ_PROXY=false
+
+# Container scenario: sdf-utils monitoring (disabled by default)
+# To enable sdf-utils monitoring for container scenarios, uncomment the following lines:
+#Environment=ENABLE_SDF_UTILS=true
+#Environment=SDF_UTILS_PATH=/usr/bin/sdf-utils
+
+# Logging - output to journal
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tee-monitor
+
+# Security hardening
+NoNewPrivileges=no
+ProtectSystem=false
+ProtectHome=false
+
+[Install]
+WantedBy=multi-user.target
