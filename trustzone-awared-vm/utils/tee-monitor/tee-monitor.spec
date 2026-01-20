@@ -1,5 +1,5 @@
 Name:           tee-monitor
-Version:        1.2.0
+Version:        1.3.0
 Release:        1%{?dist}
 Summary:        Monitor service for TEE kernel modules and processes
 
@@ -18,36 +18,31 @@ TEE-related kernel modules and processes. It automatically detects
 the running environment (host or virtual machine) and manages the
 appropriate components:
 
-Host environment (with VM communication):
-- Kernel module: tzdriver.ko
-- Processes: vtz_proxy and teecd
+Host scenarios (three options):
+- Host + VM (default): tzdriver.ko, vtz_proxy, teecd
+- Host Only (VM_MODE=false): tzdriver.ko, teecd
+- Host + Container (CONTAINER_MODE=true): tzdriver.ko, teecd, sdf-utils
 
-Host environment (without VM, ENABLE_VTZ_PROXY=false):
-- Kernel module: tzdriver.ko
-- Process: teecd only
+VM scenarios:
+- VM (5.10 kernel): virtio_console.ko (init only), vtzfdriver.ko, teecd
+- VM (4.19 kernel): vtzfdriver.ko, teecd
+- VM + Container: adds sdf-utils monitoring
 
-VM environment (5.10 kernel):
-- Kernel modules: virtio_console.ko (from trustzone path), vtzfdriver.ko
-- Process: teecd
-
-VM environment (4.19 kernel):
-- Kernel module: vtzfdriver.ko
-- Process: teecd
-
-Container scenario support:
-- When ENABLE_SDF_UTILS=true, monitors and keeps alive the sdf-utils program
-- sdf-utils must be pre-installed at /usr/bin/sdf-utils (or custom path via SDF_UTILS_PATH)
-- sdf-utils depends on all modules and processes being ready before starting
+Environment variables:
+- CONTAINER_MODE: Enable container mode (true/false, default: false)
+- VM_MODE: Enable vtz_proxy monitoring (true/false, default: true)
+- CHECK_INTERVAL: Monitoring interval in seconds (default: 30)
+- SDF_UTILS_PATH: Path to sdf-utils executable (default: /usr/bin/sdf-utils)
 
 Features:
 - Automatic environment detection (host vs VM)
+- Configuration validation at startup
 - Kernel module loading and monitoring
 - Dependency order guarantee (modules before processes)
-- Automatic process monitoring every 30 seconds (configurable)
+- Automatic process monitoring with configurable interval
 - Automatic restart of unloaded modules or stopped processes
 - Systemd integration with journal logging
 - Boot-time auto-start capability
-- Container scenario support via environment variable
 
 %prep
 %setup -q
@@ -91,10 +86,17 @@ fi
 /usr/lib/systemd/system/tee-monitor.service
 
 %changelog
+* Sun Jan 19 2025 xc <1097798774@qq.com> - 1.3.0-1
+- Host environment now supports three scenarios: Host+VM, Host Only, Host+Container
+- Rename ENABLE_SDF_UTILS to CONTAINER_MODE for better clarity
+- Restore VM_MODE variable to support Host Only scenario (teecd only)
+- Add configuration validation at startup (CONTAINER_MODE, VM_MODE, CHECK_INTERVAL)
+- Add --check parameter for manual configuration validation
+- Add ExecStartPre to show config errors directly on systemctl restart failure
+- CONTAINER_MODE=true takes precedence over VM_MODE setting
+
 * Thu Jan 16 2025 xc <1097798774@qq.com> - 1.2.0-1
-- Add ENABLE_VTZ_PROXY environment variable for Host-only mode (without VM communication)
 - Add container scenario support for sdf-utils monitoring
-- Add ENABLE_SDF_UTILS environment variable to enable/disable sdf-utils monitoring
 - Add SDF_UTILS_PATH environment variable to specify sdf-utils path (default: /usr/bin/sdf-utils)
 - sdf-utils monitoring includes dependency checking (modules and processes must be ready first)
 - Simplify virtio_console initialization to always unload first then reload from trustzone path

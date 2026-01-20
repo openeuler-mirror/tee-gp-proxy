@@ -20,7 +20,7 @@ NC='\033[0m' # No Color
 
 # Project configuration
 PROJECT_NAME="tee-monitor"
-VERSION="1.2.0"
+VERSION="1.3.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RPMBUILD_DIR="$HOME/rpmbuild"
 

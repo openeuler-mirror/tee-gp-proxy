@@ -5,6 +5,8 @@ After=network.target
 
 [Service]
 Type=simple
+# Validate configuration before starting (errors will be shown on restart failure)
+ExecStartPre=/usr/libexec/tee-monitor.sh --check
 ExecStart=/usr/libexec/tee-monitor.sh
 Restart=always
 RestartSec=5
@@ -12,13 +14,18 @@ RestartSec=5
 # Environment configuration
 Environment=CHECK_INTERVAL=30
 
-# Host-only mode: disable vtz_proxy (enabled by default for VM communication)
-# To disable vtz_proxy monitoring (Host without VM), uncomment the following line:
-#Environment=ENABLE_VTZ_PROXY=false
+# Host scenarios (choose one):
+#   1. Host + VM (default): monitors vtz_proxy + teecd
+#   2. Host Only: set VM_MODE=false, monitors teecd only
+#   3. Host + Container: set CONTAINER_MODE=true, monitors teecd + sdf-utils
+#
+# Note: CONTAINER_MODE=true takes precedence over VM_MODE setting
 
-# Container scenario: sdf-utils monitoring (disabled by default)
-# To enable sdf-utils monitoring for container scenarios, uncomment the following lines:
-#Environment=ENABLE_SDF_UTILS=true
+# Host Only mode (no VM communication):
+#Environment=VM_MODE=false
+
+# Container mode (monitors sdf-utils):
+#Environment=CONTAINER_MODE=true
 #Environment=SDF_UTILS_PATH=/usr/bin/sdf-utils
 
 # Logging - output to journal

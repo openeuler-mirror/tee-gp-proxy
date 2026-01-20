@@ -12,10 +12,12 @@ TEE 服务进程 monitor，用于监控和保活 TEE 相关内核模块和进程
   - VM 环境 (5.10内核): 启动时初始化 `virtio_console.ko`（从trustzone路径加载），加载并监控 `vtzfdriver.ko`
   - VM 环境 (4.19内核): 加载并监控 `vtzfdriver.ko`
 - **智能进程监控**:
-  - Host 环境（有 VM 通信）: 监控 `vtz_proxy` 和 `teecd`
-  - Host 环境（无 VM 通信）: 仅监控 `teecd`（通过 `ENABLE_VTZ_PROXY=false` 设置）
+  - Host + VM 场景: 监控 `vtz_proxy` 和 `teecd`（默认）
+  - Host Only 场景: 仅监控 `teecd`（通过 `VM_MODE=false` 设置）
+  - Host + 容器场景: 监控 `teecd` 和 `sdf-utils`（通过 `CONTAINER_MODE=true` 设置）
   - VM 环境: 仅监控 `teecd`
-- **容器场景支持**: 通过 `ENABLE_SDF_UTILS=true` 启用 `sdf-utils` 监控
+- **配置预检查**: 服务启动前自动校验配置，错误时直接在终端显示原因
+- **三种 Host 场景**: Host + VM、Host Only、Host + 容器，按需选择
 - **依赖顺序保证**: 确保内核模块 → 核心进程 → sdf-utils 的启动顺序
 - **智能依赖检查**: sdf-utils 异常退出时，先检查并恢复依赖，再重启 sdf-utils
 - **定时检查**: 默认每30秒检查一次模块和进程状态（可配置）
@@ -30,23 +32,30 @@ TEE 服务进程 monitor，用于监控和保活 TEE 相关内核模块和进程
 
 ### 环境变量说明
 
-| 环境变量 | 默认值 | 说明 |
-|---------|--------|------|
-| `CHECK_INTERVAL` | `30` | 检查间隔（秒） |
-| `ENABLE_VTZ_PROXY` | `true` | Host 环境下是否监控 vtz_proxy（用于与 VM 通信） |
-| `ENABLE_SDF_UTILS` | `false` | 是否监控 sdf-utils（容器场景） |
-| `SDF_UTILS_PATH` | `/usr/bin/sdf-utils` | sdf-utils 程序路径 |
+| 环境变量 | 默认值 | 合法值 | 说明 |
+|---------|--------|--------|------|
+| `CHECK_INTERVAL` | `30` | 正整数 | 检查间隔（秒） |
+| `CONTAINER_MODE` | `false` | `true` / `false` | 容器模式开关 |
+| `VM_MODE` | `true` | `true` / `false` | 是否监控 vtz_proxy（仅 Host 非容器场景有效） |
+| `SDF_UTILS_PATH` | `/usr/bin/sdf-utils` | 可执行文件路径 | sdf-utils 程序路径 |
+
+> **重要**：
+> - Host 环境下有三种场景可选，`CONTAINER_MODE=true` 优先级最高
+> - 服务启动时会**校验配置值**，如果值不合法（如 `CONTAINER_MODE=yes`），服务将启动失败并提示错误信息
 
 ### 场景矩阵
 
-#### Host 相关场景
+#### Host 相关场景（三选一）
 
 | 场景 | 监控模块 | 监控进程 | 环境变量设置 |
 |------|---------|---------|-------------|
-| **Host（有 VM 通信）** | tzdriver | vtz_proxy, teecd | 默认，无需设置 |
-| **Host（无 VM 通信）** | tzdriver | teecd | `ENABLE_VTZ_PROXY=false` |
-| **Host + 容器（有 VM 通信）** | tzdriver | vtz_proxy, teecd, sdf-utils | `ENABLE_SDF_UTILS=true` |
-| **Host + 容器（无 VM 通信）** | tzdriver | teecd, sdf-utils | `ENABLE_VTZ_PROXY=false`<br>`ENABLE_SDF_UTILS=true` |
+| **Host + VM** | tzdriver | vtz_proxy, teecd | 默认，无需设置 |
+| **Host Only** | tzdriver | teecd | `VM_MODE=false` |
+| **Host + 容器** | tzdriver | teecd, sdf-utils | `CONTAINER_MODE=true` |
+
+> **注意**：
+> - 这三个场景是**互斥**的，根据实际部署选择其一
+> - `CONTAINER_MODE=true` 优先级最高，会忽略 `VM_MODE` 设置
 
 #### VM 相关场景
 
@@ -54,8 +63,8 @@ TEE 服务进程 monitor，用于监控和保活 TEE 相关内核模块和进程
 |------|---------|---------|-------------|
 | **VM（5.10 内核）** | virtio_console*, vtzfdriver | teecd | 默认，无需设置 |
 | **VM（4.19 内核）** | vtzfdriver | teecd | 默认，无需设置 |
-| **VM + 容器（5.10 内核）** | virtio_console*, vtzfdriver | teecd, sdf-utils | `ENABLE_SDF_UTILS=true` |
-| **VM + 容器（4.19 内核）** | vtzfdriver | teecd, sdf-utils | `ENABLE_SDF_UTILS=true` |
+| **VM + 容器（5.10 内核）** | virtio_console*, vtzfdriver | teecd, sdf-utils | `CONTAINER_MODE=true` |
+| **VM + 容器（4.19 内核）** | vtzfdriver | teecd, sdf-utils | `CONTAINER_MODE=true` |
 
 > *注：virtio_console 仅在启动时初始化（先卸载再从 trustzone 路径加载），不持续监控。
 
@@ -63,22 +72,28 @@ TEE 服务进程 monitor，用于监控和保活 TEE 相关内核模块和进程
 
 ## 启动顺序与监控内容
 
-### Host 环境（有 VM 通信）
+### Host + VM 场景（默认）
 
 | 顺序 | 类型 | 组件 | 路径 | 持续监控 |
 |------|------|------|------|----------|
 | 1 | 内核模块 | tzdriver.ko | `/lib/modules/$(uname -r)/kernel/drivers/trustzone/tzdriver.ko` | ✓ |
 | 2 | 进程 | vtz_proxy | `/usr/bin/vtz_proxy` | ✓ |
 | 3 | 进程 | teecd | `/usr/bin/teecd` | ✓ |
-| 4 | 进程 | sdf-utils | `/usr/bin/sdf-utils` | ✓ (仅当 ENABLE_SDF_UTILS=true) |
 
-### Host 环境（无 VM 通信，ENABLE_VTZ_PROXY=false）
+### Host Only 场景（VM_MODE=false）
 
 | 顺序 | 类型 | 组件 | 路径 | 持续监控 |
 |------|------|------|------|----------|
 | 1 | 内核模块 | tzdriver.ko | `/lib/modules/$(uname -r)/kernel/drivers/trustzone/tzdriver.ko` | ✓ |
 | 2 | 进程 | teecd | `/usr/bin/teecd` | ✓ |
-| 3 | 进程 | sdf-utils | `/usr/bin/sdf-utils` | ✓ (仅当 ENABLE_SDF_UTILS=true) |
+
+### Host + 容器场景（CONTAINER_MODE=true）
+
+| 顺序 | 类型 | 组件 | 路径 | 持续监控 |
+|------|------|------|------|----------|
+| 1 | 内核模块 | tzdriver.ko | `/lib/modules/$(uname -r)/kernel/drivers/trustzone/tzdriver.ko` | ✓ |
+| 2 | 进程 | teecd | `/usr/bin/teecd` | ✓ |
+| 3 | 进程 | sdf-utils | `/usr/bin/sdf-utils` | ✓ |
 
 ### VM 环境 (5.10 内核)
 
@@ -87,7 +102,7 @@ TEE 服务进程 monitor，用于监控和保活 TEE 相关内核模块和进程
 | 1 | 内核模块 | virtio_console.ko | `/lib/modules/$(uname -r)/kernel/drivers/trustzone/virtio_console.ko` | ✗ (仅启动时初始化) |
 | 2 | 内核模块 | vtzfdriver.ko | `/lib/modules/$(uname -r)/kernel/drivers/trustzone/vtzfdriver.ko` | ✓ |
 | 3 | 进程 | teecd | `/usr/bin/teecd` | ✓ |
-| 4 | 进程 | sdf-utils | `/usr/bin/sdf-utils` | ✓ (仅当 ENABLE_SDF_UTILS=true) |
+| 4 | 进程 | sdf-utils | `/usr/bin/sdf-utils` | ✓ (仅当 CONTAINER_MODE=true) |
 
 ### VM 环境 (4.19 内核)
 
@@ -95,7 +110,7 @@ TEE 服务进程 monitor，用于监控和保活 TEE 相关内核模块和进程
 |------|------|------|------|----------|
 | 1 | 内核模块 | vtzfdriver.ko | `/lib/modules/$(uname -r)/kernel/drivers/trustzone/vtzfdriver.ko` | ✓ |
 | 2 | 进程 | teecd | `/usr/bin/teecd` | ✓ |
-| 3 | 进程 | sdf-utils | `/usr/bin/sdf-utils` | ✓ (仅当 ENABLE_SDF_UTILS=true) |
+| 3 | 进程 | sdf-utils | `/usr/bin/sdf-utils` | ✓ (仅当 CONTAINER_MODE=true) |
 
 ---
 
@@ -173,8 +188,8 @@ cd tee-monitor
 ### 构建产物
 
 构建成功后，RPM 包位于：
-- 二进制包: `~/rpmbuild/RPMS/noarch/tee-monitor-1.2.0-1.*.noarch.rpm`
-- 源码包: `~/rpmbuild/SRPMS/tee-monitor-1.2.0-1.*.src.rpm`
+- 二进制包: `~/rpmbuild/RPMS/noarch/tee-monitor-1.3.0-1.*.noarch.rpm`
+- 源码包: `~/rpmbuild/SRPMS/tee-monitor-1.3.0-1.*.src.rpm`
 
 ---
 
@@ -184,13 +199,13 @@ cd tee-monitor
 
 ```bash
 # 新安装
-sudo rpm -ivh ~/rpmbuild/RPMS/noarch/tee-monitor-1.2.0-*.noarch.rpm
+sudo rpm -ivh ~/rpmbuild/RPMS/noarch/tee-monitor-1.3.0-*.noarch.rpm
 
 # 升级安装
-sudo rpm -Uvh ~/rpmbuild/RPMS/noarch/tee-monitor-1.2.0-*.noarch.rpm
+sudo rpm -Uvh ~/rpmbuild/RPMS/noarch/tee-monitor-1.3.0-*.noarch.rpm
 
 # 或者使用 yum/dnf 安装（可自动处理依赖）
-sudo yum localinstall ~/rpmbuild/RPMS/noarch/tee-monitor-1.2.0-*.noarch.rpm
+sudo yum localinstall ~/rpmbuild/RPMS/noarch/tee-monitor-1.3.0-*.noarch.rpm
 ```
 
 ### 服务管理
@@ -255,14 +270,14 @@ sudo systemctl restart tee-monitor
 > 正确示例：
 > ```ini
 > [Service]
-> Environment=ENABLE_SDF_UTILS=true
+> Environment=CONTAINER_MODE=true
 >
 > ### Lines below this comment will be discarded
 > ### /usr/lib/systemd/system/tee-monitor.service
 > # ...（以下内容会被丢弃，无需修改）
 > ```
 
-### 场景 1：Host（有 VM 通信）— 默认配置
+### 场景 1：Host + VM — 默认配置
 
 无需额外配置，安装后直接使用。
 
@@ -271,11 +286,14 @@ sudo systemctl restart tee-monitor
 sudo journalctl -u tee-monitor -n 20
 # 应看到：
 # [INFO] Detected environment: Host
-# [INFO] VTZ Proxy enabled (for VM communication)
+# [INFO] Host scenario: VM mode (VM_MODE=true)
+# [INFO] VTZ Proxy enabled for VM communication
 # [INFO] Monitored processes: /usr/bin/vtz_proxy /usr/bin/teecd
 ```
 
-### 场景 2：Host（无 VM 通信）
+### 场景 2：Host Only
+
+适用于 Host 环境下不需要与 VM 通信，也不需要容器的场景。
 
 ```bash
 sudo systemctl edit tee-monitor
@@ -284,20 +302,30 @@ sudo systemctl edit tee-monitor
 添加：
 ```ini
 [Service]
-Environment=ENABLE_VTZ_PROXY=false
+Environment=VM_MODE=false
+```
+
+保存后执行：
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart tee-monitor
 ```
 
 **验证：**
 ```bash
 sudo journalctl -u tee-monitor -n 20
 # 应看到：
-# [INFO] VTZ Proxy disabled (Host-only mode, no VM communication)
+# [INFO] Detected environment: Host
+# [INFO] Host scenario: Host-only mode (VM_MODE=false)
+# [INFO] No VM communication, monitoring teecd only
 # [INFO] Monitored processes: /usr/bin/teecd
 ```
 
-### 场景 3：Host + 容器（有 VM 通信）
+### 场景 3：Host + 容器
 
 **前提**：确保 `/usr/bin/sdf-utils` 已存在。
+
+> **重要**：切换到容器场景后，将不再监控 `vtz_proxy`。如需切回 VM 场景，请参考"恢复默认配置"。
 
 ```bash
 sudo systemctl edit tee-monitor
@@ -306,33 +334,27 @@ sudo systemctl edit tee-monitor
 添加：
 ```ini
 [Service]
-Environment=ENABLE_SDF_UTILS=true
+Environment=CONTAINER_MODE=true
+```
+
+保存后执行：
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart tee-monitor
 ```
 
 **验证：**
 ```bash
 sudo journalctl -u tee-monitor -n 20
 # 应看到：
+# [INFO] Detected environment: Host
+# [INFO] Host scenario: Container mode (CONTAINER_MODE=true)
+# [INFO] Container scenario does not require vtz_proxy
 # [INFO] SDF Utils monitoring enabled: /usr/bin/sdf-utils
-# [INFO] SDF Utils depends on: modules [tzdriver] and processes [/usr/bin/vtz_proxy /usr/bin/teecd]
+# [INFO] Monitored processes: /usr/bin/teecd
 ```
 
-### 场景 4：Host + 容器（无 VM 通信）
-
-**前提**：确保 `/usr/bin/sdf-utils` 已存在。
-
-```bash
-sudo systemctl edit tee-monitor
-```
-
-添加：
-```ini
-[Service]
-Environment=ENABLE_VTZ_PROXY=false
-Environment=ENABLE_SDF_UTILS=true
-```
-
-### 场景 5/6：VM（无容器）— 默认配置
+### 场景 4：VM — 默认配置
 
 无需额外配置，脚本自动检测 VM 环境。
 
@@ -345,7 +367,7 @@ sudo journalctl -u tee-monitor -n 20
 # [INFO] Monitored processes: /usr/bin/teecd
 ```
 
-### 场景 7/8：VM + 容器
+### 场景 5：VM + 容器
 
 **前提**：确保 `/usr/bin/sdf-utils` 已存在。
 
@@ -356,7 +378,13 @@ sudo systemctl edit tee-monitor
 添加：
 ```ini
 [Service]
-Environment=ENABLE_SDF_UTILS=true
+Environment=CONTAINER_MODE=true
+```
+
+保存后执行：
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart tee-monitor
 ```
 
 ### 恢复默认配置
@@ -405,19 +433,18 @@ sudo systemctl edit tee-monitor
 添加：
 ```ini
 [Service]
-Environment=ENABLE_SDF_UTILS=true
+Environment=CONTAINER_MODE=true
 Environment=SDF_UTILS_PATH=/opt/custom/sdf-utils
 ```
 
 ### 组合配置示例
 
-多个环境变量可以组合使用：
+多个环境变量可以组合使用（容器场景示例）：
 
 ```ini
 [Service]
 Environment=CHECK_INTERVAL=60
-Environment=ENABLE_VTZ_PROXY=false
-Environment=ENABLE_SDF_UTILS=true
+Environment=CONTAINER_MODE=true
 Environment=SDF_UTILS_PATH=/usr/bin/sdf-utils
 ```
 
@@ -448,6 +475,54 @@ sudo journalctl -u tee-monitor -n 50
 
 # 手动测试脚本
 sudo /usr/libexec/tee-monitor.sh
+```
+
+### 配置值错误
+
+配置错误时，`systemctl restart` 会失败并提示查看状态：
+
+```
+Job for tee-monitor.service failed because the control process exited with error code.
+See "systemctl status tee-monitor.service" for details.
+```
+
+执行 `systemctl status tee-monitor` 可以看到具体错误：
+
+```
+[ERROR] Invalid value for CONTAINER_MODE: 'yes'
+[ERROR] CONTAINER_MODE must be 'true' or 'false'
+[ERROR] Configuration validation failed. Exiting.
+```
+
+**也可以手动检查配置**：
+
+```bash
+# 手动检查配置是否正确
+sudo /usr/libexec/tee-monitor.sh --check
+```
+
+**解决方法**：
+
+```bash
+# 查看当前配置
+systemctl cat tee-monitor | grep -E "CONTAINER_MODE|VM_MODE|CHECK_INTERVAL"
+
+# 修改配置
+sudo systemctl edit tee-monitor
+```
+
+确保配置值正确：
+```ini
+[Service]
+Environment=CONTAINER_MODE=true     # 只能是 true 或 false
+Environment=VM_MODE=false  # 只能是 true 或 false
+Environment=CHECK_INTERVAL=30       # 必须是正整数
+```
+
+保存后重新加载：
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart tee-monitor
 ```
 
 ### 内核模块无法加载
@@ -482,8 +557,8 @@ sudo journalctl -u tee-monitor -p err
 # 确认 sdf-utils 存在
 ls -la /usr/bin/sdf-utils
 
-# 确认环境变量已设置
-systemctl cat tee-monitor | grep SDF_UTILS
+# 确认容器模式已启用
+systemctl cat tee-monitor | grep CONTAINER_MODE
 
 # 检查依赖是否就绪
 sudo journalctl -u tee-monitor | grep -E "dependencies|sdf-utils"
@@ -505,23 +580,37 @@ sudo journalctl -u tee-monitor | grep "Detected environment"
 
 ## 注意事项
 
-1. **sdf-utils 依赖**：sdf-utils 依赖于所有模块和进程正常运行。如果 sdf-utils 异常退出，脚本会先检查并恢复所有依赖，再重启 sdf-utils。
+1. **场景优先级**：Host 环境下有三种场景，优先级为：`CONTAINER_MODE=true` > `VM_MODE=false` > 默认（VM 模式）。
 
-2. **virtio_console 初始化**：VM 5.10 内核场景下，每次服务启动时都会先卸载 virtio_console（如果已加载），然后从 trustzone 路径重新加载，确保模块状态一致。
+2. **配置值校验**：服务启动时会校验配置值的合法性：
+   - `CONTAINER_MODE` 只能是 `true` 或 `false`
+   - `VM_MODE` 只能是 `true` 或 `false`
+   - `CHECK_INTERVAL` 必须是正整数
+   - 配置错误时服务将启动失败，请检查日志获取详细错误信息
 
-3. **环境自动检测**：脚本会自动检测运行环境（Host/VM），无需手动指定。
+3. **sdf-utils 依赖**：sdf-utils 依赖于所有模块和进程正常运行。如果 sdf-utils 异常退出，脚本会先检查并恢复所有依赖，再重启 sdf-utils。
 
-4. **配置生效**：修改环境变量后，必须执行 `systemctl daemon-reload` 和 `systemctl restart tee-monitor` 才能生效。
+4. **virtio_console 初始化**：VM 5.10 内核场景下，每次服务启动时都会先卸载 virtio_console（如果已加载），然后从 trustzone 路径重新加载，确保模块状态一致。
 
-5. **ENABLE_VTZ_PROXY 仅影响 Host**：该变量在 VM 环境下会被忽略。
+5. **环境自动检测**：脚本会自动检测运行环境（Host/VM），无需手动指定。
+
+6. **配置生效**：修改环境变量后，必须执行 `systemctl daemon-reload` 和 `systemctl restart tee-monitor` 才能生效。
 
 ---
 
 ## 版本历史
 
+### v1.3.0
+- Host 环境支持三种场景：Host + VM（默认）、Host Only、Host + 容器
+- 重命名 `ENABLE_SDF_UTILS` 为 `CONTAINER_MODE`，更直观地表示容器模式开关
+- 恢复 `VM_MODE` 变量，支持 Host Only 场景（仅监控 teecd）
+- 新增配置值合法性校验，非法值将导致服务启动失败
+- 新增 `--check` 参数，支持手动检查配置
+- 新增 `ExecStartPre` 预检查，配置错误时 `systemctl restart` 直接显示错误原因
+- `CONTAINER_MODE=true` 优先级最高，会忽略 `VM_MODE` 设置
+
 ### v1.2.0
-- 新增 `ENABLE_VTZ_PROXY` 环境变量，支持 Host-only 模式（无 VM 通信）
-- 新增容器场景支持，通过 `ENABLE_SDF_UTILS` 启用 sdf-utils 监控
+- 新增容器场景支持，监控 sdf-utils 进程
 - 新增 `SDF_UTILS_PATH` 环境变量，支持自定义 sdf-utils 路径
 - sdf-utils 监控包含依赖检查（模块和进程必须先就绪）
 - 简化 virtio_console 初始化，每次启动时先卸载再从 trustzone 路径加载

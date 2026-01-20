@@ -3,37 +3,37 @@
 # tee-monitor.sh - Process monitor script for TEE services
 #
 # This script monitors and keeps alive TEE-related processes:
-#   - Host environment (with VM): tzdriver.ko, /usr/bin/vtz_proxy and /usr/bin/teecd
-#   - Host environment (without VM): tzdriver.ko and /usr/bin/teecd (set ENABLE_VTZ_PROXY=false)
-#   - VM environment (5.10 kernel):
-#       * Startup: reload virtio_console.ko from trustzone path, then load vtzfdriver.ko
-#       * Monitor: vtzfdriver.ko and /usr/bin/teecd (virtio_console is not monitored)
-#   - VM environment (4.19 kernel): vtzfdriver.ko and /usr/bin/teecd
 #
-# Container scenario support:
-#   When ENABLE_SDF_UTILS=true, the script also monitors and keeps alive
-#   the sdf-utils program which is used to maintain resources for containers.
-#   Note: sdf-utils depends on all modules and processes being ready.
-#   If sdf-utils exits abnormally, the script will first check and restore
-#   all dependencies before attempting to restart sdf-utils.
+# Host environment scenarios:
+#   - Host + VM (default): tzdriver.ko, vtz_proxy, teecd
+#   - Host + Container (CONTAINER_MODE=true): tzdriver.ko, teecd, sdf-utils
+#   - Host Only (VM_MODE=false): tzdriver.ko, teecd
+#
+# VM environment scenarios:
+#   - VM (5.10 kernel): virtio_console.ko (init only), vtzfdriver.ko, teecd
+#   - VM (4.19 kernel): vtzfdriver.ko, teecd
+#   - VM + Container (CONTAINER_MODE=true): adds sdf-utils monitoring
+#
+# Note: On Host, VM and Container scenarios are mutually exclusive.
+#       CONTAINER_MODE=true takes precedence over VM_MODE setting.
 #
 
 # Configuration
 CHECK_INTERVAL=${CHECK_INTERVAL:-30}  # Default: 30 seconds
 
-# VTZ Proxy configuration (for Host environment with VM communication)
-# Set ENABLE_VTZ_PROXY=false if not using VM, only need tzdriver and teecd
-ENABLE_VTZ_PROXY=${ENABLE_VTZ_PROXY:-true}
-
-# SDF Utils configuration (for container scenarios)
-# Set ENABLE_SDF_UTILS=true to enable sdf-utils monitoring
-ENABLE_SDF_UTILS=${ENABLE_SDF_UTILS:-false}
+# Host scenario configuration
+# Three scenarios available (VM and container are mutually exclusive):
+#   - CONTAINER_MODE=false, VM_MODE=true (default): Host + VM, monitors vtz_proxy + teecd
+#   - CONTAINER_MODE=false, VM_MODE=false: Host Only, monitors teecd only
+#   - CONTAINER_MODE=true: Host + Container, monitors teecd + sdf-utils
+CONTAINER_MODE=${CONTAINER_MODE:-false}
+VM_MODE=${VM_MODE:-true}
 SDF_UTILS_PATH=${SDF_UTILS_PATH:-/usr/bin/sdf-utils}
 
 # Process lists for different environments
-# Note: HOST_PROCESSES will be adjusted based on ENABLE_VTZ_PROXY in setup_environment()
-HOST_PROCESSES_WITH_VTZ=("/usr/bin/vtz_proxy" "/usr/bin/teecd")
-HOST_PROCESSES_WITHOUT_VTZ=("/usr/bin/teecd")
+HOST_PROCESSES_WITH_VTZ=("/usr/bin/vtz_proxy" "/usr/bin/teecd")  # Host + VM
+HOST_PROCESSES_ONLY=("/usr/bin/teecd")                           # Host Only
+HOST_PROCESSES_CONTAINER=("/usr/bin/teecd")                      # Host + Container (sdf-utils handled separately)
 VM_PROCESSES=("/usr/bin/teecd")
 
 # Kernel module paths
@@ -45,8 +45,8 @@ VM_MODULES=("vtzfdriver")
 PROCESSES=()
 MODULES=()
 
-# Flag to indicate if sdf-utils monitoring is active
-SDF_UTILS_ACTIVE=false
+# Flag to indicate if container mode is active
+CONTAINER_ACTIVE=false
 
 # Log functions (timestamps provided by systemd journal)
 log_info() {
@@ -59,6 +59,51 @@ log_warn() {
 
 log_error() {
     echo "[ERROR] $1"
+}
+
+# Validate configuration values
+validate_config() {
+    local has_error=false
+
+    # Validate CONTAINER_MODE (must be "true" or "false")
+    if [[ "$CONTAINER_MODE" != "true" && "$CONTAINER_MODE" != "false" ]]; then
+        log_error "Invalid value for CONTAINER_MODE: '$CONTAINER_MODE'"
+        log_error "CONTAINER_MODE must be 'true' or 'false'"
+        log_error "Please check your configuration:"
+        log_error "  - systemctl edit tee-monitor"
+        log_error "  - Or check: /etc/systemd/system/tee-monitor.service.d/override.conf"
+        has_error=true
+    fi
+
+    # Validate VM_MODE (must be "true" or "false")
+    if [[ "$VM_MODE" != "true" && "$VM_MODE" != "false" ]]; then
+        log_error "Invalid value for VM_MODE: '$VM_MODE'"
+        log_error "VM_MODE must be 'true' or 'false'"
+        log_error "Please check your configuration:"
+        log_error "  - systemctl edit tee-monitor"
+        log_error "  - Or check: /etc/systemd/system/tee-monitor.service.d/override.conf"
+        has_error=true
+    fi
+
+    # Validate CHECK_INTERVAL (must be a positive integer)
+    if ! [[ "$CHECK_INTERVAL" =~ ^[0-9]+$ ]] || [[ "$CHECK_INTERVAL" -le 0 ]]; then
+        log_error "Invalid value for CHECK_INTERVAL: '$CHECK_INTERVAL'"
+        log_error "CHECK_INTERVAL must be a positive integer (seconds)"
+        has_error=true
+    fi
+
+    # Warn if both CONTAINER_MODE and VM_MODE are set (CONTAINER_MODE takes precedence)
+    if [[ "$CONTAINER_MODE" == "true" && "$VM_MODE" == "true" ]]; then
+        log_warn "Both CONTAINER_MODE=true and VM_MODE=true are set"
+        log_warn "CONTAINER_MODE takes precedence, VM_MODE will be ignored"
+    fi
+
+    if [[ "$has_error" == "true" ]]; then
+        log_error "Configuration validation failed. Exiting."
+        exit 1
+    fi
+
+    log_info "Configuration validated successfully"
 }
 
 # Get kernel major.minor version (e.g., "5.10" or "4.19")
@@ -199,29 +244,48 @@ setup_environment() {
         log_info "Detected environment: Virtual Machine"
         PROCESSES=("${VM_PROCESSES[@]}")
         MODULES=("${VM_MODULES[@]}")
+
+        # Check if sdf-utils monitoring should be enabled (for container scenarios in VM)
+        if [ "$CONTAINER_MODE" = "true" ]; then
+            if [[ -x "$SDF_UTILS_PATH" ]]; then
+                log_info "Container scenario: SDF Utils monitoring enabled"
+                log_info "SDF Utils path: $SDF_UTILS_PATH"
+                CONTAINER_ACTIVE=true
+            else
+                log_warn "SDF Utils enabled but executable not found: $SDF_UTILS_PATH"
+                CONTAINER_ACTIVE=false
+            fi
+        fi
     else
         log_info "Detected environment: Host"
         MODULES=("${HOST_MODULES[@]}")
-        # Check if vtz_proxy should be enabled (for VM communication)
-        if [ "$ENABLE_VTZ_PROXY" = "true" ]; then
-            log_info "VTZ Proxy enabled (for VM communication)"
+
+        # Three Host scenarios (Container mode takes precedence over VTZ Proxy setting)
+        if [ "$CONTAINER_MODE" = "true" ]; then
+            # Host + Container scenario: teecd + sdf-utils, no vtz_proxy
+            log_info "Host scenario: Container mode (CONTAINER_MODE=true)"
+            log_info "Container scenario does not require vtz_proxy"
+            PROCESSES=("${HOST_PROCESSES_CONTAINER[@]}")
+
+            if [[ -x "$SDF_UTILS_PATH" ]]; then
+                log_info "SDF Utils monitoring enabled: $SDF_UTILS_PATH"
+                log_info "SDF Utils depends on: modules [${MODULES[*]}] and processes [${PROCESSES[*]}]"
+                CONTAINER_ACTIVE=true
+            else
+                log_warn "SDF Utils enabled but executable not found: $SDF_UTILS_PATH"
+                log_warn "Please ensure sdf-utils is installed at: $SDF_UTILS_PATH"
+                CONTAINER_ACTIVE=false
+            fi
+        elif [ "$VM_MODE" = "true" ]; then
+            # Host + VM scenario: vtz_proxy + teecd (default)
+            log_info "Host scenario: VM mode (VM_MODE=true)"
+            log_info "VTZ Proxy enabled for VM communication"
             PROCESSES=("${HOST_PROCESSES_WITH_VTZ[@]}")
         else
-            log_info "VTZ Proxy disabled (Host-only mode, no VM communication)"
-            PROCESSES=("${HOST_PROCESSES_WITHOUT_VTZ[@]}")
-        fi
-    fi
-
-    # Check if sdf-utils monitoring should be enabled (for container scenarios)
-    # Note: sdf-utils is handled separately due to its dependencies
-    if [ "$ENABLE_SDF_UTILS" = "true" ]; then
-        if [[ -x "$SDF_UTILS_PATH" ]]; then
-            log_info "SDF Utils monitoring enabled: $SDF_UTILS_PATH"
-            log_info "SDF Utils depends on: modules [${MODULES[*]}] and processes [${PROCESSES[*]}]"
-            SDF_UTILS_ACTIVE=true
-        else
-            log_warn "SDF Utils enabled but executable not found: $SDF_UTILS_PATH"
-            SDF_UTILS_ACTIVE=false
+            # Host Only scenario: teecd only, no vtz_proxy, no sdf-utils
+            log_info "Host scenario: Host-only mode (VM_MODE=false)"
+            log_info "No VM communication, monitoring teecd only"
+            PROCESSES=("${HOST_PROCESSES_ONLY[@]}")
         fi
     fi
 }
@@ -317,7 +381,7 @@ ensure_dependencies_ready() {
 # Check and restart sdf-utils with dependency checking
 # This function ensures all dependencies are ready before starting sdf-utils
 check_and_restart_sdf_utils() {
-    if [ "$SDF_UTILS_ACTIVE" != "true" ]; then
+    if [ "$CONTAINER_ACTIVE" != "true" ]; then
         return 0
     fi
 
@@ -373,7 +437,7 @@ initial_startup() {
     log_info "Check interval: ${CHECK_INTERVAL} seconds"
     log_info "Monitored modules: ${MODULES[*]}"
     log_info "Monitored processes: ${PROCESSES[*]}"
-    if [ "$SDF_UTILS_ACTIVE" = "true" ]; then
+    if [ "$CONTAINER_ACTIVE" = "true" ]; then
         log_info "SDF Utils monitoring: enabled ($SDF_UTILS_PATH)"
     fi
 
@@ -390,7 +454,7 @@ initial_startup() {
     done
 
     # Step 3: Start sdf-utils after all dependencies are ready (if enabled)
-    if [ "$SDF_UTILS_ACTIVE" = "true" ]; then
+    if [ "$CONTAINER_ACTIVE" = "true" ]; then
         log_info "Starting sdf-utils (depends on modules and processes being ready)..."
         # Give dependencies a moment to fully initialize
         sleep 1
@@ -415,8 +479,27 @@ cleanup() {
 # Set up signal handlers
 trap cleanup SIGTERM SIGINT SIGHUP
 
+# Check configuration only (for ExecStartPre)
+check_config_only() {
+    echo "=== TEE Monitor Configuration Check ==="
+    echo "Configuration: CONTAINER_MODE=$CONTAINER_MODE, VM_MODE=$VM_MODE, CHECK_INTERVAL=$CHECK_INTERVAL"
+
+    # Run validation
+    validate_config
+
+    # If we reach here, validation passed
+    echo "[OK] Configuration check passed"
+    exit 0
+}
+
 # Main function
 main() {
+    log_info "=== TEE Monitor Starting ==="
+    log_info "Configuration: CONTAINER_MODE=$CONTAINER_MODE, VM_MODE=$VM_MODE, CHECK_INTERVAL=$CHECK_INTERVAL"
+
+    # Validate configuration before proceeding
+    validate_config
+
     setup_environment
     initial_startup
 
@@ -439,5 +522,27 @@ main() {
     done
 }
 
-# Run main function
-main
+# Parse command line arguments
+case "${1:-}" in
+    --check|-c)
+        check_config_only
+        ;;
+    --help|-h)
+        echo "Usage: $0 [OPTIONS]"
+        echo ""
+        echo "Options:"
+        echo "  --check, -c    Check configuration only, then exit"
+        echo "  --help, -h     Show this help message"
+        echo ""
+        echo "Without options, starts the TEE monitor service."
+        exit 0
+        ;;
+    "")
+        main
+        ;;
+    *)
+        echo "[ERROR] Unknown option: $1"
+        echo "Use --help for usage information"
+        exit 1
+        ;;
+esac
