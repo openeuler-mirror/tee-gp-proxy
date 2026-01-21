@@ -381,22 +381,42 @@ static int do_write(struct file *fp_serialport, void *buf, uint32_t buf_size)
 	return ret < 0 ? ret : 0;
 }
 
-#define BLOCK_MTU 1024
+#define BLOCK_MTU 2000
 #define MASK (BLOCK_MTU - 1)
 #define FIRST_FRAG_LEN (sizeof(struct_packet_cmd_send_cmd) + BLOCK_MTU * sizeof(struct page_block))
 #define MID_FRAG_LEN (BLOCK_MTU * sizeof(struct page_block))
 
-int alloc_packet_space(void **fragments, uint32_t nums, uint32_t last_size)
+static uint32_t get_cmd_size(uint32_t cmd) 
+{
+    if (cmd == VTZF_SEND_CMD) {
+        return sizeof(struct_packet_cmd_send_cmd);
+    } else if(cmd == VTZF_OPEN_SESSION) {
+        return sizeof(struct_packet_cmd_session);
+    } else {
+	tloge("error: unknow cmd %u", cmd);
+        return 0;
+    }
+}
+
+static inline uint32_t get_block_size(uint32_t num)
+{
+    return num * sizeof(struct page_block);
+}
+
+static inline uint32_t get_sub_packet_size(uint32_t cmd_size, uint32_t num)
+{
+    return cmd_size + get_block_size(num);
+}
+
+int alloc_packet_space(void **fragments, uint32_t nums, uint32_t last_num, uint32_t cmd_size)
 {
 	int i = 0;
 	uint32_t buf_size = 0;
 	for (i = 0; i < nums; i++) {
-		if (i == 0 )
-			buf_size = FIRST_FRAG_LEN;
-		else if (i == nums - 1)
-			buf_size = last_size;
+                if (i == nums - 1)
+			buf_size = get_sub_packet_size(cmd_size, last_num);
 		else 
-			buf_size = MID_FRAG_LEN;
+			buf_size = get_sub_packet_size(cmd_size, BLOCK_MTU);
 		fragments[i] = kzalloc(buf_size, GFP_KERNEL);
 		if (!fragments[i]) {
 			goto err;
@@ -411,26 +431,54 @@ err:
 	return -ENOMEM;
 }
 
-#define FRAG_FLAG 0xAEAE
+static inline void set_split(uint32_t cmd, void* fragment, uint32_t block_num) 
+{
+    if (cmd == VTZF_SEND_CMD) {
+        ((struct_packet_cmd_send_cmd *)fragment)->fragment_block_num = block_num;
+        ((struct_packet_cmd_send_cmd *)fragment)->packet_size = block_num * sizeof(struct page_block) + sizeof(struct_packet_cmd_send_cmd);
+	tlogd("packet_size is %u", ((struct_packet_cmd_send_cmd *)fragment)->packet_size);
+    } else if(cmd == VTZF_OPEN_SESSION) {
+        ((struct_packet_cmd_session *)fragment)->fragment_block_num = block_num;
+        ((struct_packet_cmd_session *)fragment)->packet_size = block_num * sizeof(struct page_block) + sizeof(struct_packet_cmd_session);
+	tlogd("packet_size is %u", ((struct_packet_cmd_session *)fragment)->packet_size);
+    } 
+}
 
-int memcpy_packet(void **fragments, uint32_t nums, void *wr_buf, uint32_t last_size)
+int copy_data(void *wr_buf, void* fragment, uint32_t *offset, uint32_t cmd_size, uint32_t block_num, uint32_t cmd)
+{
+	if (memcpy_s(fragment, cmd_size, wr_buf, cmd_size))
+		return -EFAULT;
+	if (memcpy_s(fragment + cmd_size, get_block_size(block_num), wr_buf + cmd_size + *offset, get_block_size(block_num)))
+		return -EFAULT;
+	*offset += get_block_size(block_num);
+	set_split(cmd, fragment, block_num);
+	tlogd("packet_size is %u", ((struct_packet_cmd_session *)fragment)->packet_size);
+	return 0;
+}
+
+int memcpy_packet(void **fragments, uint32_t nums, void *wr_buf, uint32_t last_num, uint32_t cmd_size, uint32_t cmd)
 {
 	int i = 0;
 	int offset = 0;
-	if (memcpy_s(fragments[0], FIRST_FRAG_LEN, wr_buf, FIRST_FRAG_LEN))
-		return -EFAULT;
-	offset += FIRST_FRAG_LEN;
-	((struct_packet_cmd_send_cmd *)fragments[0])->fragment_block_num = BLOCK_MTU;
-	for (i = 1; i < nums - 1; i++) {
-		if (memcpy_s(fragments[i], MID_FRAG_LEN, wr_buf + offset, MID_FRAG_LEN))
-			return -EFAULT;
-		offset += MID_FRAG_LEN;
-		((struct page_block *)fragments[i])->frag_flag = FRAG_FLAG;
+	for (i = 0; i < nums - 1; i++) {
+	    if (copy_data(wr_buf, fragments[i], &offset, cmd_size, BLOCK_MTU, cmd)) {
+                tloge("copy data error");
+	    }
 	}
-	if (memcpy_s(fragments[nums - 1], last_size, wr_buf + offset, last_size))
-		return -EFAULT;
-	((struct page_block *)fragments[nums - 1])->frag_flag = FRAG_FLAG;
+	if (copy_data(wr_buf, fragments[nums - 1], &offset, cmd_size, last_num, cmd)) {
+                tloge("copy last data error");
+	}
 	return 0;
+}
+
+static inline int get_total_page_block_num(void *wr_buf, uint32_t cmd)
+{
+	if (cmd == VTZF_SEND_CMD) {
+		return ((struct_packet_cmd_send_cmd *)wr_buf)->total_fragment_block_num;
+	} else if(cmd == VTZF_OPEN_SESSION) {
+		return  ((struct_packet_cmd_session *)wr_buf)->total_fragment_block_num;
+	} 
+	return -1;
 }
 
 static int write_split(struct file *fp_serialport, void *wr_buf)
@@ -441,38 +489,39 @@ static int write_split(struct file *fp_serialport, void *wr_buf)
 	int blocks_num = 0;
 	int fragms_num = 0;
 	int last_num = 0;
-	uint32_t last_size = 0;
-	blocks_num = ((struct_packet_cmd_send_cmd *)wr_buf)->fragment_block_num;
+	uint32_t cmd = ((struct_packet_cmd_general *)wr_buf)->cmd;
+	uint32_t cmd_size = get_cmd_size(cmd);
+	blocks_num =get_total_page_block_num(wr_buf, cmd);
 	fragms_num = blocks_num / BLOCK_MTU;
 	last_num = blocks_num & MASK;
 	if (last_num)
 		fragms_num++;
 	else
 		last_num = BLOCK_MTU;
+	tlogd("blocks is %d, fragms_num is %d, last_num is %d", blocks_num, fragms_num, last_num);
 	fragments = (void **)kzalloc(sizeof(void *) * fragms_num, GFP_KERNEL);
 	if (!fragments) {
 		return -ENOMEM;
 	}
-	last_size = last_num * sizeof(struct page_block);
-	if (alloc_packet_space(fragments, fragms_num, last_size)) {
+	if (alloc_packet_space(fragments, fragms_num, last_num, cmd_size)) {
 		kfree(fragments);
 		return -EFAULT;
 	}
 
-	if (memcpy_packet(fragments, fragms_num, wr_buf, last_size)) {
+	if (memcpy_packet(fragments, fragms_num, wr_buf, last_num, cmd_size, cmd)) {
 		ret = -EFAULT;
 		goto free;
 	}
 
 	for (i = 0; i < fragms_num; i++) {
 		int buf_size = 0;
-		if (i == 0)
-			buf_size = FIRST_FRAG_LEN;
-		else if (i == fragms_num -1)
-			buf_size = last_size;
+		if (i == fragms_num -1) {
+			buf_size = get_sub_packet_size(cmd_size, last_num);
+		}
 		else
-			buf_size = MID_FRAG_LEN;
-		do_write(fp_serialport, fragments[i], buf_size);
+			buf_size = get_sub_packet_size(cmd_size, BLOCK_MTU);
+		ret = do_write(fp_serialport, fragments[i], buf_size);
+		if(ret != 0) break;
 	}
 
 free:
@@ -490,6 +539,11 @@ static inline bool require_split(void *buf)
 {
 	struct_packet_cmd_general *packet_cmd = (struct_packet_cmd_general *)buf;
 	if (packet_cmd->cmd == VTZF_SEND_CMD &&
+		packet_cmd->packet_size - sizeof(struct_packet_cmd_send_cmd) > BLOCK_MTU * sizeof(struct page_block)) {
+		return true;
+	}
+
+	if (packet_cmd->cmd == VTZF_OPEN_SESSION &&
 		packet_cmd->packet_size - sizeof(struct_packet_cmd_send_cmd) > BLOCK_MTU * sizeof(struct page_block)) {
 		return true;
 	}

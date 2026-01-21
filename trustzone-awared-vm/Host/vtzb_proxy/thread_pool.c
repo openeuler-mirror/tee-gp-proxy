@@ -338,14 +338,97 @@ int create_rebootmonitor_thread(struct serial_port_file *serial_port, int i)
     }
     return ret;
 }
+typedef struct   {
+    uint32_t total_fragment_block_num;
+    uint32_t fragment_block_num;
+    uint32_t cmd_size;
+    uint32_t seq_num;
+}struct_fragment;
 
+static inline uint32_t get_cmd(void *rd_buf) 
+{
+    return *(uint32_t *)(rd_buf + sizeof(uint32_t));
+}
 
+static int get_struct_fragment(void *packet, struct_fragment *p_frag)
+{
+    char *rd_buf = (char *)(packet) + sizeof(vm_trace_data);
+    uint32_t cmd = get_cmd(rd_buf);
+    struct_packet_cmd_session *p_session;
+    struct_packet_cmd_send_cmd *p_cmd;
+    if (cmd == VTZ_OPEN_SESSION) {
+        p_session = (struct_packet_cmd_session *)rd_buf;
+        p_frag->total_fragment_block_num = p_session->total_fragment_block_num;
+        p_frag->fragment_block_num = p_session->fragment_block_num;
+        p_frag->cmd_size = sizeof(struct_packet_cmd_session);
+        p_frag->seq_num = p_session->seq_num;
+        tlogd("VTZ_OPEN_SESSION packet_size %u", p_session->packet_size);
+    }
+    else if (cmd == VTZ_SEND_CMD) {
+        p_cmd = (struct_packet_cmd_send_cmd*)rd_buf;
+        p_frag->total_fragment_block_num = p_cmd->total_fragment_block_num;
+        p_frag->fragment_block_num = p_cmd->fragment_block_num;
+        p_frag->cmd_size = sizeof(struct_packet_cmd_send_cmd);
+        p_frag->seq_num = p_cmd->seq_num;
+        tlogd("VTZ_SEND_CMD packet_size %u", p_cmd->packet_size);
+    }
+    else {
+        return -1;
+    };
+    tlogd("total_fragment_block_num %u, fragment_block_num %u, cmd_size %u, seq_num %u", \
+        p_frag->total_fragment_block_num, p_frag->fragment_block_num, p_frag->cmd_size, p_frag->seq_num);
+    if (p_frag->total_fragment_block_num <= p_frag->fragment_block_num) 
+        return -1;
+    return 0;
+
+}
+
+void* get_merged_packet(void* packet, struct_fragment *p_frag) 
+{
+    static _Thread_local uint32_t seq_num = 0;
+    static uint32_t fragment_offset = 0;
+    static void *merged_packet = NULL;
+    static uint32_t packet_header_size = 0;
+    static uint32_t merged_packet_size = 0;
+
+    uint32_t page_blocks_size = p_frag->fragment_block_num * sizeof(struct_page_block);
+    tlogd("packet_header_size is %u, page_blocks_size %u merged_packet_size is %u", packet_header_size, page_blocks_size, merged_packet_size);
+    tlogd("seq_num is %u, fragment_offset %u merged_packet is %p", seq_num, fragment_offset, merged_packet);
+    tlogd("frag cmd_size is %u, fragment_block_num is %u, total_fragment_block_num is %u", p_frag->cmd_size, p_frag->fragment_block_num, p_frag->total_fragment_block_num);
+
+    if (seq_num != p_frag->seq_num) {
+        tlogd("seq_num is %u", p_frag->seq_num);
+        fragment_offset = 0;
+        seq_num = p_frag->seq_num;
+        packet_header_size = p_frag->cmd_size + sizeof(vm_trace_data);
+        merged_packet_size = p_frag->total_fragment_block_num * sizeof(struct_page_block) + packet_header_size;
+        merged_packet = malloc(merged_packet_size);
+
+        if (!merged_packet)
+            return NULL;
+        memcpy_s(merged_packet, packet_header_size + page_blocks_size, packet, packet_header_size + page_blocks_size);
+        fragment_offset += (packet_header_size + page_blocks_size);
+        free(packet);
+    } else {
+        memcpy_s(merged_packet + fragment_offset, page_blocks_size, packet + packet_header_size, page_blocks_size);
+        fragment_offset += page_blocks_size;
+        free(packet);
+        if (fragment_offset == merged_packet_size) { 
+            seq_num = 0;
+            return merged_packet;
+        } 
+    } 
+    return NULL;
+}
 static void *deal_packet_thread(void *arg)
 {
     int ret;
     int offset = 0;
     int buf_len;
     struct serial_port_file *serial_port = (struct serial_port_file *)arg;
+    struct_fragment *p_frag = (struct_fragment *)malloc(sizeof(struct_fragment));
+    if (p_frag == NULL) 
+        goto end;
 
     CPU_SET_AFFINITY();
     while (!g_pool.destroying) {
@@ -382,6 +465,12 @@ static void *deal_packet_thread(void *arg)
             vm_trace_data *data = (vm_trace_data *)packet;
             data->serial_port_ptr = (uint64_t)serial_port;
             data->vmid = serial_port->index;
+            if (get_struct_fragment(packet, p_frag) == 0) {
+                packet = get_merged_packet(packet, p_frag);
+                if (packet == NULL) {
+                    continue;
+                }
+            }
             thread_pool_submit(&g_pool, thread_entry, (void *)((uint64_t)packet));
         }
         serial_port->offset = offset;
@@ -393,6 +482,8 @@ end:
     } else {
         tloge("serial_port is null, and reader thread exit\n");
     }
+    if (p_frag) 
+        free(p_frag);
     return NULL;
 }
 

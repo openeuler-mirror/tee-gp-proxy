@@ -233,8 +233,8 @@ typedef struct {
 	int32_t ptzfd;
 	__s32 cpu_index;
 	int32_t err_flag;
-	int32_t is_fragment;
 	uint32_t fragment_block_num;
+	uint32_t total_fragment_block_num;
 	uint32_t vm_page_size;
 	uint64_t block_addrs[TEE_PARAM_NUM];
 	uint32_t block_size[TEE_PARAM_NUM];
@@ -255,8 +255,8 @@ typedef struct {
 	uint32_t seq_num;
 	int32_t ptzfd;
 	int32_t err_flag;
-	int32_t is_fragment;
 	uint32_t fragment_block_num;
+	uint32_t total_fragment_block_num;
 	uint32_t vm_page_size;
 	uint64_t block_addrs[TEE_PARAM_NUM];
 	uint32_t block_size[TEE_PARAM_NUM];

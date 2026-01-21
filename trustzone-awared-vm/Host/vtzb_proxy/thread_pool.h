@@ -20,6 +20,8 @@
 #include <signal.h>
 #include <unistd.h>
 #include "serial_port.h"
+#include "comm_structs.h"
+#include "securec.h"
 
 #define THREAD_POOL_SIZE 2048
 #define TASK_QUEUE_SIZE 32

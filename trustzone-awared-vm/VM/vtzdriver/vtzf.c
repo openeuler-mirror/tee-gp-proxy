@@ -796,6 +796,7 @@ static int tc_ns_open_session(struct vtzf_dev_file *dev_file,
 		total_buf_size += packet_cmd.block_size[i];
 	}
 	packet_cmd.fragment_block_num = total_buf_size / sizeof(struct page_block);
+	packet_cmd.total_fragment_block_num = packet_cmd.fragment_block_num;
 	total_buf_size += sizeof(packet_cmd);
 	packet_cmd.packet_size = total_buf_size;
 	cmd_buf = kzalloc(total_buf_size, GFP_KERNEL);
@@ -1490,6 +1491,7 @@ static int tc_ns_send_cmd(struct vtzf_dev_file *dev_file,
 		total_buf_size += packet_cmd.block_size[i];
 	}
 	packet_cmd.fragment_block_num = total_buf_size / sizeof(struct page_block);
+	packet_cmd.total_fragment_block_num = packet_cmd.fragment_block_num;
 	total_buf_size += sizeof(packet_cmd);
 	packet_cmd.packet_size = total_buf_size;
 	cmd_buf = kzalloc(total_buf_size, GFP_KERNEL);
