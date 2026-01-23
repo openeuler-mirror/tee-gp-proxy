@@ -236,7 +236,7 @@ void free_serial_port_list(void)
 	destroy_data_list();
 }
 
-void put_event_data(void *packet, int packet_size, uint32_t seq_num)
+void put_event_data(void *packet, int packet_size, uint32_t seq_num, int result)
 {
 	struct vhc_event_data *event_data;
 	struct vhc_event_data *tmp;
@@ -249,7 +249,7 @@ void put_event_data(void *packet, int packet_size, uint32_t seq_num)
 			if (memcpy_s(event_data->rd_buf, event_data->size_rd_buf, packet, packet_size) != 0) {
 				tloge("memcpy_s failed\n");
 			}
-			event_data->rd_ret = 0;
+			event_data->rd_ret = result;
 			event_data->ret_flag = 1;
 			wake_up(&event_data->wait_event_wq);
 			break;
@@ -331,7 +331,7 @@ int rd_thread_func(void *arg)
 			}
 			rd_decrement(file);
 			seq_num = *(int *)(packet + 4);
-			put_event_data(packet, packet_size, seq_num);
+			put_event_data(packet, packet_size, seq_num, 0);
 		}
 		file->offset = offset;
 		tlogd("offset = %d\n", offset);
@@ -588,9 +588,15 @@ int wr_thread_func(void *arg)
 		if(!write_data)
 			continue;
 		ret = safe_write(write_data, fp_serialport);
-		if (ret < 0)
+		if (ret < 0) {
+			struct_packet_rsp_general packet_rsp = {0};
 			tloge("write failed ret = %d\n", ret);
-		wake_up_rd_thread();
+			packet_rsp.ret = ret;
+			put_event_data(&packet_rsp, sizeof(packet_rsp), \
+				((struct_packet_cmd_general *)write_data->wr_buf)->seq_num + 1, ret);
+		} else {
+			wake_up_rd_thread();
+		}
 		destroy_wr_data(write_data);
 		schedule();
 	}
