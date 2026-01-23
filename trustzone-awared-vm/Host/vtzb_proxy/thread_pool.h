@@ -49,7 +49,7 @@ typedef struct {
     int busy_cnt;
     int front;                           // Queue head index
     int rear;                            // Queue tail index
-    int destroying;                      // Destruction flag
+    volatile sig_atomic_t destroying;    // Destruction flag
     pthread_mutex_t task_mutex;               // Mutex
     pthread_mutex_t session_mutex;       // Mutex
     pthread_mutex_t time_mutex;          // Mutex

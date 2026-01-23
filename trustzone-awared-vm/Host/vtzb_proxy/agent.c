@@ -35,7 +35,7 @@ void do_free_agent(struct_agent_args *agent_args)
     buf[0] = agent_args->args.id;
     ret = ioctl(agent_args->dev_fd, TC_NS_CLIENT_IOCTL_UNREGISTER_AGENT, buf);
     if (ret) {
-        tloge("ioctl failed\n");
+        tloge("ioctl failed ret is %d\n",ret);
     }
     close(agent_args->dev_fd);
     agent_args->dev_fd = -1;

@@ -74,7 +74,6 @@ int thread_pool_init(ThreadPool *pool)
         pthread_create(&pool->threads[i], NULL, thread_func, &g_thd_args[i]);
         sprintf(name, "worker_%d", i);
         pthread_setname_np(pool->threads[i], name);
-        pthread_detach(pool->threads[i]);
     }
     return 0;
 }
@@ -135,7 +134,7 @@ void *thread_func(void *arg)
         }
 
         /* If the thread pool is being destroyed, exit the thread. */
-        if (pool->destroying) {
+        if (pool->destroying && pool->task_cnt == 0) {
             pthread_mutex_unlock(&pool->task_mutex);
             break;
         }
@@ -292,7 +291,7 @@ static void *deal_rebootmonitor_thread(void *arg)
     }
 
     while (1) {
-        if(reboot_flag == 1) {
+        if(reboot_flag == 1 || g_pool.destroying) {
             if (virEventRemoveTimeout(timeout_id) == 0) {
                 tlogi("Timer %d removed successfully.\n", timeout_id);
             }
@@ -305,7 +304,7 @@ static void *deal_rebootmonitor_thread(void *arg)
             if(virEventRunDefaultImpl() < 0){
                 tloge("[Thread] Event loop error\n");
             }
-            tlogi("reboot succedd\n");
+            tlogi("unregister libvirt event success\n");
             break;
         }
         if(virEventRunDefaultImpl() < 0) {
@@ -317,6 +316,7 @@ static void *deal_rebootmonitor_thread(void *arg)
     deinit_domain(domain_ptr);
     deinit_virt_conn(conn);
     tlogi("deinit thread \n");
+    g_pool.rebootmonitor_threads[serial_port->index] = 0;
     return NULL;
 }
 
@@ -332,9 +332,6 @@ int create_rebootmonitor_thread(struct serial_port_file *serial_port, int i)
     if ((ret = pthread_setname_np(g_pool.rebootmonitor_threads[i], name))) {
         tloge("set thread name failed\n");
         return ret;
-    }
-    if ((ret = pthread_detach(g_pool.rebootmonitor_threads[i]))) {
-        tloge("thread detach failed\n");
     }
     return ret;
 }
@@ -484,6 +481,7 @@ end:
     }
     if (p_frag) 
         free(p_frag);
+    g_pool.reader_threads[serial_port->index] = 0;
     return NULL;
 }
 
@@ -499,9 +497,6 @@ int create_reader_thread(struct serial_port_file *serial_port, int i)
     if ((ret = pthread_setname_np(g_pool.reader_threads[i], name))) {
         tloge("set thread name failed\n");
         return ret;
-    }
-    if ((ret = pthread_detach(g_pool.reader_threads[i]))) {
-        tloge("thread detach failed\n");
     }
     return ret;
 }
@@ -538,15 +533,22 @@ void thread_pool_submit(ThreadPool *pool, void *(*task_func)(void *), void *arg)
 void thread_pool_destroy(ThreadPool *pool)
 {
     /* Stop accepting new tasks. */
-    pthread_mutex_lock(&pool->task_mutex);
     pool->destroying = 1;
-    pthread_mutex_unlock(&pool->task_mutex);
-
     pthread_cond_broadcast(&pool->queue_not_empty);
+    pthread_cancel(pool->admin_tid);
     pthread_join(pool->admin_tid, NULL);
 
-    pthread_mutex_destroy(&pool->task_mutex);
-    pthread_cond_destroy(&pool->queue_not_empty);
+    for(int i = 0; i < THREAD_POOL_SIZE; i++) {
+        if (pool->threads[i] != 0)
+            pthread_join(pool->threads[i], NULL);
+    }
+
+    for(int i = 0; i < SERIAL_PORT_NUM; i++) {
+        if (pool->reader_threads[i] != 0)
+            pthread_join(pool->reader_threads[i], NULL);
+        if (pool->rebootmonitor_threads[i] != 0)
+            pthread_join(pool->rebootmonitor_threads[i], NULL);
+        }
 }
 
 void set_thread_session_id(ThreadPool *pool, pthread_t thd, unsigned int id)
