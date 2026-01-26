@@ -382,9 +382,6 @@ static int do_write(struct file *fp_serialport, void *buf, uint32_t buf_size)
 }
 
 #define BLOCK_MTU 2000
-#define MASK (BLOCK_MTU - 1)
-#define FIRST_FRAG_LEN (sizeof(struct_packet_cmd_send_cmd) + BLOCK_MTU * sizeof(struct page_block))
-#define MID_FRAG_LEN (BLOCK_MTU * sizeof(struct page_block))
 
 static uint32_t get_cmd_size(uint32_t cmd) 
 {
@@ -493,7 +490,7 @@ static int write_split(struct file *fp_serialport, void *wr_buf)
 	uint32_t cmd_size = get_cmd_size(cmd);
 	blocks_num =get_total_page_block_num(wr_buf, cmd);
 	fragms_num = blocks_num / BLOCK_MTU;
-	last_num = blocks_num & MASK;
+	last_num = blocks_num % BLOCK_MTU;
 	if (last_num)
 		fragms_num++;
 	else
@@ -806,10 +803,6 @@ int send_to_proxy(void * wrt_buf, size_t size_wrt_buf, void * rd_buf, size_t siz
 	struct vhc_event_data *event_data;
 
 	tlogd("send data, wr_len %ld, rd_len %ld, seq %d\n", size_wrt_buf, size_rd_buf, seq_num);
-	if(size_wrt_buf > PACKET_LEN_MAX) {
-		tloge("send data length over max, size is %lu, seq_num is %u\n", size_wrt_buf, seq_num);
-		return -EINTR;
-	}
 	ret = creat_wr_data(wrt_buf, size_wrt_buf);
 	if (ret != 0) {
 		tloge("creat_wr_data failed\n");

@@ -27,7 +27,8 @@ APP_SOURCES := ./vtzb_proxy.c \
 				./agent.c \
 				./process_data.c \
 				./tlogcat.c \
-				./libvirt_api_wrap.c
+				./libvirt_api_wrap.c\
+				./enhance_stability.c
 
 APP_OBJECTS := $(APP_SOURCES:.c=.o)
 

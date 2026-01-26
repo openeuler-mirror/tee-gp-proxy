@@ -141,7 +141,10 @@ void release_vm_file(struct serial_port_file *serial_port, int i)
         tloge("vm %d 's serial_port is null\n", i);
         return;
     }
-    close(serial_port->sock);
+    if (serial_port->sock >= 0) {
+        shutdown(serial_port->sock, SHUT_RDWR);
+        close(serial_port->sock);
+    }
     serial_port->sock = -1;
     g_pollfd[i].fd = -1;
     g_serial_array[i] = NULL;

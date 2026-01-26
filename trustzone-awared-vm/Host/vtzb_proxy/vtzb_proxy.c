@@ -29,6 +29,7 @@
 #include "serial_port.h"
 #include "process_data.h"
 #include "tlogcat.h"
+#include "enhance_stability.h"
 
 ThreadPool g_pool = {0};
 extern struct pollfd g_pollfd[SERIAL_PORT_NUM];
@@ -776,6 +777,15 @@ END:
 
 int main() {
     int ret = 0;
+    if (daemonize() != 0) {
+        tloge("daemonize failed");
+        return -1;
+    }
+
+    if (register_signal_handlers() != 0) {
+        tloge("register signal handlers failed, exit");
+        return -1;
+    }
 
     serial_port_list_init();
     if (thread_pool_init(&g_pool))
