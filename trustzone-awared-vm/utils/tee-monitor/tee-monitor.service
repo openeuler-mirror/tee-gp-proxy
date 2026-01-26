@@ -1,0 +1,42 @@
+[Unit]
+Description=TEE Services Monitor
+Documentation=man:tee-monitor(8)
+After=network.target
+
+[Service]
+Type=simple
+# Validate configuration before starting (errors will be shown on restart failure)
+ExecStartPre=/usr/libexec/tee-monitor.sh --check
+ExecStart=/usr/libexec/tee-monitor.sh
+Restart=always
+RestartSec=5
+
+# Environment configuration
+Environment=CHECK_INTERVAL=30
+
+# Host scenarios (choose one):
+#   1. Host + VM (default): monitors vtz_proxy + teecd
+#   2. Host Only: set VM_MODE=false, monitors teecd only
+#   3. Host + Container: set CONTAINER_MODE=true, monitors teecd + sdf-utils
+#
+# Note: CONTAINER_MODE=true takes precedence over VM_MODE setting
+
+# Host Only mode (no VM communication):
+#Environment=VM_MODE=false
+
+# Container mode (monitors sdf-utils):
+#Environment=CONTAINER_MODE=true
+#Environment=SDF_UTILS_PATH=/usr/bin/sdf-utils
+
+# Logging - output to journal
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tee-monitor
+
+# Security hardening
+NoNewPrivileges=no
+ProtectSystem=false
+ProtectHome=false
+
+[Install]
+WantedBy=multi-user.target
