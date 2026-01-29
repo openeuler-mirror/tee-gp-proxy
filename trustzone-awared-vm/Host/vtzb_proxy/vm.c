@@ -168,37 +168,25 @@ int remove_fd(int ptzfd, struct vm_file *vm_fp)
 
 struct vm_file *create_vm_file(uint32_t vmid)
 {
-    bool isfind = false;
-    struct ListNode *ptr = NULL;
     struct vm_file *tmp = NULL;
     pthread_mutex_lock(&g_mutex_vm);
-    if (!LIST_EMPTY(&g_vm_list)) {
-        LIST_FOR_EACH(ptr, &g_vm_list) {
-            tmp = CONTAINER_OF(ptr, struct vm_file, head);
-            if (tmp->vmpid == vmid) {
-                isfind = true;
-                break;
-            }
-        }
-    }
 
-    if (!isfind) {
-        tlogd("create new vm_file for vmid %d\n", vmid);
-        tmp = (struct vm_file *)malloc(sizeof(struct vm_file));
-        if (!tmp) {
-            tloge("Failed to allocate memory for vm_file\n");
-            goto END;
-        }
-        pthread_mutex_init(&tmp->fd_lock, NULL);
-        pthread_mutex_init(&tmp->agents_lock, NULL);
-        pthread_mutex_init(&tmp->shrd_mem_lock, NULL);
-        ListInit(&tmp->head);
-        ListInit(&tmp->fds_head);
-        ListInit(&tmp->agents_head);
-        ListInit(&tmp->shrd_mem_head);
-        tmp->vmpid = vmid;
-        ListInsertTail(&g_vm_list, &tmp->head);
+    tlogd("create new vm_file for vmid %d\n", vmid);
+    tmp = (struct vm_file *)malloc(sizeof(struct vm_file));
+    if (!tmp) {
+        tloge("Failed to allocate memory for vm_file\n");
+        goto END;
     }
+    pthread_mutex_init(&tmp->fd_lock, NULL);
+    pthread_mutex_init(&tmp->agents_lock, NULL);
+    pthread_mutex_init(&tmp->shrd_mem_lock, NULL);
+    ListInit(&tmp->head);
+    ListInit(&tmp->fds_head);
+    ListInit(&tmp->agents_head);
+    ListInit(&tmp->shrd_mem_head);
+    tmp->vmpid = vmid;
+    tmp->nsid = 0;
+    ListInsertTail(&g_vm_list, &tmp->head);
 END:
     pthread_mutex_unlock(&g_mutex_vm);
     return tmp;
@@ -207,6 +195,9 @@ END:
 static void unregister_nsid_vmid(struct vm_file * vm_file)
 {
     int ret;
+    if (vm_file->nsid == 0 || vm_file->vmpid == 0) {
+        return;
+    }
     struct_vm_group_info vm_info;
     int fd = open(TC_TEECD_PRIVATE_DEV_NAME, O_RDWR);
     if (fd < 0) {
@@ -216,8 +207,8 @@ static void unregister_nsid_vmid(struct vm_file * vm_file)
     vm_info.vmid = vm_file->vmpid;
     vm_info.nsid = vm_file->nsid;
     ret = ioctl(fd, TC_NS_CLIENT_IOCTL_UNREGISTER_VM_VMID_NSID, &vm_info);
-    if (!ret) {
-        tloge("vtz UNregister nsid vmid vmid = %d, nsid = %d, ret = %d\n", vm_info.vmid, vm_info.nsid, ret);
+    if (ret) {
+        tloge("vtz UNregister nsid vmid failed, vmid = %d, nsid = %d, ret = %d\n", vm_info.vmid, vm_info.nsid, ret);
     }
     close(fd);
     return;

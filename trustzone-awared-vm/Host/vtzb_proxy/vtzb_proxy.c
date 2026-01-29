@@ -689,6 +689,27 @@ static void vtz_nothing(struct_packet_cmd_nothing *packet_cmd,
     }
 }
 
+static int register_teleport(uint32_t vm_id, char *vm_uuid)
+{
+    pid_t pid = fork();
+    if (pid == -1) {
+        tloge("fork failed");
+        return -1;
+    } else if (pid == 0) {
+        char arg_nsid[128];
+        char arg_cid[129];
+        snprintf_s(arg_nsid, sizeof(arg_nsid), sizeof(arg_nsid), "--nsid=%u", vm_id);
+        snprintf_s(arg_cid, sizeof(arg_cid), sizeof(arg_cid), "--containerid=%s%s", vm_uuid, vm_uuid);
+        char *args[] = {"tee_teleport", arg_nsid, arg_cid, "--config-container", NULL};
+        execvp("tee_teleport", args);
+        exit(EXIT_FAILURE);
+    } else {
+        int status;
+        waitpid(pid, &status, 0);
+        return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    }
+}
+
 static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
     struct serial_port_file *serial_port)
 {
@@ -703,17 +724,27 @@ static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
     int fd = open(TC_TEECD_PRIVATE_DEV_NAME, O_RDWR);
     if (fd < 0) {
         tloge("open %s failed\n", TC_TEECD_PRIVATE_DEV_NAME);
-	ret = -1;
-	goto END;
+        ret = -1;
+        goto END;
     }
     vm_info.vmid = serial_port->vm_file->vmpid;
     vm_info.nsid = packet_cmd->nsid;
     ret = ioctl(fd, TC_NS_CLIENT_IOCTL_REGISTER_VM_VMID_NSID, &vm_info);
-    if (!ret) {
-        tloge("vtz register nsid vmid failed vmid = %d, nsid = %d, ret = %d\n", packet_cmd->vmid, packet_cmd->nsid, ret);
+    if (ret != 0) {
+        tloge("vtz register nsid vmid failed, vmid = %u, nsid = %u, ret = %d\n", packet_cmd->vmid, packet_cmd->nsid, ret);
+        goto END;
     }
-    close(fd);
+
+    ret = register_teleport(serial_port->vm_file->vmpid, serial_port->vm_file->uuid);
+    if (ret != 0) {
+	    tloge("register teleport failed, vmpid is %u, uuid is %s, ret is %d", \
+        serial_port->vm_file->vmpid, serial_port->vm_file->uuid, ret);
+        goto END;
+    }
+
 END:
+    if (fd > 0) 
+	    close(fd);
     packet_rsp.ret = ret;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp)) {
@@ -849,6 +880,7 @@ int main() {
             if (g_pollfd[i].revents & POLLHUP) {
                 tlogi("vm %d got POLLHUP event, release vm\n", i);
                 release_vm_file(g_serial_array[i], i);
+		        g_pollfd[i].revents = 0;
             }
         }
 
