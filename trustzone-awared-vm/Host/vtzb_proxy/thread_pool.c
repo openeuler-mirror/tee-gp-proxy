@@ -87,7 +87,6 @@ void replenish_thread_pool(ThreadPool *pool, pthread_t thd, char *name)
             g_thd_args[i].pool = pool;
             pthread_create(&pool->threads[i], NULL, thread_func, &g_thd_args[i]);
             pthread_setname_np(pool->threads[i], name);
-            pthread_detach(pool->threads[i]);
             pool->kill_flag[i] = false;
             tlogv("thread %s : old id %lu, new id %lu\n", name, thd, pool->threads[i]);
             return;
@@ -100,7 +99,8 @@ void restart_pool_thread(ThreadPool *pool, pthread_t tid)
 {
     char name[THREAD_NAME_LEN] = {0};
     int result;
-
+    if (tid == 0)
+        return;
     pthread_getname_np(tid, name, THREAD_NAME_LEN);
     tlogv("try to kill thread %s: %lu\n", name, tid);
     result = pthread_kill(tid, SIGUSR1);

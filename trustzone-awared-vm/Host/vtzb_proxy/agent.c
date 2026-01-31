@@ -32,6 +32,8 @@ void do_free_agent(struct_agent_args *agent_args)
 
     tlogv("free agent fd %u\n", agent_args->dev_fd);
     ListRemoveEntry(&(agent_args->node));
+    restart_pool_thread(&g_pool, agent_args->thd);
+    
     buf[0] = agent_args->args.id;
     ret = ioctl(agent_args->dev_fd, TC_NS_CLIENT_IOCTL_UNREGISTER_AGENT, buf);
     if (ret) {
