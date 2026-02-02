@@ -45,25 +45,8 @@ int daemonize(void) {
 
 static void cleanup_resources(void) {
     tlogi("vtz_proxy: start cleanup resources...");
-    struct_agent_args *agent_args;
-    struct ListNode *ptr = NULL;
     for (int i = 0; i < SERIAL_PORT_NUM; i++) {
         if (g_serial_array[i] && g_serial_array[i]->vm_file) {
-            pthread_mutex_lock(&g_serial_array[i]->vm_file->agents_lock);
-            if (!LIST_EMPTY(&g_serial_array[i]->vm_file->agents_head)) {
-                LIST_FOR_EACH(ptr, &g_serial_array[i]->vm_file->agents_head) {
-                    agent_args = CONTAINER_OF(ptr, struct_agent_args, node);
-                    if (agent_args->thd) {
-                        for(int j = 0; j < THREAD_POOL_SIZE; j++) {
-                            if (g_pool.threads[j] == agent_args->thd) {
-                                tlogi("agent thread is %lu index is %d", agent_args->thd, j);
-                                g_pool.threads[j] = 0;
-                            }
-                        }
-                    }
-                }
-            }
-            pthread_mutex_unlock(&g_serial_array[i]->vm_file->agents_lock);
             release_vm_file(g_serial_array[i], i);
         }
     }
