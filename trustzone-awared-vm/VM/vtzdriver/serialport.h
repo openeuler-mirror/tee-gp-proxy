@@ -44,7 +44,6 @@ struct vtzf_serial_port_file
 	struct file *filep;
 	struct list_head head;
 	struct mutex lock;
-	wait_queue_head_t rd_wait_event_wq;
 	wait_queue_head_t wr_wait_event_wq;
 	wait_queue_head_t log_wait_event_wq;
 	int rd_flag;
