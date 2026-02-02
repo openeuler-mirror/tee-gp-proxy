@@ -148,7 +148,6 @@ static inline void wake_up_rd_thread(void)
 {
 	struct vtzf_serial_port_file *file = g_serial_port_file;
 	rd_increment(file);
-	wake_up(&file->rd_wait_event_wq);
 }
 
 static inline void wake_up_wr_thread(void)
@@ -264,37 +263,13 @@ int rd_thread_func(void *arg)
 	struct vtzf_serial_port_file *file = (struct vtzf_serial_port_file *)arg;
 	loff_t off = 0;
 	int ssize_ret = 0;
-	int ret = 0;
 	uint32_t seq_num;
 	int buf_len = 0;
 	int offset = 0;
 	struct file *fp_serialport = NULL;
-	unsigned int old_f_flags;
-	void *tmp;
-	loff_t pos = 0;
-
-	old_f_flags = file->filep->f_flags;
-	file->filep->f_flags |= O_NONBLOCK;
-	tmp = kzalloc(1024, GFP_KERNEL);
-	if (tmp == NULL) {
-		return -ENOMEM;
-	}
-
-	while(1) {
-		ret = kernel_read(file->filep, tmp, 1024, &pos);
-		if (ret <= 0) break;	
-	}
-	kfree(tmp);
-	file->filep->f_flags = old_f_flags;
-
 
 	fp_serialport = file->filep;
 	while (!kthread_should_stop()) {
-		ret = wait_event_interruptible(file->rd_wait_event_wq, file->rd_flag);
-		if (ret != 0) {
-			tloge("rd thread wait event interruptible failed!\n");
-			ret = -EINTR;
-		}
 		if (g_destroy_rd_thread)
 			break;
 		off = 0;
@@ -718,7 +693,6 @@ int serial_port_init(void)
 		mutex_init(&serial_port_file->lock);
 		mutex_init(&serial_port_file->rd_flag_lock);
 		mutex_init(&serial_port_file->wr_flag_lock);
-		init_waitqueue_head(&(serial_port_file->rd_wait_event_wq));
 		init_waitqueue_head(&(serial_port_file->wr_wait_event_wq));
 		init_waitqueue_head(&(serial_port_file->log_wait_event_wq));
 		list_add_tail(&serial_port_file->head, &g_serial_port_list.head);
