@@ -25,8 +25,7 @@
 5. `tzdriver`和`client`编译安装
     1. 进入`itrustee_tzdriver`的根目录，补丁文件路径按照实际路径修改。
     ``` 
-    git am ../tee-gp-proxy/trustzone-awared-vm/Host/tzdriver-0001-support-virtual-machine.patch
-    git am ../tee-gp-proxy/trustzone-awared-vm/Host/tzdriver-0002-support-get-uid-from-vm.patch
+    git am ../tee-gp-proxy/trustzone-awared-vm/Host/tzdriver-00*.patch
     ```
     2. 进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改。
     ```shell 
@@ -47,9 +46,7 @@
 4. 应用补丁文件
     1. 进入目标目录 `qemu` 的根目录，补丁文件路径按照实际路径修改。
     ```shell
-    git am ../tee-gp-proxy/trustzone-awared-vm/Host/qemu-0001-support-trustzone-virtual-deploy.patch
-    git am ../tee-gp-proxy/trustzone-awared-vm/Host/qemu-0002-bugfixed-init-local_err-before-use-it.patch
-    git am ../tee-gp-proxy/trustzone-awared-vm/Host/qemu-0003-add-vm-uid.patch
+    git am ../tee-gp-proxy/trustzone-awared-vm/Host/qemu-00*.patch
     ```
 5. 编译`qemu`
     ```shell
@@ -107,7 +104,7 @@
     ```
 3. `itrustee_client`编译安装
     1. 进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改。
-        1. ``` git am tee-gp-proxy/trustzone-awared-vm/Host/client-0001-add-vm-uid-in-TC_NS_ClientContext.patch```
+        1. ``` git am tee-gp-proxy/trustzone-awared-vm/Host/client-00*.patch```
     2. 920 机型请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/trustzone/fg/kunpengtrustzone_20_0019.html)。
     3. 920 新型号请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/cca/devg/Kunpeng_ommercialcryptography_16_0015.html)
 4. 编译`virtio_console.ko`并加载（仅5.10内核需要执行此步骤）

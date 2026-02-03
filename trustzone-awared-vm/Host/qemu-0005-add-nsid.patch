@@ -1,0 +1,33 @@
+From 7328454de7e3e897b813e288bef71060b033a4a8 Mon Sep 17 00:00:00 2001
+From: gongchangsui <gongchangsui@outlook.com>
+Date: Tue, 6 Jan 2026 06:01:38 -0500
+Subject: [PATCH] add nsid
+
+Signed-off-by: gongchangsui <gongchangsui@outlook.com>
+---
+ hw/char/virtio-console.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/hw/char/virtio-console.c b/hw/char/virtio-console.c
+index ee19d50..38cf81e 100644
+--- a/hw/char/virtio-console.c
++++ b/hw/char/virtio-console.c
+@@ -121,6 +121,7 @@ typedef struct {
+ 	uint32_t seq_num;
+ 	uint32_t vmid;
+ 	uint32_t flag;
++	uint32_t nsid;
+ } struct_packet_cmd_open_tzd;
+ 
+ typedef struct {
+@@ -154,6 +155,7 @@ typedef struct {
+ 	uint64_t block_addrs[TEEC_PARAM_NUM];//qemu and proxy don't use
+ 	uint32_t block_size[TEEC_PARAM_NUM];
+ 	unsigned long long addrs[TEEC_PARAM_NUM]; //used by ref mem mmap
++	uint32_t nsid;
+ 	TC_NS_ClientContext cliContext;
+ } struct_packet_cmd_session;
+ 
+-- 
+1.8.3.1
+

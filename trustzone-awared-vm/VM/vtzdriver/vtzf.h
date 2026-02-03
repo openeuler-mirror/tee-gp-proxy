@@ -105,4 +105,5 @@ static int tc_ns_get_tee_version(struct vtzf_dev_file *dev_file,
 static int tc_ns_late_init(unsigned long arg);
 static int sync_system_time_from_user(struct vtzf_dev_file *dev_file, 
 	const struct tc_ns_client_time *user_time);
+static int tc_ns_register_vm_vmid_nsid(void);
 #endif // VTZF_H

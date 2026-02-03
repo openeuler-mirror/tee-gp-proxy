@@ -30,6 +30,8 @@ struct vm_file {
     struct ListNode agents_head;
     pthread_mutex_t shrd_mem_lock;
     struct ListNode shrd_mem_head;
+    uint32_t nsid;
+    char uuid[33];
 };
 
 struct fd_file {

@@ -160,7 +160,10 @@ struct AgentIoctlArgs {
 #define TC_NS_CLIENT_IOCTL_PORTAL_WORK                    _IOWR(TC_NS_CLIENT_IOC_MAGIC, 25, struct AgentIoctlArgs)
 #endif
 #define TC_NS_CLIENT_IOCTL_GET_TEE_INFO                   _IOWR(TC_NS_CLIENT_IOC_MAGIC, 26, TC_NS_TEE_Info)
-#define TC_NS_CLIENT_IOCTL_SET_VM_FLAG                    _IOWR(TC_NS_CLIENT_IOC_MAGIC, 27, int)
+#define TC_NS_CLIENT_IOCTL_SET_VM_FLAG                    _IOWR(TC_NS_CLIENT_IOC_MAGIC, 27, struct_vm_group_info)
+#define TC_NS_CLIENT_IOCTL_REGISTER_VM_VMID_NSID          _IOWR(TC_NS_CLIENT_IOC_MAGIC, 28, struct_vm_group_info)
+#define TC_NS_CLIENT_IOCTL_UNREGISTER_VM_VMID_NSID        _IOWR(TC_NS_CLIENT_IOC_MAGIC, 29, struct_vm_group_info)
+
 TEEC_Result TEEC_CheckOperation(const TEEC_Operation *operation);
 #endif
 

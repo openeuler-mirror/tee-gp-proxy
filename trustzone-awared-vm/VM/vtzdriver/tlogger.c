@@ -147,6 +147,7 @@ static int open_tzdriver_tlogger(struct tlogger_reader *dev_file, uint32_t flag,
 	packet_cmd.seq_num = seq_num;
 	packet_cmd.cmd = VTZF_OPEN_TZD;
 	packet_cmd.vmid = 0;
+	packet_cmd.nsid = task_active_pid_ns(current)->ns.inum;
 	/* if flag==0, open tc_ns_client; if flag==1, open tc_private */
 	packet_cmd.flag = flag;
 	tlogi("start open tlogger\n");

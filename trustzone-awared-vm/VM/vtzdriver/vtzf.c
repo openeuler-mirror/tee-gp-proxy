@@ -253,6 +253,12 @@ static int __init vtzf_init(void)
 		goto class_device_destroy;
 	}
 	seq_num_init();
+	ret = tc_ns_register_vm_vmid_nsid();
+	if (ret != 0) {
+		tloge("failed to register nsid");
+		goto class_device_destroy;
+	}
+
 	return 0;
 
 class_device_destroy:
@@ -386,6 +392,33 @@ static int vtzf_cvm_open(struct inode *inode, struct file *file)
 	return ret;
 }
 
+static int tc_ns_register_vm_vmid_nsid(void) 
+{
+	int ret = 0;
+	uint32_t seq_num = get_seq_num(0);
+	struct_packet_cmd_open_tzd packet_cmd = {0};
+	struct_packet_rsp_open_tzd packet_rsp = {0};
+	packet_cmd.packet_size = sizeof(packet_cmd);
+
+	packet_cmd.seq_num = seq_num;
+	packet_cmd.cmd = VTZF_REGISTER_VM_VMID_NSID;
+	packet_cmd.vmid = 0;
+
+	packet_cmd.nsid = task_active_pid_ns(current)->ns.inum;
+	ret = send_to_proxy(&packet_cmd, sizeof(packet_cmd), &packet_rsp, sizeof(packet_rsp), seq_num);
+	if (!ret) {
+		ret = packet_rsp.ret;
+		if (ret) {
+			tloge("open TZdriver failed ret is %d\n", ret);
+			goto END;
+		}
+	} else {
+		tloge("send to proxy failed ret is %d\n", ret);
+	}
+END:
+	return ret;
+}
+
 static int open_tzdriver(struct vtzf_dev_file *dev_file, uint32_t flag)
 {
 	int ret = 0;
@@ -405,6 +438,7 @@ static int open_tzdriver(struct vtzf_dev_file *dev_file, uint32_t flag)
 	/* if flag==0, open tc_ns_client; if flag==1, open tc_private */
 	packet_cmd.flag = flag;
 
+	packet_cmd.nsid = task_active_pid_ns(current)->ns.inum;
 	ret = send_to_proxy(&packet_cmd, sizeof(packet_cmd), &packet_rsp, sizeof(packet_rsp), seq_num);
 	if (!ret) {
 		ret = packet_rsp.ret;
@@ -765,6 +799,8 @@ static int tc_ns_open_session(struct vtzf_dev_file *dev_file,
 	packet_cmd.cmd = VTZF_OPEN_SESSION;
 	packet_cmd.ptzfd = dev_file->ptzfd;
 	packet_cmd.cliContext = *clicontext;
+	packet_cmd.nsid = task_active_pid_ns(current)->ns.inum;
+
 
 	file_size = (size_t)packet_cmd.cliContext.file_size;
 	tlogd("file_size = %lu \n", file_size);

@@ -43,6 +43,9 @@
 #define VTZF_TEST                65
 #define VTZ_NOTHING              67
 
+#define VTZF_REGISTER_VM_VMID_NSID 69
+#define VTZF_UNREGISTER_VM_VMID_NSID 71
+
 typedef struct {
 	uint32_t packet_size;
 	uint32_t cmd;
@@ -73,6 +76,7 @@ typedef struct {
 	uint32_t seq_num;
 	uint32_t vmid;
 	uint32_t flag;
+	uint32_t nsid;
 } struct_packet_cmd_open_tzd;
 
 typedef struct {
@@ -239,6 +243,7 @@ typedef struct {
 	uint64_t block_addrs[TEE_PARAM_NUM];
 	uint32_t block_size[TEE_PARAM_NUM];
 	unsigned long long addrs[TEE_PARAM_NUM]; //used by ref mem mmap
+	uint32_t nsid;
 	struct tc_ns_client_context cliContext;
 } struct_packet_cmd_session;
 
