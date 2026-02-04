@@ -1,24 +1,24 @@
-From d7b012e9b66ad20398a9c10b39a36237ee7e91aa Mon Sep 17 00:00:00 2001
+From 2dfe746c026527093e0d8cf50ef96b7152495f71 Mon Sep 17 00:00:00 2001
 From: gongchangsui <gongchangsui@outlook.com>
-Date: Fri, 16 Jan 2026 01:32:35 -0500
-Subject: [PATCH] add nsid
+Date: Wed, 4 Feb 2026 14:34:03 +0800
+Subject: [PATCH] support vm
 
 ---
  Makefile                |   1 +
- auth/auth_base_impl.c   |  17 +++
+ auth/auth_base_impl.c   |  17 ++
  auth/auth_base_impl.h   |   6 +
- core/gp_ops.c           | 335 +++++++++++++++++++++++++++++++++++++++++++-----
+ core/gp_ops.c           | 335 ++++++++++++++++++++++++++++++++++++----
  core/gp_ops.h           |   4 +
- core/session_manager.c  | 121 ++++++++++++++++-
- core/shared_mem.c       |  29 +++++
+ core/session_manager.c  | 121 ++++++++++++++-
+ core/shared_mem.c       |  29 ++++
  core/shared_mem.h       |   2 +-
- core/tc_client_driver.c | 116 +++++++++++++++--
+ core/tc_client_driver.c | 117 ++++++++++++--
  core/tc_client_driver.h |   1 +
- core/tc_cvm_driver.c    |   5 +
+ core/tc_cvm_driver.c    |   6 +
  tc_ns_client.h          |   3 +
  teek_ns_client.h        |   2 +
- tlogger/tlogger.c       |  53 +++++++-
- 14 files changed, 644 insertions(+), 51 deletions(-)
+ tlogger/tlogger.c       |  53 ++++++-
+ 14 files changed, 646 insertions(+), 51 deletions(-)
 
 diff --git a/Makefile b/Makefile
 index ac40f80..1a07db1 100644
@@ -674,10 +674,10 @@ index e0e21c4..8365b4c 100644
  }
  
 diff --git a/core/shared_mem.c b/core/shared_mem.c
-index ff4c4ea..90a89a1 100644
+index 6b1d2fa..49f9d47 100644
 --- a/core/shared_mem.c
 +++ b/core/shared_mem.c
-@@ -126,6 +126,35 @@ void release_shared_mem_page(uint64_t buf, uint32_t buf_size)
+@@ -127,6 +127,35 @@ void release_shared_mem_page(uint64_t buf, uint32_t buf_size)
  #endif
  	}
  }
@@ -725,7 +725,7 @@ index aece31e..5065cd4 100644
 +void release_vm_shared_mem_page(uint64_t buf, uint32_t buf_size, uint32_t vm_page_size);
  #endif
 diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
-index 61ea23d..c5e1243 100644
+index b0010cb..8e7becc 100644
 --- a/core/tc_client_driver.c
 +++ b/core/tc_client_driver.c
 @@ -341,10 +341,14 @@ static int client_login_prepare(uint8_t *cert_buffer,
@@ -796,7 +796,7 @@ index 61ea23d..c5e1243 100644
  /* ioctls for the secure storage daemon */
  int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, bool is_from_client_node)
  {
-@@ -748,16 +794,29 @@ int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, b
+@@ -747,16 +793,29 @@ int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, b
  	dev_file = file->private_data;
  	uint32_t nsid = dev_file->nsid;
  	uint32_t vmid = dev_file->vmid;
@@ -826,7 +826,7 @@ index 61ea23d..c5e1243 100644
  		ret = tc_ns_send_event_response((unsigned int)arg, nsid, vmid);
  		break;
  	case TC_NS_CLIENT_IOCTL_REGISTER_AGENT:
-@@ -854,6 +913,23 @@ static int tc_client_agent_ioctl(const struct file *file, unsigned int cmd,
+@@ -853,6 +912,23 @@ static int tc_client_agent_ioctl(const struct file *file, unsigned int cmd,
  	return ret;
  }
  
@@ -850,7 +850,7 @@ index 61ea23d..c5e1243 100644
  void handle_cmd_prepare(unsigned int cmd)
  {
  	if (cmd != TC_NS_CLIENT_IOCTL_WAIT_EVENT &&
-@@ -873,6 +949,11 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
+@@ -872,6 +948,11 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
@@ -859,22 +859,23 @@ index 61ea23d..c5e1243 100644
 +		return set_vm_flag(file->private_data, (void *)argp);
 +	}
 +
- 	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->nsid == 0)
+ 	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->vmid == 0)
  		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
  			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
-@@ -916,6 +997,11 @@ static long tc_client_ioctl(struct file *file, unsigned int cmd,
+@@ -915,6 +996,12 @@ static long tc_client_ioctl(struct file *file, unsigned int cmd,
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
++
 +	if (cmd == TC_NS_CLIENT_IOCTL_SET_VM_FLAG) {
 +		tlogd(" before set_vm_flag \n");
 +		return set_vm_flag(file->private_data, (void *)argp);
 +	}
-+ 
- 	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->nsid == 0)
++
+ 	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->vmid == 0)
  		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
  			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
-@@ -951,20 +1037,30 @@ static int tc_client_open(struct inode *inode, struct file *file)
+@@ -950,20 +1037,30 @@ static int tc_client_open(struct inode *inode, struct file *file)
  {
  	int ret;
  	struct tc_ns_dev_file *dev = NULL;
@@ -924,23 +925,24 @@ index e926e6e..6fd7599 100644
  		struct class *driver_class, const struct file_operations *fops);
  void destory_dev_node(struct dev_node *node, struct class *driver_class);
 diff --git a/core/tc_cvm_driver.c b/core/tc_cvm_driver.c
-index 4361146..45c755b 100644
+index 52fe687..952cf15 100644
 --- a/core/tc_cvm_driver.c
 +++ b/core/tc_cvm_driver.c
-@@ -82,6 +82,11 @@ static long tc_cvm_ioctl(struct file *file, unsigned int cmd,
+@@ -82,6 +82,12 @@ static long tc_cvm_ioctl(struct file *file, unsigned int cmd,
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
++
 +	if (cmd == TC_NS_CLIENT_IOCTL_SET_VM_FLAG) {
 +		tlogd(" before set_vm_flag \n");
 +		return set_vm_flag(file->private_data, (void *)arg);
 +	}
-+ 
- 	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->nsid == 0)
++	
+ 	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->vmid == 0)
  		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
  			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
 diff --git a/tc_ns_client.h b/tc_ns_client.h
-index 3e6effb..e21fbc4 100644
+index 23aed72..cdad6d5 100644
 --- a/tc_ns_client.h
 +++ b/tc_ns_client.h
 @@ -217,6 +217,9 @@ typedef struct {
@@ -967,7 +969,7 @@ index b426df6..cd40c69 100644
  	struct completion close_comp; /* for kthread close unclosed session */
  #ifdef CONFIG_TEE_TELEPORT_SUPPORT
 diff --git a/tlogger/tlogger.c b/tlogger/tlogger.c
-index 2085179..dc3c830 100644
+index df1fb49..4f8c8b7 100644
 --- a/tlogger/tlogger.c
 +++ b/tlogger/tlogger.c
 @@ -61,6 +61,7 @@
@@ -1059,5 +1061,5 @@ index 2085179..dc3c830 100644
  
  		tlogd("Succeed to Write last teemsg, len=%zd\n", write_len);
 -- 
-1.8.3.1
+2.43.0
 
