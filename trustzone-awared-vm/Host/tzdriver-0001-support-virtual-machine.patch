@@ -1,4 +1,4 @@
-From 2dfe746c026527093e0d8cf50ef96b7152495f71 Mon Sep 17 00:00:00 2001
+From 3c8df91c25d22a085b5b3beae30cddae8c5192c7 Mon Sep 17 00:00:00 2001
 From: gongchangsui <gongchangsui@outlook.com>
 Date: Wed, 4 Feb 2026 14:34:03 +0800
 Subject: [PATCH] support vm
@@ -12,13 +12,13 @@ Subject: [PATCH] support vm
  core/session_manager.c  | 121 ++++++++++++++-
  core/shared_mem.c       |  29 ++++
  core/shared_mem.h       |   2 +-
- core/tc_client_driver.c | 117 ++++++++++++--
+ core/tc_client_driver.c | 118 ++++++++++++--
  core/tc_client_driver.h |   1 +
  core/tc_cvm_driver.c    |   6 +
  tc_ns_client.h          |   3 +
  teek_ns_client.h        |   2 +
  tlogger/tlogger.c       |  53 ++++++-
- 14 files changed, 646 insertions(+), 51 deletions(-)
+ 14 files changed, 647 insertions(+), 51 deletions(-)
 
 diff --git a/Makefile b/Makefile
 index ac40f80..1a07db1 100644
@@ -725,7 +725,7 @@ index aece31e..5065cd4 100644
 +void release_vm_shared_mem_page(uint64_t buf, uint32_t buf_size, uint32_t vm_page_size);
  #endif
 diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
-index b0010cb..8e7becc 100644
+index b0010cb..cf9ccb6 100644
 --- a/core/tc_client_driver.c
 +++ b/core/tc_client_driver.c
 @@ -341,10 +341,14 @@ static int client_login_prepare(uint8_t *cert_buffer,
@@ -747,7 +747,7 @@ index b0010cb..8e7becc 100644
  	}
  
  	if (!dev_file)
-@@ -734,6 +738,48 @@ static int ioctl_check_is_ccos(void __user *argp)
+@@ -734,12 +738,55 @@ static int ioctl_check_is_ccos(void __user *argp)
  	return ret;
  }
  
@@ -796,7 +796,14 @@ index b0010cb..8e7becc 100644
  /* ioctls for the secure storage daemon */
  int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, bool is_from_client_node)
  {
-@@ -747,16 +793,29 @@ int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, b
+ 	int ret = -EINVAL;
+ 	struct tc_ns_dev_file *dev_file = NULL;
+ 	void *argp = (void __user *)(uintptr_t)arg;
++	unsigned long tmp[2];
+ 	if (file == NULL || file->private_data == NULL) {
+ 		tloge("invalid params\n");
+ 		return -EINVAL;
+@@ -747,16 +794,29 @@ int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, b
  	dev_file = file->private_data;
  	uint32_t nsid = dev_file->nsid;
  	uint32_t vmid = dev_file->vmid;
@@ -826,7 +833,7 @@ index b0010cb..8e7becc 100644
  		ret = tc_ns_send_event_response((unsigned int)arg, nsid, vmid);
  		break;
  	case TC_NS_CLIENT_IOCTL_REGISTER_AGENT:
-@@ -853,6 +912,23 @@ static int tc_client_agent_ioctl(const struct file *file, unsigned int cmd,
+@@ -853,6 +913,23 @@ static int tc_client_agent_ioctl(const struct file *file, unsigned int cmd,
  	return ret;
  }
  
@@ -850,7 +857,7 @@ index b0010cb..8e7becc 100644
  void handle_cmd_prepare(unsigned int cmd)
  {
  	if (cmd != TC_NS_CLIENT_IOCTL_WAIT_EVENT &&
-@@ -872,6 +948,11 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
+@@ -872,6 +949,11 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
@@ -862,7 +869,7 @@ index b0010cb..8e7becc 100644
  	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->vmid == 0)
  		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
  			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
-@@ -915,6 +996,12 @@ static long tc_client_ioctl(struct file *file, unsigned int cmd,
+@@ -915,6 +997,12 @@ static long tc_client_ioctl(struct file *file, unsigned int cmd,
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
@@ -875,7 +882,7 @@ index b0010cb..8e7becc 100644
  	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->vmid == 0)
  		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
  			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
-@@ -950,20 +1037,30 @@ static int tc_client_open(struct inode *inode, struct file *file)
+@@ -950,20 +1038,30 @@ static int tc_client_open(struct inode *inode, struct file *file)
  {
  	int ret;
  	struct tc_ns_dev_file *dev = NULL;
