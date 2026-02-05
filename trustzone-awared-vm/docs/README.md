@@ -8,8 +8,8 @@
     ```
 2. `vtzb_proxy`编译
     ```shell
-    git clone https://gitee.com/openeuler/tee-gp-proxy.git
-    git clone https://gitee.com/openeuler/libboundscheck.git
+    git clone https://gitcode.com/openeuler/tee-gp-proxy.git
+    git clone https://gitcode.com/openeuler/libboundscheck.git
     cp -rf libboundscheck tee-gp-proxy/trustzone-awared-vm/Host/vtzb_proxy
     ```
 	1. 按实际串口数量修改`tee-gp-proxy/trustzone-awared-vm/Host/vtzb_proxy/serial_port.h`，一个VM对应一个虚拟串口
@@ -98,13 +98,13 @@
     ```
 2. 下载`tee-gp-proxy`仓库，其中包含`vtzdriver`与`virtio`(5.10内核)源码。
     ```
-    git clone https://gitee.com/openeuler/tee-gp-proxy.git
-    git clone https://gitee.com/openeuler/libboundscheck.git
+    git clone https://gitcode.com/openeuler/tee-gp-proxy.git
+    git clone https://gitcode.com/openeuler/libboundscheck.git
     cp -rf libboundscheck tee-gp-proxy/trustzone-awared-vm/VM/vtzdriver
     ```
 3. `itrustee_client`编译安装
     1. 进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改。
-        1. ``` git am tee-gp-proxy/trustzone-awared-vm/Host/client-00*.patch```
+        1. ``` git am ../tee-gp-proxy/trustzone-awared-vm/Host/client-00*.patch```
     2. 920 机型请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/trustzone/fg/kunpengtrustzone_20_0019.html)。
     3. 920 新型号请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/cca/devg/Kunpeng_ommercialcryptography_16_0015.html)
 4. 编译`virtio_console.ko`并加载（仅5.10内核需要执行此步骤）
