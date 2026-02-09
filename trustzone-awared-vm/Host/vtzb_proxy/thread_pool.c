@@ -363,12 +363,12 @@ int create_rebootmonitor_thread(struct serial_port_file *serial_port, int i)
     int ret;
     char name[THREAD_NAME_LEN] = {0};
     if ((ret = pthread_create(&g_pool.rebootmonitor_threads[i], NULL, deal_rebootmonitor_thread, serial_port))) {
-        tloge("create reboot monitor thread failed\n");
+        tloge("create reboot monitor thread failed, ret is %d\n", ret);
         return ret;
     }
     sprintf(name, "reboot_%d", i);
     if ((ret = pthread_setname_np(g_pool.rebootmonitor_threads[i], name))) {
-        tloge("set thread name failed\n");
+        tloge("set thread name failed, ret is %d\n", ret);
         return ret;
     }
     return ret;
@@ -528,12 +528,12 @@ int create_reader_thread(struct serial_port_file *serial_port, int i)
     int ret;
     char name[THREAD_NAME_LEN] = {0};
     if ((ret = pthread_create(&g_pool.reader_threads[i], NULL, deal_packet_thread, serial_port))) {
-        tloge("create reader thread failed\n");
+        tloge("create reader thread failed, ret is %d\n", ret);
         return ret;
     }
     sprintf(name, "reader_%d", i);
     if ((ret = pthread_setname_np(g_pool.reader_threads[i], name))) {
-        tloge("set thread name failed\n");
+        tloge("set thread name failed, ret is %d\n", ret);
         return ret;
     }
     return ret;

@@ -90,35 +90,31 @@ cleanup:
 // 根据 socket 路径查找正在运行的 VM 名称（返回动态分配字符串）
 char *find_domain_name_by_serial_socket(virConnectPtr conn, const char *socket_path)
 {
-    int n = virConnectNumOfDomains(conn);
-    if (n <= 0) 
-        return NULL;
-
-    int *ids = malloc(n * sizeof(int));
-    if (ids == NULL) 
-        return NULL;
-
-    int actual = virConnectListDomains(conn, ids, n);
+    virDomainPtr *all_domains = NULL;
+    int actual = virConnectListAllDomains(conn, &all_domains, 0);
+    char *result = NULL;
     for (int i = 0; i < actual; i++) {
-        virDomainPtr dom = virDomainLookupByID(conn, ids[i]);
+        virDomainPtr dom = all_domains[i];
         if (dom == NULL) 
             continue;
         char *xml = virDomainGetXMLDesc(dom, 0);
-        if (xml) {
-            if (has_serial_socket_path(xml, socket_path) == 1) {
-                const char *name = virDomainGetName(dom);
-                char *result = name ? strdup(name) : NULL;
-                free(xml);
-                virDomainFree(dom);
-                free(ids);
-                return result;
-            }
-            free(xml);
+        if (xml == NULL) {
+            virDomainFree(dom);
+            continue;
         }
+
+        if (has_serial_socket_path(xml, socket_path) == 1) {
+            const char *name = virDomainGetName(dom);
+            result = name ? strdup(name) : NULL;
+            free(xml);
+            virDomainFree(dom);
+            break;
+        }
+        free(xml);
         virDomainFree(dom);
     }
-    free(ids);
-    return NULL;
+    free(all_domains);
+    return result;
 }
 
 virConnectPtr init_virt_conn()
