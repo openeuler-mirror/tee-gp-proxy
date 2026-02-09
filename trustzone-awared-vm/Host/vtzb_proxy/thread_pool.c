@@ -17,11 +17,12 @@
 #include "debug.h"
 #include "vm.h"
 #include "libvirt_api_wrap.h"
+#include "config.h"
 
 extern ThreadPool g_pool;
 ThreadFuncArgs g_thd_args[THREAD_POOL_SIZE];
 TimeOut g_time_out[THREAD_POOL_SIZE];
-static cpu_set_t g_cpuset;
+static cpu_set_t g_cpuset = {{0}};
 
 /* Custom signal handler for killing zombie threads. */
 void signal_handler(int signum) {
@@ -37,6 +38,7 @@ static void init_cpu_set()
     for (int i = 1; i <= CPU_SET_NUM && i < cpu_num; i++) {
         CPU_SET(cpu_num - i, &g_cpuset);
     }
+    print_cpuset(&g_cpuset);
 }
 
 #define CPU_SET_AFFINITY() \
@@ -46,6 +48,25 @@ do { \
     } \
 } while(0)
 
+static void set_cpuset(cpu_set_t *cpuset)
+{
+    if (cpuset == NULL || CPU_COUNT(cpuset) == 0) {
+        tlogi("Use initial cpu binding set\n");
+        init_cpu_set();
+        return;
+    } else {
+        errno_t ret = memcpy_s(&g_cpuset, sizeof(g_cpuset), cpuset, sizeof(cpu_set_t));
+        if (ret != 0) {
+            tloge("Failed to copy cpuset: error code %d\n", ret);
+            tlogi("Use initial cpu binding set\n");
+            init_cpu_set();
+            return;
+        }
+        tlogi("Use configured cpu binding set\n");
+        print_cpuset(&g_cpuset);
+        return;
+    }
+}
 
 /* Initialize the thread pool. */
 int thread_pool_init(ThreadPool *pool)
@@ -58,7 +79,8 @@ int thread_pool_init(ThreadPool *pool)
     memset(pool->task_queue, 0, sizeof(Task) * TASK_QUEUE_SIZE);
     memset(pool->kill_flag, 0, sizeof(bool) * THREAD_POOL_SIZE);
     memset(pool->session_ids, 0, sizeof(unsigned int) * THREAD_POOL_SIZE);
-    init_cpu_set();
+    VtzbConfig *cfg = get_global_config();
+    set_cpuset(&cfg->cpuset);
     CPU_SET_AFFINITY();
     pthread_create(&pool->admin_tid, NULL, admin_thread, pool);
     pthread_setname_np(pool->admin_tid, "adminer");
@@ -559,7 +581,9 @@ void thread_pool_destroy(ThreadPool *pool)
             pthread_join(pool->threads[i], NULL);
     }
 
-    for(int i = 0; i < SERIAL_PORT_NUM; i++) {
+    VtzbConfig *cfg = get_global_config();
+    int serial_port_num = cfg->max_vm_count;
+    for(int i = 0; i < serial_port_num; i++) {
         if (pool->reader_threads[i] != 0)
             pthread_join(pool->reader_threads[i], NULL);
         if (pool->rebootmonitor_threads[i] != 0)

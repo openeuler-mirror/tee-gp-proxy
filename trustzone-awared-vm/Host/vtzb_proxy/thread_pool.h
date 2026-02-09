@@ -39,8 +39,8 @@ typedef struct {
 typedef struct {
     pthread_t admin_tid;
     pthread_t threads[THREAD_POOL_SIZE]; // Thread array
-    pthread_t reader_threads[SERIAL_PORT_NUM];
-    pthread_t rebootmonitor_threads[SERIAL_PORT_NUM];
+    pthread_t reader_threads[SERIAL_PORT_NUM_MAX];
+    pthread_t rebootmonitor_threads[SERIAL_PORT_NUM_MAX];
     unsigned int session_ids[THREAD_POOL_SIZE]; // Session ID of the ongoing command
     bool kill_flag[THREAD_POOL_SIZE];
     void *task_args[THREAD_POOL_SIZE];

@@ -30,10 +30,11 @@
 #include "process_data.h"
 #include "tlogcat.h"
 #include "enhance_stability.h"
+#include "config.h"
 
 ThreadPool g_pool = {0};
-extern struct pollfd g_pollfd[SERIAL_PORT_NUM];
-extern struct serial_port_file *g_serial_array[SERIAL_PORT_NUM];
+extern struct pollfd g_pollfd[SERIAL_PORT_NUM_MAX];
+extern struct serial_port_file *g_serial_array[SERIAL_PORT_NUM_MAX];
 
 static void open_tzdriver(struct_packet_cmd_open_tzd *packet_cmd,
     struct serial_port_file *serial_port)
@@ -863,6 +864,11 @@ int main() {
         return -1;
     }
 
+    /* Initialize configuration (must be before thread_pool_init) */
+    config_init();
+    VtzbConfig *cfg = get_global_config();
+    int serial_port_num = cfg->max_vm_count;
+
     serial_port_list_init();
     if (thread_pool_init(&g_pool))
         goto END2;
@@ -871,11 +877,11 @@ int main() {
 
     while (1) {
         do_check_stat_serial_port();
-        ret = safepoll(g_pollfd, SERIAL_PORT_NUM, 2*1000);
+        ret = safepoll(g_pollfd, serial_port_num, 2*1000);
         if (ret <= 0) {
             continue;
         }
-        for (int i = 0; i < SERIAL_PORT_NUM; i++) {
+        for (int i = 0; i < serial_port_num; i++) {
             // when vm restart quickly, use poll can capture this event
             if (g_pollfd[i].revents & POLLHUP) {
                 tlogi("vm %d got POLLHUP event, release vm\n", i);

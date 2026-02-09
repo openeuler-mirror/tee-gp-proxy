@@ -1,7 +1,8 @@
 #include "enhance_stability.h"
+#include "config.h"
 
 extern ThreadPool g_pool;
-extern struct serial_port_file *g_serial_array[SERIAL_PORT_NUM];
+extern struct serial_port_file *g_serial_array[SERIAL_PORT_NUM_MAX];
 int daemonize(void) {
     pid_t pid = fork();
     if (pid < 0) {
@@ -45,7 +46,9 @@ int daemonize(void) {
 
 static void cleanup_resources(void) {
     tlogi("vtz_proxy: start cleanup resources...");
-    for (int i = 0; i < SERIAL_PORT_NUM; i++) {
+    VtzbConfig *cfg = get_global_config();
+    int serial_port_num = cfg->max_vm_count;
+    for (int i = 0; i < serial_port_num; i++) {
         if (g_serial_array[i] && g_serial_array[i]->vm_file) {
             release_vm_file(g_serial_array[i], i);
         }

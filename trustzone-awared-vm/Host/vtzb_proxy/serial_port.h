@@ -20,9 +20,9 @@
 #include "vm.h"
 
 #define VTZB_CHAR_DEV            "/tmp/vm_vtzb_sock"
-#define SERIAL_PORT_NUM          64
+#define SERIAL_PORT_NUM_MAX      64
 #define BUF_LEN_MAX_RD           1024 *512
-#define UNIX_PATH_MAX            108
+#define PATH_MAX_LEN             128
 #define CHECK_TIME_SEC           2
 
 struct serial_port_list {
@@ -32,7 +32,7 @@ struct serial_port_list {
 
 struct serial_port_file {
     pthread_mutex_t lock;
-    char path[UNIX_PATH_MAX];
+    char path[PATH_MAX_LEN];
     int sock;
     bool opened;
     int index;
