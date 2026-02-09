@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <string.h>
 #include "libvirt_api_wrap.h"
+#include "config.h"
 
 #define PATH_SIZE 5
 #define SOCKET_SIZE 7
@@ -122,15 +123,26 @@ char *find_domain_name_by_serial_socket(virConnectPtr conn, const char *socket_p
 
 virConnectPtr init_virt_conn()
 {
+    VtzbConfig *cfg = get_global_config();
     if (virEventRegisterDefaultImpl() < 0) {
         tloge("Failed to register event impl\n");
         return NULL;
     }
 
-    virConnectPtr conn = virConnectOpen("qemu:///system");
+    virConnectPtr conn = virConnectOpen(cfg->libvirt_uri);
     if (conn == NULL) {
-        tloge("Failed to connect open \n");
-        return NULL;
+        tloge("Failed to connect to libvirt: %s\n", cfg->libvirt_uri);
+        tlogi("Use default libvirt connection URI: qemu:///system");
+        conn = virConnectOpen("qemu:///system");
+        if (conn == NULL) {
+            tloge("Failed to connect to libvirt: qemu:///system");
+        }
+    } else {
+        char *actual_uri = virConnectGetURI(conn);
+        if (actual_uri) {
+            tlogi("Actual connection URI: %s", actual_uri);
+            free(actual_uri);
+        }
     }
     return conn;
 }

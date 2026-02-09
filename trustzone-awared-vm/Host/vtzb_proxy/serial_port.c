@@ -19,29 +19,32 @@
 #include "debug.h"
 #include "thread_pool.h"
 #include "virt.h"
+#include "config.h"
 
 extern ThreadPool g_pool;
 struct serial_port_list g_serial_list;
-struct pollfd g_pollfd[SERIAL_PORT_NUM];
+struct pollfd g_pollfd[SERIAL_PORT_NUM_MAX];
 struct timeval g_last_time, g_cur_time;
-struct serial_port_file *g_serial_array[SERIAL_PORT_NUM];
+struct serial_port_file *g_serial_array[SERIAL_PORT_NUM_MAX];
 
 int serial_port_list_init()
 {
     int i;
     struct serial_port_file *serial_port;
+    VtzbConfig *cfg = get_global_config();
+    int serial_port_num = cfg->max_vm_count;
     gettimeofday(&g_last_time, NULL);
     gettimeofday(&g_cur_time, NULL);
     pthread_mutex_init(&g_serial_list.lock, NULL);
     ListInit(&g_serial_list.head);
-    for (i = 0; i < SERIAL_PORT_NUM; i++) {
+    for (i = 0; i < serial_port_num; i++) {
         serial_port = (struct serial_port_file *)malloc(sizeof(struct serial_port_file));
         if (!serial_port) {
             tloge("Failed to allocate memory for serial_port\n");
             goto ERR;
         }
         memset_s(serial_port, sizeof(struct serial_port_file), 0, sizeof(struct serial_port_file));
-        sprintf(serial_port->path, "%s%d", VTZB_CHAR_DEV, i);
+        snprintf(serial_port->path, PATH_MAX_LEN, "%s%d", cfg->socket_path, i);
         serial_port->opened = false;
         serial_port->offset = 0;
         serial_port->rd_buf = (char *)malloc(BUF_LEN_MAX_RD);
@@ -182,7 +185,7 @@ void do_check_stat_serial_port()
                 if (ret < 0) {
                     tloge("connect_domsock_chardev(%s) failed, ret = %d \n", serial_port->path, ret);
                 } else {
-                    tlogd("vm %d started, connect fd %d, create read thread\n", i, serial_port->sock);
+                    tloge("vm %d started, connect fd %d, create read thread\n", i, serial_port->sock);
                     serial_port->opened = true;
                     serial_port->offset = 0;
                     g_pollfd[i].fd = serial_port->sock;
@@ -225,14 +228,16 @@ static int clean_dirty_data()
     struct timeval start, end;
     void *tmp_buf;
     (void)ret;
+    VtzbConfig *cfg = get_global_config();
+    int serial_port_num = cfg->max_vm_count;
     tmp_buf = malloc(BUF_LEN_MAX_RD);
     if (!tmp_buf)
         return -ENOMEM;
     gettimeofday(&start, NULL);
     gettimeofday(&end, NULL);
     while (end.tv_sec - start.tv_sec < 1) {
-        ret = safepoll(g_pollfd, SERIAL_PORT_NUM, 0);
-        for (i = 0; i < SERIAL_PORT_NUM; i++) {
+        ret = safepoll(g_pollfd, serial_port_num, 0);
+        for (i = 0; i < serial_port_num; i++) {
             if (g_pollfd[i].revents & POLLIN) {
                 ret = read(g_pollfd[i].fd, tmp_buf, BUF_LEN_MAX_RD);
                 tlogd("clean vm %d dirty data %d\n", i, ret);

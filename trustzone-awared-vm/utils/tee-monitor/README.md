@@ -28,6 +28,26 @@ TEE 服务进程 monitor，用于监控和保活 TEE 相关内核模块和进程
 
 ---
 
+## 前置要求
+
+在运行部署脚本之前，请确保满足以下条件：
+
+### 必需文件准备
+
+将 `vtzb_proxy.conf` 放置在 `/var/vtzb/` 目录下
+
+### 配置文件
+
+`vtzb_proxy.conf`为 `vtz_proxy` 的配置文件，可在其中定义了socket_path，最大虚机数量等参数，详细信息如下：
+
+- `socket_path`：虚拟串口路径前缀
+
+- `max_vm_count`：支持的最大虚机数量
+
+- `libvirt_uri`：`libvirt` 连接的虚拟uri
+
+- `numa_bindings`：`vtz_proxy` 线程池绑核配置
+
 ## 支持的场景
 
 ### 环境变量说明
