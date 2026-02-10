@@ -269,8 +269,6 @@ static int life_cycle_callback(virConnectPtr conn,
 static void *deal_rebootmonitor_thread(void *arg)
 {
     struct serial_port_file *serial_port = (struct serial_port_file *)arg;
-    char uuid_str[64] = {0};
-    int len = 0;
 
     virConnectPtr conn = init_virt_conn();
     if(conn == NULL){
@@ -284,16 +282,6 @@ static void *deal_rebootmonitor_thread(void *arg)
         return NULL;
     }
     
-    if(virDomainGetUUIDString(domain_ptr, uuid_str) < 0) {
-        tloge("Faile to get UUID for domian %s", uuid_str);
-        goto END;
-    }
-
-    for(const char *p = uuid_str; *p; p++) {
-	    if (*p != '-') serial_port->vm_file->uuid[len++] = *p;
-    }
-    serial_port->vm_file->uuid[len] = '\0';
-
     int lifecycleCallbackID = virConnectDomainEventRegisterAny(
         conn,
         domain_ptr,
@@ -347,7 +335,6 @@ static void *deal_rebootmonitor_thread(void *arg)
         }
     }
 
-END:
     reboot_flag = 0;
     deinit_domain(domain_ptr);
     deinit_virt_conn(conn);
