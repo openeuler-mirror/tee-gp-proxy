@@ -711,6 +711,39 @@ static int register_teleport(uint32_t vm_id, char *vm_uuid)
     }
 }
 
+static void* get_uuid(struct serial_port_file *serial_port) {
+    char uuid_str[64] = {0};
+    int len = 0;
+    virConnectPtr conn = init_virt_conn();
+    if(conn == NULL){
+        tloge("conn init failed \n");
+        return NULL;
+    }
+    // domain ptr
+    virDomainPtr domain_ptr = init_domain_by_socket_path(conn, serial_port->path);
+    if(domain_ptr == NULL){
+        tloge("domain ptr failed \n");
+        deinit_virt_conn(conn);
+        virConnectClose(conn);
+        return NULL;
+    }
+    
+    if(virDomainGetUUIDString(domain_ptr, uuid_str) < 0) {
+        tloge("Faile to get UUID for domian %s", uuid_str);
+        goto END;
+    }
+
+    for(const char *p = uuid_str; *p; p++) {
+	    if (*p != '-') serial_port->vm_file->uuid[len++] = *p;
+    }
+    serial_port->vm_file->uuid[len] = '\0';
+END:
+    deinit_domain(domain_ptr);
+    deinit_virt_conn(conn);
+    virDomainFree(domain_ptr);
+    virConnectClose(conn);
+    return NULL;
+}
 static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
     struct serial_port_file *serial_port)
 {
@@ -735,7 +768,7 @@ static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
         tloge("vtz register nsid vmid failed, vmid = %u, nsid = %u, ret = %d\n", packet_cmd->vmid, packet_cmd->nsid, ret);
         goto END;
     }
-
+    get_uuid(serial_port);
     ret = register_teleport(serial_port->vm_file->vmpid, serial_port->vm_file->uuid);
     if (ret != 0) {
 	    tloge("register teleport failed, vmpid is %u, uuid is %s, ret is %d", \

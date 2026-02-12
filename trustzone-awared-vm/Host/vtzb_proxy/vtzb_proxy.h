@@ -18,6 +18,8 @@
 #include "tc_ns_client.h"
 #include "tee_sys_log.h"
 #include "tee_client_list.h"
+#include "libvirt_api_wrap.h"
+
 
 #define TC_LOGGER_DEV_NAME       "/dev/teelog"
 #define H_OFFSET                 32

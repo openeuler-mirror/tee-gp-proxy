@@ -276,7 +276,11 @@ int rd_thread_func(void *arg)
 		ssize_ret = kernel_read(file->filep, file->buffer + file->offset,
 			SERIAL_PORT_BUF_LEN - file->offset, &off);
 		tlogd("kernel_read, ret value = %d, offset = %ld \n", (int)ssize_ret, (long)off);
-		if (ssize_ret <= 0) {
+		if (ssize_ret == EOF) {
+			tloge("kernel_read read EOF, please check whether serialport file exist or status of vtz_proxy in host!");
+			break;
+		}
+		if (ssize_ret < 0) {
 			tloge("kernel_read failed, ret = %d \n", (int)ssize_ret);
 			wake_tlog_thrd();
 			rd_decrement(file);
