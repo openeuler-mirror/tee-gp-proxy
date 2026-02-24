@@ -1,0 +1,178 @@
+From 19ca63f662f1c0a090f79eb4069b76c5b0331435 Mon Sep 17 00:00:00 2001
+From: l30059538 <liuhao365@huawei.com>
+Date: Fri, 13 Feb 2026 10:48:58 +0800
+Subject: [PATCH] open source community optee supports 920L
+
+---
+ core/arch/arm/plat-d06/conf.mk                   | 16 +++++++++++-----
+ core/arch/arm/plat-d06/main.c                    | 10 ++++++----
+ core/arch/arm/plat-d06/platform_config.h         |  8 ++++++--
+ core/drivers/crypto/hisilicon/hisi_qm.c          |  6 +++---
+ core/drivers/crypto/hisilicon/sec_cipher.h       |  6 +++---
+ lib/libutee/include/tee_api_defines_extensions.h |  1 +
+ lib/libutee/tee_api_operations.c                 |  1 +
+ 7 files changed, 31 insertions(+), 17 deletions(-)
+
+diff --git a/core/arch/arm/plat-d06/conf.mk b/core/arch/arm/plat-d06/conf.mk
+index 55f1c3970..d7c6d6c8b 100644
+--- a/core/arch/arm/plat-d06/conf.mk
++++ b/core/arch/arm/plat-d06/conf.mk
+@@ -9,6 +9,7 @@ CFG_WITH_SOFTWARE_PRNG ?= n
+ CFG_WITH_STATS ?= y
+ CFG_TEE_CORE_EMBED_INTERNAL_TESTS ?= y
+ CFG_HISILICON_CRYPTO_DRIVER ?= y
++CFG_CRYPTO_HW_PBKDF2_WITH_EFUSE ?= y
+ 
+ $(call force,CFG_SECURE_TIME_SOURCE_CNTPCT,y)
+ $(call force,CFG_WITH_ARM_TRUSTED_FW,y)
+@@ -16,17 +17,22 @@ $(call force,CFG_ARM64_core,y)
+ $(call force,CFG_WITH_LPAE,y)
+ $(call force,CFG_ARM_GICV3,y)
+ $(call force,CFG_LPAE_ADDR_SPACE_BITS,48)
+-$(call force,CFG_LPC_UART,y)
+ $(call force,CFG_CRYPTO_PBKDF2,y)
+ $(call force,CFG_CRYPTO_HW_PBKDF2,y)
++$(call force,CFG_CORE_IRQ_IS_NATIVE_INTR,y)
++$(call force,CFG_PL011,y)
++$(call force,CFG_CORE_UNMAP_CORE_AT_EL0,n)
++$(call force,CFG_ARM64_core,y)
++$(call force,CFG_ATTESTATION_PTA,y)
++$(call force,CFG_DYN_CONFIG,y)
+ 
+ CFG_TEE_CORE_LOG_LEVEL ?= 4
+ 
+ CFG_CORE_HEAP_SIZE ?= 0x008000000
+ CFG_CORE_ARM64_PA_BITS ?= 40
+ CFG_TEE_RAM_VA_SIZE ?= 0x009000000
+-CFG_TZDRAM_START ?=    0x20C0000000
+-CFG_TZDRAM_SIZE ?=     0x32000000
+-CFG_SHMEM_START ?=     0x50000000
++CFG_TZDRAM_START ?=    0x2140000000
++CFG_TZDRAM_SIZE ?=     0x40000000
++CFG_SHMEM_START ?=     0x50200000
+ CFG_SHMEM_SIZE ?=      0x04000000
+-
++CFG_TEE_DYN_VASPACE_SIZE ?= (1024 * 1024 * 5)
+diff --git a/core/arch/arm/plat-d06/main.c b/core/arch/arm/plat-d06/main.c
+index 9b83e75d3..0fe8da584 100644
+--- a/core/arch/arm/plat-d06/main.c
++++ b/core/arch/arm/plat-d06/main.c
+@@ -4,16 +4,18 @@
+  * Copyright (c) 2022, Huawei Technologies Co., Ltd
+  */
+ #include <console.h>
+-#include <drivers/lpc_uart.h>
+ #include <platform_config.h>
++#include <drivers/pl011.h>
+ 
+-static struct lpc_uart_data console_data __nex_bss;
++static struct pl011_data console_data __nex_bss;
+ 
+-register_phys_mem_pgdir(MEM_AREA_IO_NSEC, LPC_BASE, LPC_SIZE);
++register_phys_mem_pgdir(MEM_AREA_IO_NSEC, UART_BASE, PL011_REG_SIZE);
++register_phys_mem_pgdir(MEM_AREA_IO_SEC, SEC_BASE, SEC_SIZE);
++register_phys_mem_pgdir(MEM_AREA_IO_SEC, HISI_TRNG_BASE, HISI_TRNG_SIZE);
+ 
+ void plat_console_init(void)
+ {
+-	lpc_uart_init(&console_data, LPC_BASE, CONSOLE_UART_CLK_IN_HZ,
++	pl011_init(&console_data, UART_BASE, CONSOLE_UART_CLK_IN_HZ,
+ 		      CONSOLE_BAUDRATE);
+ 
+ 	register_serial_console(&console_data.chip);
+diff --git a/core/arch/arm/plat-d06/platform_config.h b/core/arch/arm/plat-d06/platform_config.h
+index 3ca0a0f49..dedb78acb 100644
+--- a/core/arch/arm/plat-d06/platform_config.h
++++ b/core/arch/arm/plat-d06/platform_config.h
+@@ -13,12 +13,16 @@
+ #define STACK_ALIGNMENT		64
+ 
+ /* UART */
+-#define UART_BASE		0x2f8
++#define UART_BASE		0x94080000
+ #define CONSOLE_BAUDRATE	115200
+-#define CONSOLE_UART_CLK_IN_HZ	200
++#define CONSOLE_UART_CLK_IN_HZ	200000000
+ 
+ /* HISI_TRNG */
+ #define HISI_TRNG_BASE		0x2010C0000
+ #define HISI_TRNG_SIZE		0x100
+ 
++/* SEC */
++#define SEC_BASE		0x141800000
++#define SEC_SIZE		0x400000
++
+ #endif /* PLATFORM_CONFIG_H */
+diff --git a/core/drivers/crypto/hisilicon/hisi_qm.c b/core/drivers/crypto/hisilicon/hisi_qm.c
+index a7f1bf343..baf2b6da7 100644
+--- a/core/drivers/crypto/hisilicon/hisi_qm.c
++++ b/core/drivers/crypto/hisilicon/hisi_qm.c
+@@ -170,7 +170,7 @@ static void qm_mb_read(struct hisi_qm *qm, struct qm_mailbox *mb)
+ static enum hisi_drv_status qm_wait_mb_ready(struct hisi_qm *qm)
+ {
+ 	struct qm_mailbox mb = { };
+-	uint32_t timeout = 0;
++	uint64_t timeout = 0;
+ 
+ 	timeout = timeout_init_us(QM_MB_WAIT_PERIOD * QM_MB_WAIT_READY_CNT);
+ 	while (!timeout_elapsed(timeout)) {
+@@ -188,7 +188,7 @@ static enum hisi_drv_status qm_wait_mb_ready(struct hisi_qm *qm)
+ static enum hisi_drv_status qm_wait_mb_finish(struct hisi_qm *qm,
+ 					      struct qm_mailbox *mb)
+ {
+-	uint32_t timeout = 0;
++	uint64_t timeout = 0;
+ 
+ 	timeout = timeout_init_us(QM_MB_WAIT_PERIOD * QM_MB_WAIT_MAX_CNT);
+ 	while (!timeout_elapsed(timeout)) {
+@@ -870,7 +870,7 @@ static void qm_dfx_dump(struct hisi_qm *qm)
+ enum hisi_drv_status hisi_qp_recv_sync(struct hisi_qp *qp, void *msg)
+ {
+ 	enum hisi_drv_status ret = HISI_QM_DRVCRYPT_NO_ERR;
+-	uint32_t timeout = 0;
++	uint64_t timeout = 0;
+ 
+ 	if (!qp || !qp->qm || !msg) {
+ 		EMSG("Invalid qp recv sync parameters");
+diff --git a/core/drivers/crypto/hisilicon/sec_cipher.h b/core/drivers/crypto/hisilicon/sec_cipher.h
+index cbfa3eef8..38b7a8c05 100644
+--- a/core/drivers/crypto/hisilicon/sec_cipher.h
++++ b/core/drivers/crypto/hisilicon/sec_cipher.h
+@@ -29,9 +29,9 @@
+ #define CTR_SRC_ALIGN_MASK		0xf
+ #define CTR_SRC_BLOCK_SIZE		0x10
+ 
+-#define CKEY_LEN_128_BIT		0x1
+-#define CKEY_LEN_192_BIT		0x2
+-#define CKEY_LEN_256_BIT		0x3
++#define CKEY_LEN_128_BIT		0x0
++#define CKEY_LEN_192_BIT		0x1
++#define CKEY_LEN_256_BIT		0x2
+ #define CKEY_LEN_SM4			0x0
+ #define CKEY_LEN_DES			0x1
+ #define CKEY_LEN_3DES_3KEY		0x1
+diff --git a/lib/libutee/include/tee_api_defines_extensions.h b/lib/libutee/include/tee_api_defines_extensions.h
+index e908b37a9..565371388 100644
+--- a/lib/libutee/include/tee_api_defines_extensions.h
++++ b/lib/libutee/include/tee_api_defines_extensions.h
+@@ -79,6 +79,7 @@
+  */
+ 
+ #define TEE_ALG_PBKDF2_HMAC_SHA1_DERIVE_KEY 0x800020C2
++#define TEE_ALG_PBKDF2_HMAC_SHA256_DERIVE_KEY 0x800040C2
+ 
+ #define TEE_TYPE_PBKDF2_PASSWORD            0xA10000C2
+ 
+diff --git a/lib/libutee/tee_api_operations.c b/lib/libutee/tee_api_operations.c
+index 4b7fa63d0..6a7d3b8a0 100644
+--- a/lib/libutee/tee_api_operations.c
++++ b/lib/libutee/tee_api_operations.c
+@@ -254,6 +254,7 @@ TEE_Result TEE_AllocateOperation(TEE_OperationHandle *operation,
+ 	case TEE_ALG_CONCAT_KDF_SHA384_DERIVE_KEY:
+ 	case TEE_ALG_CONCAT_KDF_SHA512_DERIVE_KEY:
+ 	case TEE_ALG_PBKDF2_HMAC_SHA1_DERIVE_KEY:
++	case TEE_ALG_PBKDF2_HMAC_SHA256_DERIVE_KEY:
+ 	case TEE_ALG_SM2_KEP:
+ 	case TEE_ALG_X25519:
+ 		if (mode != TEE_MODE_DERIVE)
+-- 
