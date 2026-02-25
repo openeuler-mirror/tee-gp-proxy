@@ -348,7 +348,7 @@ install_sdf_utils_rpm() {
         
         log_info "All sdf-utils related rpm packages are uninstalled"
     else
-        log_info "No sdf-utils realted rpm packages"
+        log_info "No sdf-utils related rpm packages"
     fi
     log_info "Installing sdf-utils RPM package..."
 
