@@ -201,8 +201,13 @@ clone_libboundscheck() {
     log_step "[Step 2] Cloning libboundscheck repository..."
 
     if [[ -d "${LIBBOUNDSCHECK_DIR}" ]]; then
-        log_warn "libboundscheck directory already exists, skipping clone"
-        return 0
+        log_warn "libboundscheck directory already exists, delete it before clone"
+        rm -rf ${LIBBOUNDSCHECK_DIR}
+        if [[ $? -ne 0 ]]; then
+            log_error "Failed to delete libboundscheck directory"
+            return 1
+        fi
+        log_info "Delete libboundscheck directory successfully"
     fi
 
     git clone "${LIBBOUNDSCHECK_REPO}"
@@ -222,8 +227,13 @@ clone_tee_gp_proxy() {
     log_step "[Step 2.1] Cloning tee-gp-proxy..."
 
     if [[ -d "${TEE_GP_PROXY_DIR}" ]]; then
-        log_warn "tee-gp-proxy directory already exists, skipping clone"
-        return 0
+        log_warn "tee-gp-proxy directory already exists, delete it before clone"
+        rm -rf ${TEE_GP_PROXY_DIR}
+        if [[ $? -ne 0 ]]; then
+            log_error "Failed to delete tee-gp-proxy directory"
+            return 1
+        fi
+        log_info "Delete tee-gp-proxy directory successfully"
     fi
 
     git clone --branch ${TEE_GP_PROXY_BRANCH} ${TEE_GP_PROXY_REPO}
@@ -281,8 +291,13 @@ clone_itrustee_tzdriver() {
     log_step "[Step 3] Cloning itrustee_tzdriver repository..."
 
     if [[ -d "${ITRUSTEE_TZDRIVER_DIR}" ]]; then
-        log_warn "itrustee_tzdriver directory already exists, skipping clone"
-        return 0
+        log_warn "itrustee_tzdriver directory already exists, delete it before clone"
+        rm -rf ${ITRUSTEE_TZDRIVER_DIR}
+        if [[ $? -ne 0 ]]; then
+            log_error "Failed to delete itrustee_tzdriver directory"
+            return 1
+        fi
+        log_info "Delete itrustee_tzdriver directory successfully"
     fi
 
     git clone "${ITRUSTEE_TZDRIVER_REPO}" -b "${ITRUSTEE_TZDRIVER_BRANCH}"
@@ -294,20 +309,14 @@ clone_itrustee_tzdriver() {
     if [[ "$VM_SCALABILITY" = "true" ]]; then
         pushd "${ITRUSTEE_TZDRIVER_DIR}" > /dev/null || return 1
 
-        log_info "Applying tzdriver-0001-support-virtual-machine.patch..."
-        git am ${TEE_GP_PROXY_DIR}/trustzone-awared-vm/Host/tzdriver-0001-support-virtual-machine.patch
-        if [[ $? -ne 0 ]]; then
-            log_error "Failed to apply tzdriver-0001-support-virtual-machine.patch"
-            popd > /dev/null || return 1
-            return 1
-        fi
-        log_info "Applying tzdriver-0002-support-get-uid-from-vm.patch..."
-        git am ${TEE_GP_PROXY_DIR}/trustzone-awared-vm/Host/tzdriver-0002-support-get-uid-from-vm.patch
-        if [[ $? -ne 0 ]]; then
-            log_error "Failed to apply tzdriver-0002-support-get-uid-from-vm.patch"
-            popd > /dev/null || return 1
-            return 1
-        fi
+        log_info "Applying tzdriver-00*.patch..."
+        for patch in ${TEE_GP_PROXY_DIR}/trustzone-awared-vm/Host/tzdriver-00*.patch; do
+            log_info "Patching: $patch"
+            git am "$patch" || {
+                log_error "Patch failed: $patch"
+                return 1
+            }
+        done
 
         popd > /dev/null || return 1
         log_info "tzdriver patches applied successfully"
@@ -323,8 +332,13 @@ clone_itrustee_client() {
     log_step "[Step 4] Cloning itrustee_client repository..."
 
     if [[ -d "${ITRUSTEE_CLIENT_DIR}" ]]; then
-        log_warn "itrustee_client directory already exists, skipping clone"
-        return 0
+        log_warn "itrustee_client directory already exists, delete it before clone"
+        rm -rf ${ITRUSTEE_CLIENT_DIR}
+        if [[ $? -ne 0 ]]; then
+            log_error "Failed to delete itrustee_client directory"
+            return 1
+        fi
+        log_info "Delete itrustee_client directory successfully"
     fi
 
     git clone "${ITRUSTEE_CLIENT_REPO}" -b "${ITRUSTEE_CLIENT_BRANCH}"
@@ -479,6 +493,29 @@ deploy_security_driver() {
 # Step 9.1: Install sdf utils*.rpm
 # -----------------------------------------------------------------------------
 install_sdf_utils_rpm() {
+    log_info "Checking sdf-utils RPM packages..."
+    matching_packages=$(rpm -qa | grep '^sdf-utils')
+    if [[ -n "$matching_packages" ]]; then
+        log_info "All sdf-utils related rpm packages are as follows"
+        log_info "$matching_packages"
+        log_info "Uninstalling..."
+        
+        while IFS= read -r package; do
+            log_info "Uninstalling: $package"
+            rpm -e "$package"
+            
+            if [[ $? -eq 0 ]]; then
+                log_info "Uninstalled successfully: $package"
+            else
+                log_error "Uninstalled failed: $package"
+                return 1
+            fi
+        done <<< "$matching_packages"
+        
+        log_info "All sdf-utils related rpm packages are uninstalled"
+    else
+        log_info "No sdf-utils realted rpm packages"
+    fi
     log_info "Installing sdf-utils RPM package..."
 
     rpm -ivh ${SDF_UTILS_RPM}
@@ -488,29 +525,33 @@ install_sdf_utils_rpm() {
     fi
 
     log_info "sdf-utils installed successfully"
+    RPM_PKG_INSTALLED="true"
     return 0
 }
 
 cleanup() {
-    if [[ $DEPLOYMENT_SUCCESS = "false" ]]; then
-        log_info "Cleaning resources..."
-        cd ${SCRIPT_DIR}
+    log_info "Cleaning resources..."
+    cd ${SCRIPT_DIR}
 
-        if [ -d "$WORK_DIR" ]; then
-            log_info "Remove directory: ${WORK_DIR}"
-            rm -rf "$WORK_DIR" && log_info "Remove work directory successfully" || log_error "Fail to remove work directory"
+    if [ -d "$WORK_DIR" ]; then
+        log_info "Remove directory: ${WORK_DIR}"
+        rm -rf "$WORK_DIR" && log_info "Remove work directory successfully" || log_error "Fail to remove work directory"
+    fi
+
+    if [[ "${DEPLOYMENT_SUCCESS}" == "false" ]] &&
+        command -v rpm &> /dev/null &&
+        [[ "${RPM_PKG_INSTALLED}" == "true" ]]; then
+        local packages=$(rpm -qa "sdf-utils*" 2>/dev/null)
+        if [ -n "$packages" ]; then
+            log_info "Uninstalling sdf-utils*.rpm packages ..."
+            rpm -e ${packages} 2>/dev/null && \
+            log_info "sdf-utils*.rpm packages uninstalled successfully" \
+            || log_error "Fail to uninstall sdf-utils*.rpm packages"
         fi
-        
-        if command -v rpm &> /dev/null; then
-            local packages=$(rpm -qa "sdf-utils*" 2>/dev/null)
-            if [ -n "$packages" ]; then
-                echo "Uninstalling sdf-utils*.rpm packages ..."
-                rpm -e ${packages} 2>/dev/null && \
-                log_info "sdf-utils*.rpm packages uninstalled successfully" \
-                || log_error "Fail to uninstall sdf-utils*.rpm packages"
-            fi
-        fi
-        log_info "Complete cleaning"
+    fi
+    log_info "Complete cleaning"
+    if [[ "${DEPLOYMENT_SUCCESS}" == "false" ]]; then
+        log_error "========== Host deployment failed =========="
     fi
 }
 
@@ -549,8 +590,7 @@ deploy_host() {
 main() {
     # Start deployment
     deploy_host
-    DEPLOYMENT_SUCCESS=true
-
+    DEPLOYMENT_SUCCESS="true"
     echo ""
     log_info "Host deployment completed successfully!"
     echo ""

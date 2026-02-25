@@ -50,6 +50,7 @@ KUNPENG_SEC_DRV_FILE_NAME="kunpeng_sec_drv.sec"
 KUNPENG_SEC_DRV_FILE=${SCRIPT_DIR}/${KUNPENG_SEC_DRV_FILE_NAME}
 SDF_UTILS_RPM=${SDF_UTILS_RPM:-"sdf-utils*.rpm"}
 DEPLOYMENT_SUCCESS="false"
+RPM_PKG_INSTALLED="false"
 CONFIG_FILE="${SCRIPT_DIR}/deploy.conf"
 
 # Colors for output
@@ -81,6 +82,16 @@ log_step() {
 # -----------------------------------------------------------------------------
 # Configuration Functions
 # -----------------------------------------------------------------------------
+update_env_variable() {
+    TEE_GP_PROXY_DIR="${WORK_DIR}/tee-gp-proxy"
+    LIBBOUNDSCHECK_DIR="${WORK_DIR}/libboundscheck"
+    ITRUSTEE_TZDRIVER_DIR="${WORK_DIR}/itrustee_tzdriver"
+    ITRUSTEE_CLIENT_DIR="${WORK_DIR}/itrustee_client"
+    VTZ_PROXY_DIR="${WORK_DIR}/tee-gp-proxy/trustzone-awared-vm/Host/vtzb_proxy"
+    VTZDRIVER_DIR="${TEE_GP_PROXY_DIR}/trustzone-awared-vm/VM/vtzdriver"
+    VIRTIO_CONSOLE_DIR="${TEE_GP_PROXY_DIR}/trustzone-awared-vm/VM/virtio/char"
+}
+
 print_config() {
     echo ""
     echo "============================================================================="
@@ -229,7 +240,12 @@ main() {
 
     # Print configuration and confirm with user
     confirm_config
-
+    WORK_DIR="${WORK_DIR}/tmp"
+    if [[ ! -d "${WORK_DIR}" ]]; then
+        mkdir -p "${WORK_DIR}"
+    fi
+    update_env_variable
+    
     if is_virtual_machine; then
         log_info "Deployment mode: VM"
         log_info "Calling deploy_vm.sh..."
