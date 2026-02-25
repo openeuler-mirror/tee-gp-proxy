@@ -128,13 +128,13 @@
 9. 多虚机配置
     ```xml
      <qemu:arg value='-chardev'/>
-     <qemu:arg value='socket,path=/tmp/vm_vtzb_sock1,server=on,wait=off,id=vm01_vtzb_sock'/>
+     <qemu:arg value='socket,path=/var/vtzb/vm_vtzb_sock1,server=on,wait=off,id=vm01_vtzb_sock'/>
      <qemu:arg value='-device'/>
      <qemu:arg value='virtio-serial'/>
      <qemu:arg value='-device'/>
      <qemu:arg value='virtserialport,chardev=vm01_vtzb_sock,name=vtzf_serialport0'/>
     ```
-    1. 在虚机配置文件中修改如上代码：`path`按照`/tmp/vm_vtzb_sock0`，`/tmp/vm_vtzb_sock1`，`/tmp/vm_vtzb_sock2`且接着上一个虚机配置文件中的`path`有序递增，且数字不能大于配置文件中的 `max_vm_count`
+    1. 在虚机配置文件中修改如上代码：`path`按照`/var/vtzb/vm_vtzb_sock0`，`/var/vtzb/vm_vtzb_sock1`，`/var/vtzb/vm_vtzb_sock2`且接着上一个虚机配置文件中的`path`有序递增，且数字不能大于配置文件中的 `max_vm_count`
     2. 修改`id`与`chardev` 一致且唯一
     3. `name` 恒为`vtzf_serialport0`
 ## VM环境搭建
