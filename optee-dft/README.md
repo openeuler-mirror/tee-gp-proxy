@@ -1,16 +1,28 @@
 # 鲲鹏920L/S/M模组烧录设备密钥和设备证书
 本文档描述鲲鹏920L/S/M模组使用开源OPTEE OS在openEuler 22.03环境测试，完成装备环境烧录设备密钥和设备证书流程。使用本文档需提前安装装备BIOS，并获取已发布的和本文档配套使用的CA/TA；具体烧录具体如下：
 ## 1. 部署环境
-### 1.1 编译安装开源optee_os
+### 1.1 安装依赖
+```
+yum install kernel-devel-$(uname -r) openssl-devel
+pip install cryptography pyelftools
+```
+### 1.2 编译安装开源optee_os
+#### 1.2.1 获取安全内存地址
+1. 安装装备BIOS启动OS后，可通过BMC下载并查看BIOS启动日志，手动获取安全内存起始地址，具体方式如下：
+2. 网页访问BMC ip，输入BMC用户名和密码，进入BMC网页控制页面，在`维护诊断`->`系统日志`->`systemcom.tar`处下载串口日志，搜索类似`Base=*, Size=0x40000000`日志，获取到最新日志中的`Base`地址。
+3. 注：同一机型，在内存配置不变的情况下，安全内存地址相同。
+
+#### 1.2.2 安装OPTEE_OS
 ```
 # 克隆
 git clone https://github.com/OP-TEE/optee_os.git -b 4.9.0
 cp 0001-open-source-community-optee-supports-920L.patch optee_os
 cd optee_os
-git apply --reject 0001-open-source-community-optee-supports-920L.patch
 
-# 安装依赖
-pip install cryptography
+# 按1.2.1章节获取安全内存地址设置。
+sed -i 's/0x2140000000/安全内存地址/g' 0001-open-source-community-optee-supports-920L.patch
+
+git apply --reject 0001-open-source-community-optee-supports-920L.patch
 
 # 编译
 make -j64 -C optee_os PLATFORM=d06 supported-ta-targets=ta_arm64
@@ -20,7 +32,7 @@ cd optee_os/out/arm-plat-d06/core
 # 安装tee.bin固件至flash空间0x1860000处，按实际大小烧写
 ```
 重启机器，BIOS日志打印`TEE OS Load OK`，证明成功加载OPTEE OS
-### 1.2 编译optee_client的teec库和守护进程
+### 1.3 编译optee_client的teec库和守护进程
 ```
 # 克隆
 git clone https://github.com/OP-TEE/optee_client.git -b 4.9.0
@@ -31,10 +43,8 @@ cp optee_client/out/libteec/libteec.* /usr/lib64/
 
 # 编译守护进程
 make -C optee_client/tee-supplicant
-cd optee_client/out/tee-supplicant
-./tee-supplicant &
 ```
-### 1.3 编译optee固件
+### 1.4 编译optee固件
 ```
 # 克隆
 git clone https://gitcode.com/openeuler/kernel.git -b OLK-5.10
@@ -59,29 +69,27 @@ endif
 # 编译加载
 sed -i 's/CONFIG_OPTEE_SHM_NUM_PRIV_PAGES/1/g' core.c
 make
-insmod optee.ko
 ```
 
 ## 2.部署、运行CA/TA，生成密钥、证书
-### 2.1 安装依赖
-```
-yum install openssl-devel
-```
-### 2.2 加载驱动
+### 2.1 加载驱动
 ```
 modprobe mtd
 modprobe tee
+cd kernel/drivers/tee/optee
 insmod optee.ko 
+cd optee_client/out/tee-supplicant
+./tee-supplicant &
 ```
-### 2.3 部署CA/TA
+### 2.2 部署CA/TA
 ```
-mkdir /vendor/bin
+mkdir -p /vendor/bin
 cp op-dft-ca /vendor/bin
 chmod +x /vendor/bin/op-dft-ca
-mkdir /usr/lib/optee_armtz/
+mkdir -p /usr/lib/optee_armtz/
 cp 21be2d5a-eef8-4940-ad16-95832f89290e.ta /usr/lib/optee_armtz/
 ```
-### 2.4 生成密钥和证书
+### 2.3 生成密钥和证书
 准备证书中心，将根证书（下面以ca.crt为根名称为例）放在CA同目录下，生成密钥烧录包和设备证书烧录包。
 ```
 # 命令0
