@@ -19,7 +19,7 @@ git clone https://github.com/OP-TEE/optee_os.git -b 4.9.0
 cp 0001-open-source-community-optee-supports-920L.patch optee_os
 cd optee_os
 
-# 按1.2.1章节获取安全内存地址设置。
+# 按1.2.1章节获取安全内存地址`Base`地址设置到如下命令。
 sed -i 's/0x2140000000/安全内存地址/g' 0001-open-source-community-optee-supports-920L.patch
 
 git apply --reject 0001-open-source-community-optee-supports-920L.patch
@@ -27,10 +27,13 @@ git apply --reject 0001-open-source-community-optee-supports-920L.patch
 # 编译
 make -j64 -C optee_os PLATFORM=d06 supported-ta-targets=ta_arm64
 
-# 安装optee_os
-cd optee_os/out/arm-plat-d06/core
-# 安装tee.bin固件至flash空间0x1860000处，按实际大小烧写
+# 安装
+# 将optee_os/out/arm-plat-d06/core/tee.bin固件烧录至flash的0x1860000地址处。
 ```
+|address|content|
+| --- | --- |
+|0x1860000|tee.bin|
+
 重启机器，BIOS日志打印`TEE OS Load OK`，证明成功加载OPTEE OS
 ### 1.3 编译optee_client的teec库和守护进程
 ```
@@ -103,7 +106,7 @@ cp 21be2d5a-eef8-4940-ad16-95832f89290e.ta /usr/lib/optee_armtz/
 /vendor/bin/op-dft-ca 2 /vendor/bin/ca.crt /vendor/bin/cert.crt
 ```
 此时/vendor/bin/目录下已成功获取密钥烧录包（key.bin）和设备证书烧录包(cert.bin)。
-注：2.4章节命令2不可单独重复执行；如有需求，需将命令1都重新执行，生成并放置设备证书后，再执行命令2.
+注：2.4章节命令2不可单独重复执行；如有需求，需将命令1都重新执行，生成并放置设备证书后，再执行命令2。
 ## 3.烧录密钥和设备证书
 密钥和设备证书均以双备份形式烧录至flash上。完成密钥和设备证书的烧写，可正常启动商用Itrustee OS.具体烧写地址如下表，
 
@@ -113,4 +116,15 @@ cp 21be2d5a-eef8-4940-ad16-95832f89290e.ta /usr/lib/optee_armtz/
 |0x1820000|key.bin|
 |0x1830000|cert.bin|
 |0x1840000|cert.bin|
-|0x1860000|tee.bin/商用Itrustee|
+## 4. 替换商用CCOS
+完成装备环节密钥和设备证书预置后，下载商用CCOS的hpm包，执行`pares_hpm.py`脚本获取`teeos.bin`文件，直接烧录到flash的0x1860000上。
+```
+# 输入待提取HPM包名称，生成teeos.bin
+python3 pares_hpm.py *.hpm
+```
+
+|address|content|
+| --- | --- |
+|0x1860000|teeos.bin|
+
+安装商用BIOS后，即可成功启动商用CCOS。
