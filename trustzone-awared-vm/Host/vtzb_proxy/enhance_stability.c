@@ -64,13 +64,11 @@ static void signal_handler(int signum) {
             pid_t pid;
             int status;
             while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-                tloge("child process %d exited, status: %d", pid, status);
             }
             break;
         }
         case SIGINT:
         case SIGTERM:
-            tloge("receive signal %d (exit), prepare to exit", signum);
             cleanup_resources();
             exit(0);
             break;
@@ -78,15 +76,12 @@ static void signal_handler(int signum) {
         case SIGABRT:
         case SIGILL:
         case SIGFPE:
-            tloge("crash by signal %d (%s)", signum, strsignal(signum));
             cleanup_resources();
             exit(EXIT_FAILURE);
             break;
         case SIGPIPE:
-            tloge("receive signal %d (SIGPIPE), ignore", signum);
             break;
         default:
-            tloge("receive unknown signal %d", signum);
             break;
     }
 }

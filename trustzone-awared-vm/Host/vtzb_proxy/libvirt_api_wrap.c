@@ -71,6 +71,8 @@ static int has_serial_socket_path(const char *xml, const char *target_path)
                             found = match_chardev_socket_path((const char *)value, target_path);
                             if(found == 0){
                                 tlogi("found ok ,domain name %s\n", value);
+                                xmlFree(value);
+                                xmlFreeDoc(doc);
                                 return 1;
                             }
                             xmlFree(value);
@@ -89,9 +91,14 @@ cleanup:
 
 // 根据 socket 路径查找正在运行的 VM 名称（返回动态分配字符串）
 char *find_domain_name_by_serial_socket(virConnectPtr conn, const char *socket_path)
-{
+{    
     virDomainPtr *all_domains = NULL;
     int actual = virConnectListAllDomains(conn, &all_domains, 0);
+    if(actual < 0) {
+        tloge("get connect list failed ");
+        return NULL;
+    }
+
     char *result = NULL;
     for (int i = 0; i < actual; i++) {
         virDomainPtr dom = all_domains[i];
@@ -99,7 +106,6 @@ char *find_domain_name_by_serial_socket(virConnectPtr conn, const char *socket_p
             continue;
         char *xml = virDomainGetXMLDesc(dom, 0);
         if (xml == NULL) {
-            virDomainFree(dom);
             continue;
         }
 
@@ -107,13 +113,17 @@ char *find_domain_name_by_serial_socket(virConnectPtr conn, const char *socket_p
             const char *name = virDomainGetName(dom);
             result = name ? strdup(name) : NULL;
             free(xml);
-            virDomainFree(dom);
             break;
         }
         free(xml);
-        virDomainFree(dom);
+    }
+
+    // 释放资源
+    for (int i = 0; i < actual; i++) {
+        virDomainFree(all_domains[i]);
     }
     free(all_domains);
+
     return result;
 }
 

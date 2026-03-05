@@ -724,7 +724,6 @@ static void* get_uuid(struct serial_port_file *serial_port) {
     if(domain_ptr == NULL){
         tloge("domain ptr failed \n");
         deinit_virt_conn(conn);
-        virConnectClose(conn);
         return NULL;
     }
     
@@ -740,8 +739,6 @@ static void* get_uuid(struct serial_port_file *serial_port) {
 END:
     deinit_domain(domain_ptr);
     deinit_virt_conn(conn);
-    virDomainFree(domain_ptr);
-    virConnectClose(conn);
     return NULL;
 }
 static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
