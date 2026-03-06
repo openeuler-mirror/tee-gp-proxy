@@ -122,9 +122,10 @@ static int connect_domsock_chardev(char *dev_path, int *sock, int *vmid)
     *sock = ret;
 
     struct sockaddr_un sock_addr;
+    (void)memset_s(&sock_addr, sizeof(struct sockaddr_un), 0, sizeof(struct sockaddr_un));
     sock_addr.sun_family = AF_UNIX;
     if (memcpy_s(&sock_addr.sun_path, sizeof(sock_addr.sun_path), dev_path,
-        sizeof(sock_addr.sun_path))) {
+        strlen(dev_path) + 1)) {
         tloge("memcpy_s err\n");
         goto CLOSE;
     }

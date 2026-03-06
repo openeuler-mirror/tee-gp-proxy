@@ -27,7 +27,6 @@ static cpu_set_t g_cpuset = {{0}};
 /* Custom signal handler for killing zombie threads. */
 void signal_handler(int signum) {
     (void)signum;
-    tlogd("thread %lu got sig exited\n", pthread_self());
     pthread_exit(NULL);
 }
 
@@ -279,6 +278,7 @@ static void *deal_rebootmonitor_thread(void *arg)
     virDomainPtr domain_ptr = init_domain_by_socket_path(conn, serial_port->path);
     if(domain_ptr == NULL){
         tloge("domain ptr failed \n");
+        deinit_virt_conn(conn);
         return NULL;
     }
     
@@ -301,6 +301,8 @@ static void *deal_rebootmonitor_thread(void *arg)
     tlogv("callback_id %d \n", callbackID);
     if(callbackID < 0){
         tloge("callbackID error \n");
+        deinit_domain(domain_ptr);
+        deinit_virt_conn(conn);
         return NULL;
     }
 
@@ -309,6 +311,8 @@ static void *deal_rebootmonitor_thread(void *arg)
     if (timeout_id < 0) {
         tloge("[Thread] Failed to add timeout\n");
         virConnectDomainEventDeregisterAny(conn, callbackID);
+        deinit_domain(domain_ptr);
+        deinit_virt_conn(conn);
         return NULL;
     }
 
@@ -338,10 +342,7 @@ static void *deal_rebootmonitor_thread(void *arg)
     reboot_flag = 0;
     deinit_domain(domain_ptr);
     deinit_virt_conn(conn);
-    virDomainFree(domain_ptr);
-    virConnectClose(conn);
     tlogi("deinit thread \n");
-    g_pool.rebootmonitor_threads[serial_port->index] = 0;
     return NULL;
 }
 
@@ -356,6 +357,10 @@ int create_rebootmonitor_thread(struct serial_port_file *serial_port, int i)
     sprintf(name, "reboot_%d", i);
     if ((ret = pthread_setname_np(g_pool.rebootmonitor_threads[i], name))) {
         tloge("set thread name failed, ret is %d\n", ret);
+        return ret;
+    }
+    if ((ret = pthread_detach(g_pool.rebootmonitor_threads[i]))) {
+        tloge("thread detach failed\n");
         return ret;
     }
     return ret;
@@ -504,9 +509,8 @@ end:
     } else {
         tloge("serial_port is null, and reader thread exit\n");
     }
-    if (p_frag) 
+    if (p_frag)
         free(p_frag);
-    g_pool.reader_threads[serial_port->index] = 0;
     return NULL;
 }
 
@@ -521,6 +525,10 @@ int create_reader_thread(struct serial_port_file *serial_port, int i)
     sprintf(name, "reader_%d", i);
     if ((ret = pthread_setname_np(g_pool.reader_threads[i], name))) {
         tloge("set thread name failed, ret is %d\n", ret);
+        return ret;
+    }
+    if ((ret = pthread_detach(g_pool.reader_threads[i]))) {
+        tloge("thread detach failed\n");
         return ret;
     }
     return ret;
@@ -567,15 +575,6 @@ void thread_pool_destroy(ThreadPool *pool)
         if (pool->threads[i] != 0)
             pthread_join(pool->threads[i], NULL);
     }
-
-    VtzbConfig *cfg = get_global_config();
-    int serial_port_num = cfg->max_vm_count;
-    for(int i = 0; i < serial_port_num; i++) {
-        if (pool->reader_threads[i] != 0)
-            pthread_join(pool->reader_threads[i], NULL);
-        if (pool->rebootmonitor_threads[i] != 0)
-            pthread_join(pool->rebootmonitor_threads[i], NULL);
-        }
 }
 
 void set_thread_session_id(ThreadPool *pool, pthread_t thd, unsigned int id)
