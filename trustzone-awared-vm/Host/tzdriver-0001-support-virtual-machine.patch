@@ -1,4 +1,4 @@
-From 71bc1bea555e1d1bbc4cdaa4664ef3384d2abccc Mon Sep 17 00:00:00 2001
+From e3b6dd1b1f2c1d7b5ae37ac402b40431ae2dfb11 Mon Sep 17 00:00:00 2001
 From: gongchangsui <gongchangsui@outlook.com>
 Date: Wed, 4 Feb 2026 14:34:03 +0800
 Subject: [PATCH] support vm
@@ -7,7 +7,7 @@ Subject: [PATCH] support vm
  Makefile                |   1 +
  auth/auth_base_impl.c   |  17 ++
  auth/auth_base_impl.h   |   6 +
- core/gp_ops.c           | 339 ++++++++++++++++++++++++++++++++++++----
+ core/gp_ops.c           | 340 ++++++++++++++++++++++++++++++++++++----
  core/gp_ops.h           |   4 +
  core/session_manager.c  | 121 +++++++++++++-
  core/shared_mem.c       |  29 ++++
@@ -18,7 +18,7 @@ Subject: [PATCH] support vm
  tc_ns_client.h          |   3 +
  teek_ns_client.h        |   2 +
  tlogger/tlogger.c       |  53 ++++++-
- 14 files changed, 651 insertions(+), 51 deletions(-)
+ 14 files changed, 652 insertions(+), 51 deletions(-)
 
 diff --git a/Makefile b/Makefile
 index ac40f80..1a07db1 100644
@@ -90,7 +90,7 @@ index 82d950f..e06c4eb 100644
  
  bool is_hidl_or_cadaemon(void);
 diff --git a/core/gp_ops.c b/core/gp_ops.c
-index 7938204..706eddf 100644
+index 7938204..b9f6ab1 100644
 --- a/core/gp_ops.c
 +++ b/core/gp_ops.c
 @@ -231,6 +231,84 @@ int write_to_client(void __user *dest, size_t dest_size,
@@ -246,7 +246,7 @@ index 7938204..706eddf 100644
  		return -EINVAL;
  
  	op_params->mb_pack->operation.params[index].memref.buffer = 0;
-@@ -491,6 +582,138 @@ static int check_buffer_for_sharedmem(uint32_t *buffer_size,
+@@ -491,6 +582,139 @@ static int check_buffer_for_sharedmem(uint32_t *buffer_size,
  	return 0;
  }
  
@@ -331,9 +331,10 @@ index 7938204..706eddf 100644
 +						host_start_vaddr, (unsigned long)host_pages_no,
 +						1, 1, host_pages, NULL);
 +		#endif
-+		if (host_page_num < 0) {
++		if (host_page_num <= 0) {
 +			tloge("get_user_pages_remote failed, ret is %d\n", host_page_num);
-+			return host_page_num;
++			vfree(host_pages);
++			return host_page_num == 0 ? -EFAULT : host_page_num;
 +		}
 +		if (host_page_num != host_pages_no) {
 +			tloge("get pages failed, page_num = %d, expect %u\n", host_page_num, host_pages_no);
@@ -385,7 +386,7 @@ index 7938204..706eddf 100644
  static int transfer_shared_mem(const struct tc_call_params *call_params,
  	struct tc_op_params *op_params, uint8_t kernel_params,
  	uint32_t param_type, unsigned int index)
-@@ -499,10 +722,11 @@ static int transfer_shared_mem(const struct tc_call_params *call_params,
+@@ -499,10 +723,11 @@ static int transfer_shared_mem(const struct tc_call_params *call_params,
  	void *start_vaddr = NULL;
  	union tc_ns_client_param *client_param = NULL;
  	uint32_t buffer_size;
@@ -398,7 +399,7 @@ index 7938204..706eddf 100644
  
  	if (index >= TEE_PARAM_NUM)
  		return -EINVAL;
-@@ -518,19 +742,57 @@ static int transfer_shared_mem(const struct tc_call_params *call_params,
+@@ -518,19 +743,57 @@ static int transfer_shared_mem(const struct tc_call_params *call_params,
  
  	buffer_addr = client_param->memref.buffer |
  		((uint64_t)client_param->memref.buffer_h_addr << ADDR_TRANS_NUM);
@@ -468,7 +469,7 @@ index 7938204..706eddf 100644
  	}
  
  	op_params->local_tmpbuf[index].temp_buffer = buff;
-@@ -707,13 +969,24 @@ static int update_tmp_mem(const struct tc_call_params *call_params,
+@@ -707,13 +970,24 @@ static int update_tmp_mem(const struct tc_call_params *call_params,
  	if (buffer_size == 0)
  		return 0;
  	/* Only update the buffer when the buffer size is valid in complete case */
@@ -500,7 +501,7 @@ index 7938204..706eddf 100644
  	}
  	return 0;
  }
-@@ -863,7 +1136,11 @@ static void free_operation_sharedmem_params(const struct tc_call_params *call_pa
+@@ -863,7 +1137,11 @@ static void free_operation_sharedmem_params(const struct tc_call_params *call_pa
  		}
  	}
  #endif
