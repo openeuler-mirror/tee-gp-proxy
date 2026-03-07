@@ -45,7 +45,6 @@ int daemonize(void) {
 }
 
 static void cleanup_resources(void) {
-    tlogi("vtz_proxy: start cleanup resources...");
     VtzbConfig *cfg = get_global_config();
     int serial_port_num = cfg->max_vm_count;
     for (int i = 0; i < serial_port_num; i++) {
@@ -54,7 +53,6 @@ static void cleanup_resources(void) {
         }
     }
     thread_pool_destroy(&g_pool);
-    tlogi("vtz_proxy: cleanup resources done");
 }
 
 static void signal_handler(int signum) {
