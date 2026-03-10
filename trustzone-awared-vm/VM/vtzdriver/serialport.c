@@ -778,28 +778,30 @@ int send_to_proxy(void * wrt_buf, size_t size_wrt_buf, void * rd_buf, size_t siz
 	struct vhc_event_data *event_data;
 
 	tlogd("send data, wr_len %ld, rd_len %ld, seq %d\n", size_wrt_buf, size_rd_buf, seq_num);
+
+	event_data = creat_event_data(rd_buf, size_rd_buf, seq_num);
+	if (event_data == NULL) {
+		tloge("creat_event_data failed, seq_num %u\n", seq_num);
+		return ret;
+	}
+	
 	ret = creat_wr_data(wrt_buf, size_wrt_buf);
 	if (ret != 0) {
-		tloge("creat_wr_data failed\n");
+		tloge("creat_wr_data failed, seq_num %u\n", seq_num);
+		destroy_event_data(event_data);
 		return ret;
 	}
 
-	event_data = creat_event_data(rd_buf, size_rd_buf, seq_num);
-	if (event_data == NULL)
-		goto err;
 	wake_up_wr_thread();
 
 	ret = wait_event_interruptible(event_data->wait_event_wq,
 		event_data->ret_flag);
 	if (ret != 0) {
-		tlogw("wait event interruptible failed!, ret = %d\n", ret);
+		tlogw("wait event interruptible failed!, ret = %d, seq_num %u\n", ret, seq_num);
 		ret = -EINTR;
 	} else {
 		ret = event_data->rd_ret;
 	}
 	destroy_event_data(event_data);
-	return ret;
-
-err:
 	return ret;
 }
