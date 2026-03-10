@@ -201,16 +201,13 @@ void free_serial_port_list(void)
 	/*In fact, there is only one serial port.*/
 	list_for_each_entry_safe(dev_file, tmp, &g_serial_port_list.head, head) {
 		list_del(&dev_file->head);
+#ifdef AUTO_LOG_THREAD
 		if (dev_file->log_thread){
 			tlogd("before kthread_stop log\n");
 			wake_up_log_thread();
 			tlogd("after kthread_stop log\n");
 		}
-		if (dev_file->rd_thread){
-			tlogd("before kthread_stop rd\n");
-			(void)send_to_proxy(&packet_cmd, sizeof(packet_cmd), &packet_rsp, sizeof(packet_rsp), seq_num);
-			tlogd("after kthread_stop rd\n");
-		}
+#endif
 		if (dev_file->wr_thread){
 			tlogd("before kthread_stop wr\n");
 			g_destroy_wr_thread = 1;
