@@ -120,8 +120,8 @@ static void close_tzdriver(struct_packet_cmd_close_tzd *packet_cmd,
         return;
     }
 
-    free_agent_buf(packet_cmd->ptzfd, serial_port->vm_file);
     ret = remove_fd(packet_cmd->ptzfd, serial_port->vm_file);
+    packet_rsp.ret = ret;
 
     if (send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp)) != sizeof(packet_rsp))
         tloge("close_tzdriver send to VM failed \n");
@@ -690,57 +690,48 @@ static void vtz_nothing(struct_packet_cmd_nothing *packet_cmd,
     }
 }
 
-static int register_teleport(uint32_t vm_id, char *vm_uuid)
+static int register_teleport(uint32_t vm_id)
 {
     pid_t pid = fork();
     if (pid == -1) {
         tloge("fork failed");
         return -1;
     } else if (pid == 0) {
-        char arg_nsid[128];
-        char arg_cid[129];
-        snprintf_s(arg_nsid, sizeof(arg_nsid), sizeof(arg_nsid), "--nsid=%u", vm_id);
-        snprintf_s(arg_cid, sizeof(arg_cid), sizeof(arg_cid), "--containerid=%s%s", vm_uuid, vm_uuid);
-        char *args[] = {"tee_teleport", arg_nsid, arg_cid, "--config-container", NULL};
-        execvp("tee_teleport", args);
+        signal(SIGINT, SIG_DFL);
+        char cmd_buf[1024];
+        snprintf_s(cmd_buf, 1024, 1024, "tee_teleport --nsid=%u --containerid=$(cat /proc/%u/cmdline | tr '\\0' ' ' | egrep -o -- '-uuid [0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}' | sed 's/-uuid //' | tr -d '-' | awk '{print $0$0}') --config-container", vm_id, vm_id);
+        char *args[] = {"sh", "-c", cmd_buf, NULL};
+        execvp(args[0], args);
         exit(EXIT_FAILURE);
     } else {
-        int status;
-        waitpid(pid, &status, 0);
-        return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+        int status = -1;
+        pid_t wait_ret;
+        wait_ret = waitpid(pid, &status, 0);
+        if (wait_ret == -1) {
+            if (errno == ECHILD) {
+                return 0;
+            } else {
+                tloge("waitpid failed! errno=%d, msg=%s, status is %d", errno, strerror(errno), status);
+                return -1;
+            }
+        }
+       if (WIFEXITED(status)) {
+            int exit_code = WEXITSTATUS(status);
+            tlogi("tee_teleport exited normally, pid=%d, exit code=%d", pid, exit_code);
+            return exit_code;
+        } else if (WIFSIGNALED(status)) {
+	          int sig = WTERMSIG(status);
+            int coredump = WCOREDUMP(status);
+            tloge("tee_teleport killed by signal! pid=%d, signal=%d, coredump: %d, status: 0x%x\n",pid, 
+           sig, coredump, status);
+            return -1;
+        } else {
+            tloge("tee_teleport exited for unknown reason, pid=%d", pid);
+            return -1;
+        }
     }
 }
 
-static void* get_uuid(struct serial_port_file *serial_port) {
-    char uuid_str[64] = {0};
-    int len = 0;
-    virConnectPtr conn = init_virt_conn();
-    if(conn == NULL){
-        tloge("conn init failed \n");
-        return NULL;
-    }
-    // domain ptr
-    virDomainPtr domain_ptr = init_domain_by_socket_path(conn, serial_port->path);
-    if(domain_ptr == NULL){
-        tloge("domain ptr failed \n");
-        deinit_virt_conn(conn);
-        return NULL;
-    }
-    
-    if(virDomainGetUUIDString(domain_ptr, uuid_str) < 0) {
-        tloge("Faile to get UUID for domian %s", uuid_str);
-        goto END;
-    }
-
-    for(const char *p = uuid_str; *p; p++) {
-	    if (*p != '-') serial_port->vm_file->uuid[len++] = *p;
-    }
-    serial_port->vm_file->uuid[len] = '\0';
-END:
-    deinit_domain(domain_ptr);
-    deinit_virt_conn(conn);
-    return NULL;
-}
 static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
     struct serial_port_file *serial_port)
 {
@@ -762,20 +753,22 @@ static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
     vm_info.nsid = packet_cmd->nsid;
     ret = ioctl(fd, TC_NS_CLIENT_IOCTL_REGISTER_VM_VMID_NSID, &vm_info);
     if (ret != 0) {
-        tloge("vtz register nsid vmid failed, vmid = %u, nsid = %u, ret = %d\n", packet_cmd->vmid, packet_cmd->nsid, ret);
+        tloge("vtz register nsid vmid failed, vmid = %u, nsid = %u, ret = %d, path = %s, serial_port %p\n",\
+            serial_port->vm_file->vmpid, packet_cmd->nsid, ret, serial_port->path, serial_port);
         goto END;
     }
-    get_uuid(serial_port);
-    ret = register_teleport(serial_port->vm_file->vmpid, serial_port->vm_file->uuid);
+
+    ret = register_teleport(serial_port->vm_file->vmpid);
     if (ret != 0) {
-	    tloge("register teleport failed, vmpid is %u, uuid is %s, ret is %d", \
-        serial_port->vm_file->vmpid, serial_port->vm_file->uuid, ret);
+	    tloge("register teleport failed, vmpid is %u, uuid is %s, ret is %d, path = %s, serial_port %p", \
+        serial_port->vm_file->vmpid, serial_port->vm_file->uuid, ret, serial_port->path, serial_port);
         goto END;
     }
 
 END:
-    if (fd > 0) 
+    if (fd > 0) {
 	    close(fd);
+    }
     packet_rsp.ret = ret;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp)) {
@@ -794,7 +787,7 @@ void *thread_entry(void *args)
     ui32_cmd = *(uint32_t *)(rd_buf + sizeof(uint32_t));
 
     struct_packet_cmd_nothing *p = (struct_packet_cmd_nothing *)rd_buf;
-    tlogd("vm %u cmd %u, size %u, seq %u\n", data->vmid, p->cmd, p->packet_size, p->seq_num);
+    tlogd("vm %u cmd %u, size %u, seq %u, path is %s\n", data->vmid, p->cmd, p->packet_size, p->seq_num, serial_port->path);
 
     if (ui32_cmd == VTZ_REGISTER_VM_VMID_NSID) {
         (void)vtz_register_nsid_vmid((struct_packet_cmd_open_tzd *)rd_buf, serial_port);

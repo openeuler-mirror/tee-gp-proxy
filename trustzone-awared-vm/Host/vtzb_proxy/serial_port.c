@@ -131,7 +131,7 @@ static int connect_domsock_chardev(char *dev_path, int *sock, int *vmid)
     }
     ret = connect(*sock, (struct sockaddr *)&sock_addr, sizeof(sock_addr));
     if (ret < 0) {
-        tloge("connect domain socket %s failed \n", dev_path);
+        tloge("connect domain socket %s failed, ret is %d \n", dev_path, ret);
         goto CLOSE;
     }
 
@@ -186,7 +186,7 @@ void do_check_stat_serial_port()
                 if (ret < 0) {
                     tloge("connect_domsock_chardev(%s) failed, ret = %d \n", serial_port->path, ret);
                 } else {
-                    tloge("vm %d started, connect fd %d, create read thread\n", i, serial_port->sock);
+                    tlogi("vm %d started, connect fd %d, create read thread\n", i, serial_port->sock);
                     serial_port->opened = true;
                     serial_port->offset = 0;
                     g_pollfd[i].fd = serial_port->sock;

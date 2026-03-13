@@ -26,13 +26,17 @@ struct vm_file {
     struct ListNode head;
     pthread_mutex_t fd_lock;
     struct ListNode fds_head;
-    pthread_mutex_t agents_lock;
-    struct ListNode agents_head;
     pthread_mutex_t shrd_mem_lock;
     struct ListNode shrd_mem_head;
     uint32_t nsid;
     char uuid[33];
 };
+
+typedef struct {
+    struct AgentIoctlArgs args;
+    void *vmaddr;
+    pthread_t thd;
+} struct_agent_args;
 
 struct fd_file {
     int32_t ptzfd;
@@ -40,6 +44,7 @@ struct fd_file {
     struct ListNode head;
     pthread_mutex_t session_lock;
     struct ListNode session_head;
+    struct_agent_args agent;
 };
 
 struct session {

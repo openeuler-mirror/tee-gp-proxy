@@ -414,8 +414,11 @@ static int tc_ns_register_vm_vmid_nsid(void)
 		}
 	} else {
 		tloge("send to proxy failed ret is %d\n", ret);
+		goto END;
 	}
+	tloge("register vmid and nsid success\n");
 END:
+	tloge("register vmid and nsid failed\n");
 	return ret;
 }
 
