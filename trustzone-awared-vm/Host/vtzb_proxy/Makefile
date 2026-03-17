@@ -8,7 +8,12 @@ all: $(TARGET_LIBSEC) $(TARGET_APP)
 $(TARGET_LIBSEC):
 	@echo "compile libboundscheck ..."
 	@$(MAKE) -C $(LIBC_SEC)
-	sudo cp -rf $(LIBC_SEC)/lib/libboundscheck.so /usr/lib64
+	@if [ ! -f "/usr/lib64/libboundscheck.so" ]; then \
+		echo "libboundscheck.so not found in /usr/lib64, copying...";\
+		sudo cp -rf $(LIBC_SEC)/lib/libboundscheck.so /usr/lib64;\
+	else \
+		echo "libboundscheck.so already exists in /usr/lib64, skip copy"; \
+	fi
 	@echo "compile libboundscheck done"
 
 APP_CFLAGS += -DSECURITY_AUTH_ENHANCE

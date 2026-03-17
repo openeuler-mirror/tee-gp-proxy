@@ -409,16 +409,15 @@ static int tc_ns_register_vm_vmid_nsid(void)
 	if (!ret) {
 		ret = packet_rsp.ret;
 		if (ret) {
-			tloge("open TZdriver failed ret is %d\n", ret);
+			tloge("open TZdriver failed ret is %d, register vmid and nsid failed\n", ret);
 			goto END;
 		}
 	} else {
-		tloge("send to proxy failed ret is %d\n", ret);
+		tloge("send to proxy failed ret is %d, register vmid and nsid failed\n", ret);
 		goto END;
 	}
 	tloge("register vmid and nsid success\n");
 END:
-	tloge("register vmid and nsid failed\n");
 	return ret;
 }
 

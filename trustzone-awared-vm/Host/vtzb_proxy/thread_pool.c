@@ -27,7 +27,6 @@ static cpu_set_t g_cpuset = {{0}};
 /* Custom signal handler for killing zombie threads. */
 void signal_handler(int signum) {
     (void)signum;
-    pthread_exit(NULL);
 }
 
 static void init_cpu_set()
@@ -144,9 +143,11 @@ void *thread_func(void *arg)
     ThreadFuncArgs *thd_args = (ThreadFuncArgs *)arg;
     ThreadPool *pool = thd_args->pool;
     int index = thd_args->index;
-    if (signal(SIGUSR1, signal_handler) == SIG_ERR) {
-        return NULL;
-    }
+    struct sigaction sa;
+    sa.sa_handler = signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGUSR1, &sa, NULL);
 
     CPU_SET_AFFINITY();
     while (1) {
@@ -420,6 +421,7 @@ void* get_merged_packet(void* packet, struct_fragment *p_frag)
     static void *merged_packet = NULL;
     static uint32_t packet_header_size = 0;
     static uint32_t merged_packet_size = 0;
+    void *merged_packet_tmp = NULL;
 
     uint32_t page_blocks_size = p_frag->fragment_block_num * sizeof(struct_page_block);
     tlogd("packet_header_size is %u, page_blocks_size %u merged_packet_size is %u", packet_header_size, page_blocks_size, merged_packet_size);
@@ -432,10 +434,17 @@ void* get_merged_packet(void* packet, struct_fragment *p_frag)
         seq_num = p_frag->seq_num;
         packet_header_size = p_frag->cmd_size + sizeof(vm_trace_data);
         merged_packet_size = p_frag->total_fragment_block_num * sizeof(struct_page_block) + packet_header_size;
+	if (merged_packet){
+	    free(merged_packet);
+	}
         merged_packet = malloc(merged_packet_size);
 
-        if (!merged_packet)
+        if (!merged_packet) {
+            tloge("malloc failed, size is %u", merged_packet_size);
+            free(packet);
+            seq_num = 0;
             return NULL;
+        }
         memcpy_s(merged_packet, packet_header_size + page_blocks_size, packet, packet_header_size + page_blocks_size);
         fragment_offset += (packet_header_size + page_blocks_size);
         free(packet);
@@ -445,7 +454,9 @@ void* get_merged_packet(void* packet, struct_fragment *p_frag)
         free(packet);
         if (fragment_offset == merged_packet_size) { 
             seq_num = 0;
-            return merged_packet;
+            merged_packet_tmp = merged_packet;
+            merged_packet = NULL;
+            return merged_packet_tmp;
         } 
     } 
     return NULL;

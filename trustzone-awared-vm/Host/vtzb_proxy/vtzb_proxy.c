@@ -697,7 +697,23 @@ static int register_teleport(uint32_t vm_id)
         tloge("fork failed");
         return -1;
     } else if (pid == 0) {
-        signal(SIGINT, SIG_DFL);
+        struct sigaction sa;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_handler = SIG_DFL;
+        sa.sa_flags = 0;
+        int signals[] = {SIGCHLD, SIGINT, SIGTERM, SIGSEGV, SIGABRT, SIGILL, SIGFPE, SIGPIPE, SIGUSR1};
+        int sig_num = sizeof(signals) / sizeof(signals[0]);
+        
+        for (int i = 0; i < sig_num; i++) {
+            int sig = signals[i];
+            if (sigaction(sig, &sa, NULL) < 0) {
+                tloge("vtz_proxy child: reset signal %d failed, errno=%d", sig, errno);
+            }
+        }
+        sigset_t mask;
+        sigemptyset(&mask);
+        sigprocmask(SIG_SETMASK, &mask, NULL);
+
         char cmd_buf[1024];
         snprintf_s(cmd_buf, 1024, 1024, "tee_teleport --nsid=%u --containerid=$(cat /proc/%u/cmdline | tr '\\0' ' ' | egrep -o -- '-uuid [0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}' | sed 's/-uuid //' | tr -d '-' | awk '{print $0$0}') --config-container", vm_id, vm_id);
         char *args[] = {"sh", "-c", cmd_buf, NULL};
@@ -760,8 +776,8 @@ static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
 
     ret = register_teleport(serial_port->vm_file->vmpid);
     if (ret != 0) {
-	    tloge("register teleport failed, vmpid is %u, uuid is %s, ret is %d, path = %s, serial_port %p", \
-        serial_port->vm_file->vmpid, serial_port->vm_file->uuid, ret, serial_port->path, serial_port);
+	    tloge("register teleport failed, vmpid is %u, ret is %d, path = %s, serial_port %p", \
+        serial_port->vm_file->vmpid, ret, serial_port->path, serial_port);
         goto END;
     }
 
@@ -786,8 +802,16 @@ void *thread_entry(void *args)
     char *rd_buf = (char *)(args) + sizeof(vm_trace_data);
     ui32_cmd = *(uint32_t *)(rd_buf + sizeof(uint32_t));
 
+    struct vm_file *vm_fp = serial_port->vm_file;
+    struct worker *worker_p = (struct worker *)malloc(sizeof(struct worker));
+    ListInit(&worker_p->head);
+    pthread_mutex_lock(&vm_fp->workers_lock);
+    worker_p->tid = pthread_self();
+    ListInsertTail(&vm_fp->workers_head, &worker_p->head);
+    pthread_mutex_unlock(&vm_fp->workers_lock);
+
     struct_packet_cmd_nothing *p = (struct_packet_cmd_nothing *)rd_buf;
-    tlogd("vm %u cmd %u, size %u, seq %u, path is %s\n", data->vmid, p->cmd, p->packet_size, p->seq_num, serial_port->path);
+    tloge("worker_p tid %lu, vm %u cmd %u, size %u, seq %u, path is %s\n", worker_p->tid, data->vmid, p->cmd, p->packet_size, p->seq_num, serial_port->path);
 
     if (ui32_cmd == VTZ_REGISTER_VM_VMID_NSID) {
         (void)vtz_register_nsid_vmid((struct_packet_cmd_open_tzd *)rd_buf, serial_port);
@@ -872,6 +896,11 @@ void *thread_entry(void *args)
 END:
     if (args)
         free(args);
+
+    pthread_mutex_lock(&vm_fp->workers_lock);
+    ListRemoveEntry(&(worker_p->head));
+    pthread_mutex_unlock(&vm_fp->workers_lock);
+    free(worker_p);
     return NULL;
 }
 
