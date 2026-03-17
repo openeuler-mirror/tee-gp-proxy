@@ -195,3 +195,16 @@ insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/virtio_console.ko
 insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/vtzfdriver.ko
 nohup /usr/bin/teecd &
 ```
+
+## 故障恢复
+1. `vtz_proxy` 优雅退出：
+    1. 需要再次拉起`vtz_proxy`，然后在所有`VM`内手动终止正在执行的`CA`进程，并进行如下操作：
+    ```
+    kill -9 $(pgrep teecd)
+    rmmod vtzfdriver.ko 
+    insmod vtzdriver.ko
+    nohup /usr/bin/teecd &
+    ```
+    2. 最后再重新拉起CA进程。
+2. `vtz_proxy` 强制退出：
+	1. 需要再次拉起`vtz_proxy` 进程，重启所有`VM`，并重新初始化环境。
