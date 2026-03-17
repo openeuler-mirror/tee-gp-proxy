@@ -16,6 +16,7 @@
 #include <syslog.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <pthread.h>
 #define TEE_LOG_MASK        TZ_LOG_INFO
 
 #define TZ_LOG_VERBOSE 0
@@ -24,7 +25,7 @@
 #define TZ_LOG_WARN    3
 #define TZ_LOG_ERROR   4
 
-#define log_format(lev, fmt, ...) syslog(lev, "[%lu][%s] " fmt, (unsigned long)syscall(SYS_gettid), __func__, ##__VA_ARGS__)
+#define log_format(lev, fmt, ...) syslog(lev, "[%lu][%s][%lu] " fmt, (unsigned long)syscall(SYS_gettid), __func__,(unsigned long)pthread_self(), ##__VA_ARGS__)
 #define tlogv(fmt, ...) \
     do { \
         if (TZ_LOG_VERBOSE == TEE_LOG_MASK) \

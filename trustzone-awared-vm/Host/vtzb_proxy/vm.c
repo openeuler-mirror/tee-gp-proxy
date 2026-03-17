@@ -111,6 +111,8 @@ void add_fd_list(int fd, uint32_t fd_type, struct vm_file *vm_fp)
     }
     fd_p->ptzfd = fd;
     fd_p->fd_type = fd_type;
+    fd_p->agent.vmaddr = NULL;
+    fd_p->agent.thd = 0;
     pthread_mutex_init(&fd_p->session_lock, NULL);
     ListInit(&fd_p->session_head);
     ListInit(&fd_p->head);
@@ -124,14 +126,9 @@ static void do_remove_fd(struct fd_file *fd_p)
 {
     struct ListNode *ptr = NULL;
     struct ListNode *n = NULL;
-    unsigned int session_id;
-    (void)session_id;
-    if (!fd_p) {
-        tloge("fd_file is NULL\n");
-        return;
-    }
-
-    tlogv("remove fd %u\n", fd_p->ptzfd);
+    unsigned long buf[2] = {0};
+    int ret = -1;
+    ListRemoveEntry(&fd_p->head);
     pthread_mutex_lock(&fd_p->session_lock);
     if (!LIST_EMPTY(&fd_p->session_head)) {
         LIST_FOR_EACH_SAFE(ptr, n, &fd_p->session_head) {
@@ -141,28 +138,45 @@ static void do_remove_fd(struct fd_file *fd_p)
         }
     }
     pthread_mutex_unlock(&fd_p->session_lock);
-    close(fd_p->ptzfd);
-    fd_p->ptzfd = -1;
-}
 
+    if(fd_p->agent.vmaddr) {        
+        buf[0] = fd_p->agent.args.id;
+        ret = ioctl(fd_p->ptzfd, TC_NS_CLIENT_IOCTL_UNREGISTER_AGENT, buf);
+        if (ret) {
+            if(errno != EBUSY) {
+                tloge("ioctl failed fd is %d ret is %d, error is %d, reason is %s, agent_args->args.id %x\n",\
+                    fd_p->ptzfd, ret, errno, strerror(errno), fd_p->agent.args.id);
+            }
+        }
+        fd_p->agent.vmaddr = NULL;
+    }
+    close(fd_p->ptzfd);
+    free(fd_p);
+}
 
 int remove_fd(int ptzfd, struct vm_file *vm_fp)
 {
+    struct ListNode *ptr = NULL;
+    struct ListNode *next_ptr = NULL;
+    struct fd_file *fd_p = NULL;
+
     if (!vm_fp) {
         tloge("vm_file is null\n");
         return -EINVAL;
     }
-    struct fd_file *fd_p = find_fd_file(ptzfd, vm_fp);
-    if (!fd_p) {
-        tloge("found the fd %d 's fd_file failed\n", ptzfd);
-        return -EBADF;
-    }
 
     pthread_mutex_lock(&vm_fp->fd_lock);
-    ListRemoveEntry(&fd_p->head);
+    if (!LIST_EMPTY(&vm_fp->fds_head)) {
+        LIST_FOR_EACH_SAFE(ptr, next_ptr, &vm_fp->fds_head) {
+            fd_p = CONTAINER_OF(ptr, struct fd_file, head);
+            if (fd_p->ptzfd == ptzfd) {
+                do_remove_fd(fd_p);
+            }
+        }
+    }
     pthread_mutex_unlock(&vm_fp->fd_lock);
-    do_remove_fd(fd_p);
-    free(fd_p);
+    
+
     return 0;
 }
 
@@ -178,12 +192,13 @@ struct vm_file *create_vm_file(uint32_t vmid)
         goto END;
     }
     pthread_mutex_init(&tmp->fd_lock, NULL);
-    pthread_mutex_init(&tmp->agents_lock, NULL);
     pthread_mutex_init(&tmp->shrd_mem_lock, NULL);
+    pthread_mutex_init(&tmp->workers_lock, NULL);
     ListInit(&tmp->head);
     ListInit(&tmp->fds_head);
-    ListInit(&tmp->agents_head);
     ListInit(&tmp->shrd_mem_head);
+    ListInit(&tmp->workers_head);
+
     tmp->vmpid = vmid;
     tmp->nsid = 0;
     ListInsertTail(&g_vm_list, &tmp->head);
@@ -214,6 +229,31 @@ static void unregister_nsid_vmid(struct vm_file * vm_file)
     return;
 }
 
+void wakeup_thread(struct vm_file * vm_file) {
+    struct ListNode *ptr = NULL;
+    struct ListNode *n = NULL;
+    struct worker *worker_p = NULL;
+    int result = -1;
+    do {
+        pthread_mutex_lock(&vm_file->workers_lock);
+        if (!LIST_EMPTY(&vm_file->workers_head)) {
+            LIST_FOR_EACH_SAFE(ptr, n, &vm_file->workers_head) {
+                worker_p = CONTAINER_OF(ptr, struct worker, head);
+                result = pthread_kill(worker_p->tid, SIGUSR1);
+                tlogd("kill thread id %lu in vmpid %u \n", worker_p->tid, vm_file->vmpid);
+                if (result != 0) {
+                    tloge("try to kill thread failed, ret %d, vmpid %u\n", result, vm_file->vmpid);
+                }
+            }
+        } else {
+            pthread_mutex_unlock(&vm_file->workers_lock);
+            break;
+        }
+        pthread_mutex_unlock(&vm_file->workers_lock);
+        usleep(5000);
+    } while(1);
+}
+
 void *destroy_vm_file(void *args)
 {
     struct ListNode *ptr = NULL;
@@ -223,24 +263,13 @@ void *destroy_vm_file(void *args)
     if (!vm_file)
         return NULL;
 
-    // release agent in vm
-    pthread_mutex_lock(&vm_file->agents_lock);
-    if (!LIST_EMPTY(&vm_file->agents_head)) {
-        LIST_FOR_EACH_SAFE(ptr, n, &vm_file->agents_head) {
-            struct_agent_args *tmp = CONTAINER_OF(ptr, struct_agent_args, node);
-            do_free_agent(tmp);
-        }
-    }
-    pthread_mutex_unlock(&vm_file->agents_lock);
+    wakeup_thread(vm_file);
 
-    // release session in vm
     pthread_mutex_lock(&vm_file->fd_lock);
     if (!LIST_EMPTY(&vm_file->fds_head)) {
         LIST_FOR_EACH_SAFE(ptr, n, &vm_file->fds_head) {
             fd_p = CONTAINER_OF(ptr, struct fd_file, head);
-            ListRemoveEntry(&fd_p->head);
             do_remove_fd(fd_p);
-            free(fd_p);
         }
     }
     pthread_mutex_unlock(&vm_file->fd_lock);

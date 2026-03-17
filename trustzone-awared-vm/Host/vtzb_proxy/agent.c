@@ -20,86 +20,43 @@
 
 extern ThreadPool g_pool;
 
-void do_free_agent(struct_agent_args *agent_args)
-{
-    int ret = -1;
-    unsigned long buf[2] = {0};
-
-    if (agent_args == NULL) {
-        tloge("agent args is null\n");
-        return;
-    }
-
-    tlogv("free agent fd %u\n", agent_args->dev_fd);
-    ListRemoveEntry(&(agent_args->node));
-    restart_pool_thread(&g_pool, agent_args->thd);
-    
-    buf[0] = agent_args->args.id;
-    ret = ioctl(agent_args->dev_fd, TC_NS_CLIENT_IOCTL_UNREGISTER_AGENT, buf);
-    if (ret) {
-        if(errno != EBUSY) {
-            tloge("ioctl failed ret is %d, error is %d, reason is %s\n",ret, errno, strerror(errno));
-        }
-    }
-    close(agent_args->dev_fd);
-    agent_args->dev_fd = -1;
-
-    pthread_spin_destroy(&agent_args->spinlock);
-    free(agent_args);
-}
-
-void free_agent_buf(int ptzfd, struct vm_file *vm_fp)
-{
-    struct ListNode *ptr = NULL;
-    struct ListNode *n = NULL;
-    if (!vm_fp) {
-        tloge("vm file is NULL\n");
-        return;
-    }
-    pthread_mutex_lock(&vm_fp->agents_lock);
-    if (LIST_EMPTY(&vm_fp->agents_head)) {
-        // when teecd init, this is possible
-        tlogd("agent list is empty\n");
-        goto END;
-    }
-
-    LIST_FOR_EACH_SAFE(ptr, n, &vm_fp->agents_head) {
-        struct_agent_args *tmp =
-            CONTAINER_OF(ptr, struct_agent_args, node);
-        if (tmp->dev_fd == ptzfd) {
-            do_free_agent(tmp);
-        }
-    }
-END:
-    pthread_mutex_unlock(&vm_fp->agents_lock);
-}
-
 void register_agent(struct_packet_cmd_regagent *packet_cmd,
     struct serial_port_file *serial_port)
 {
-    int ret;
+    int ret = -1;
     struct_packet_rsp_regagent packet_rsp;
     unsigned long buf[2];
     buf[0] = (unsigned long)(&packet_cmd->args);
     packet_rsp.seq_num = packet_cmd->seq_num + 1;
-    ret = ioctl(packet_cmd->ptzfd, TC_NS_CLIENT_IOCTL_REGISTER_AGENT, buf);
-    if (!ret) {
-        /* Add the agent buffer to the linked list. */
-        struct_agent_args *tmp = (struct_agent_args *)calloc(1, sizeof(struct_agent_args));
-        if (!tmp) {
-            tloge("Failed to allocate memory for agent buffer\n");
-            ret = -ENOMEM;
-            goto END;
-        }
-        pthread_spin_init(&tmp->spinlock, PTHREAD_PROCESS_PRIVATE);
-        ListInit(&tmp->node);
-        tmp->dev_fd = packet_cmd->ptzfd;
-        tmp->args = packet_cmd->args;
-        tmp->vmaddr = packet_cmd->vmaddr;
-        pthread_mutex_lock(&serial_port->vm_file->agents_lock);
-        ListInsertTail(&serial_port->vm_file->agents_head, &tmp->node);
-        pthread_mutex_unlock(&serial_port->vm_file->agents_lock);
+
+    struct ListNode *ptr = NULL;
+    struct fd_file *fd_p = NULL;
+    if (!serial_port->vm_file) {
+        tloge("vm_file is null\n");
+        goto END;
     }
+    pthread_mutex_lock(&serial_port->vm_file->fd_lock);
+    if (!LIST_EMPTY(&serial_port->vm_file->fds_head)) {
+        LIST_FOR_EACH(ptr, &serial_port->vm_file->fds_head) {
+            fd_p = CONTAINER_OF(ptr, struct fd_file, head);
+            if (fd_p->ptzfd == packet_cmd->ptzfd) {
+                if (fd_p->agent.vmaddr != NULL) {
+                    tloge("agent has registered %d", fd_p->agent.args.id);
+                    pthread_mutex_unlock(&serial_port->vm_file->fd_lock);
+                    goto END;
+                }
+                ret = ioctl(packet_cmd->ptzfd, TC_NS_CLIENT_IOCTL_REGISTER_AGENT, buf);
+                if (!ret) {
+                    fd_p->agent.args = packet_cmd->args;
+                    fd_p->agent.vmaddr = packet_cmd->vmaddr;
+                } else {
+                    tloge("register agent failed ret is %d, agentis is %u, errno is %d, reason is %s",\
+                        ret, packet_cmd->args.id, errno, strerror(errno));
+                }
+            }
+        }
+    }
+    pthread_mutex_unlock(&serial_port->vm_file->fd_lock);
 END:
     packet_rsp.packet_size = sizeof(packet_rsp);
     packet_rsp.ret = ret;
@@ -118,26 +75,25 @@ void wait_event(struct_packet_cmd_event *packet_cmd,
     unsigned long buf[2];
     struct ListNode *ptr = NULL;
     bool bfind = false;
-    struct_agent_args *agent_args;
+    struct fd_file *fd_p;
     buf[0] = packet_cmd->agent_id;
 
-    pthread_mutex_lock(&serial_port->vm_file->agents_lock);
-    if (!LIST_EMPTY(&serial_port->vm_file->agents_head)) {
-        LIST_FOR_EACH(ptr, &serial_port->vm_file->agents_head) {
-            agent_args =
-                CONTAINER_OF(ptr, struct_agent_args, node);
-            if (agent_args->args.id == packet_cmd->agent_id) {
-                buf[1] = (unsigned long)agent_args->vmaddr;
+    pthread_mutex_lock(&serial_port->vm_file->fd_lock);
+    if (!LIST_EMPTY(&serial_port->vm_file->fds_head)) {
+        LIST_FOR_EACH(ptr, &serial_port->vm_file->fds_head) {
+            fd_p = CONTAINER_OF(ptr, struct fd_file, head);
+            if (fd_p->agent.vmaddr && fd_p->agent.args.id == packet_cmd->agent_id) {
+                buf[1] = (unsigned long)fd_p->agent.vmaddr;
                 bfind = true;
                 break;
             }
         }
     }
-    pthread_mutex_unlock(&serial_port->vm_file->agents_lock);
+    pthread_mutex_unlock(&serial_port->vm_file->fd_lock);
     if (bfind) {
-        agent_args->thd  = pthread_self();
+        fd_p->agent.thd  = pthread_self();
         ret = ioctl(packet_cmd->ptzfd, TC_NS_CLIENT_IOCTL_WAIT_EVENT, buf);
-        agent_args->thd  = 0;
+        fd_p->agent.thd  = 0;
     }
     packet_rsp.packet_size = sizeof(packet_rsp);
     packet_rsp.seq_num = packet_cmd->seq_num + 1;
@@ -158,19 +114,18 @@ void sent_event_response(struct_packet_cmd_event *packet_cmd,
     bool bfind = false;
     struct ListNode *ptr = NULL;
     buf[0] = packet_cmd->agent_id;
-    pthread_mutex_lock(&serial_port->vm_file->agents_lock);
-    if (!LIST_EMPTY(&serial_port->vm_file->agents_head)) {
-        LIST_FOR_EACH(ptr, &serial_port->vm_file->agents_head) {
-            struct_agent_args *agent_args =
-                CONTAINER_OF(ptr, struct_agent_args, node);
-            if (agent_args->args.id == packet_cmd->agent_id) {
-                buf[1] = (unsigned long)agent_args->vmaddr;
+    pthread_mutex_lock(&serial_port->vm_file->fd_lock);
+    if (!LIST_EMPTY(&serial_port->vm_file->fds_head)) {
+        LIST_FOR_EACH(ptr, &serial_port->vm_file->fds_head) {
+            struct fd_file *fd_p = CONTAINER_OF(ptr, struct fd_file, head);
+            if (fd_p->agent.vmaddr && fd_p->agent.args.id == packet_cmd->agent_id) {
+                buf[1] = (unsigned long)fd_p->agent.vmaddr;
                 bfind = true;
                 break;
             }
         }
     }
-    pthread_mutex_unlock(&serial_port->vm_file->agents_lock);
+    pthread_mutex_unlock(&serial_port->vm_file->fd_lock);
 
     if (bfind) {
         ret = ioctl(packet_cmd->ptzfd, TC_NS_CLIENT_IOCTL_SEND_EVENT_RESPONSE, buf);

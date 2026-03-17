@@ -87,14 +87,12 @@ static void tlog_get_log(struct_packet_cmd_get_log *packet_cmd,
     packet_rsp.seq_num = packet_cmd->seq_num + 1;
     packet_rsp.packet_size = sizeof(packet_rsp);
     while(1){
-        do {
-            tv.tv_sec = 20;
-            tv.tv_usec = 0;
-            FD_ZERO(&readset);
-            FD_SET(packet_cmd->ptzfd, &readset);
-            tlogv("while select\n");
-            result = select((packet_cmd->ptzfd + 1), &readset, NULL, NULL, &tv);
-        } while (result == -1 && errno == EINTR);
+        tv.tv_sec = 20;
+        tv.tv_usec = 0;
+        FD_ZERO(&readset);
+        FD_SET(packet_cmd->ptzfd, &readset);
+        tlogv("while select\n");
+        result = select((packet_cmd->ptzfd + 1), &readset, NULL, NULL, &tv);
         if (result <= 0) {
             goto END;
         }

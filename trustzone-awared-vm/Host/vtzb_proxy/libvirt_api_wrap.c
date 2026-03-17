@@ -102,10 +102,13 @@ char *find_domain_name_by_serial_socket(virConnectPtr conn, const char *socket_p
     char *result = NULL;
     for (int i = 0; i < actual; i++) {
         virDomainPtr dom = all_domains[i];
-        if (dom == NULL) 
+        if (dom == NULL)  {
+            tloge("dom is null failed");
             continue;
+        }
         char *xml = virDomainGetXMLDesc(dom, 0);
         if (xml == NULL) {
+            tloge("xml is null failed");
             continue;
         }
 
@@ -171,7 +174,7 @@ virDomainPtr init_domain_by_socket_path(virConnectPtr conn, const char *socket_p
 
     virDomainPtr dom = virDomainLookupByName(conn, domain_name);
     if (dom == NULL){
-        tloge("Failed to lookup domain %s\n", domain_name);
+        tloge("Failed to lookup domain %s, path is %s\n", domain_name, socket_path);
         virConnectClose(conn);
         return NULL;
     }

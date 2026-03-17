@@ -27,7 +27,6 @@ static cpu_set_t g_cpuset = {{0}};
 /* Custom signal handler for killing zombie threads. */
 void signal_handler(int signum) {
     (void)signum;
-    pthread_exit(NULL);
 }
 
 static void init_cpu_set()
@@ -95,6 +94,8 @@ int thread_pool_init(ThreadPool *pool)
         pthread_create(&pool->threads[i], NULL, thread_func, &g_thd_args[i]);
         sprintf(name, "worker_%d", i);
         pthread_setname_np(pool->threads[i], name);
+        pthread_detach(pool->threads[i]);
+
     }
     return 0;
 }
@@ -108,6 +109,7 @@ void replenish_thread_pool(ThreadPool *pool, pthread_t thd, char *name)
             g_thd_args[i].pool = pool;
             pthread_create(&pool->threads[i], NULL, thread_func, &g_thd_args[i]);
             pthread_setname_np(pool->threads[i], name);
+            pthread_detach(pool->threads[i]);
             pool->kill_flag[i] = false;
             tlogv("thread %s : old id %lu, new id %lu\n", name, thd, pool->threads[i]);
             return;
@@ -141,9 +143,11 @@ void *thread_func(void *arg)
     ThreadFuncArgs *thd_args = (ThreadFuncArgs *)arg;
     ThreadPool *pool = thd_args->pool;
     int index = thd_args->index;
-    if (signal(SIGUSR1, signal_handler) == SIG_ERR) {
-        return NULL;
-    }
+    struct sigaction sa;
+    sa.sa_handler = signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGUSR1, &sa, NULL);
 
     CPU_SET_AFFINITY();
     while (1) {
@@ -277,7 +281,7 @@ static void *deal_rebootmonitor_thread(void *arg)
     // domain ptr
     virDomainPtr domain_ptr = init_domain_by_socket_path(conn, serial_port->path);
     if(domain_ptr == NULL){
-        tloge("domain ptr failed \n");
+        tloge("domain ptr failed, path is %s\n", serial_port->path);
         deinit_virt_conn(conn);
         return NULL;
     }
@@ -300,7 +304,7 @@ static void *deal_rebootmonitor_thread(void *arg)
     );
     tlogv("callback_id %d \n", callbackID);
     if(callbackID < 0){
-        tloge("callbackID error \n");
+        tloge("callbackID error, path is %s\n", serial_port->path);
         deinit_domain(domain_ptr);
         deinit_virt_conn(conn);
         return NULL;
@@ -309,7 +313,7 @@ static void *deal_rebootmonitor_thread(void *arg)
     int timeout_id = virEventAddTimeout(10, timeout_callback, NULL, NULL);
     tlogv("timeout_id %d \n", timeout_id);
     if (timeout_id < 0) {
-        tloge("[Thread] Failed to add timeout\n");
+        tloge("[Thread] Failed to add timeout, path is %s\n", serial_port->path);
         virConnectDomainEventDeregisterAny(conn, callbackID);
         deinit_domain(domain_ptr);
         deinit_virt_conn(conn);
@@ -417,6 +421,7 @@ void* get_merged_packet(void* packet, struct_fragment *p_frag)
     static void *merged_packet = NULL;
     static uint32_t packet_header_size = 0;
     static uint32_t merged_packet_size = 0;
+    void *merged_packet_tmp = NULL;
 
     uint32_t page_blocks_size = p_frag->fragment_block_num * sizeof(struct_page_block);
     tlogd("packet_header_size is %u, page_blocks_size %u merged_packet_size is %u", packet_header_size, page_blocks_size, merged_packet_size);
@@ -429,10 +434,17 @@ void* get_merged_packet(void* packet, struct_fragment *p_frag)
         seq_num = p_frag->seq_num;
         packet_header_size = p_frag->cmd_size + sizeof(vm_trace_data);
         merged_packet_size = p_frag->total_fragment_block_num * sizeof(struct_page_block) + packet_header_size;
+	if (merged_packet){
+	    free(merged_packet);
+	}
         merged_packet = malloc(merged_packet_size);
 
-        if (!merged_packet)
+        if (!merged_packet) {
+            tloge("malloc failed, size is %u", merged_packet_size);
+            free(packet);
+            seq_num = 0;
             return NULL;
+        }
         memcpy_s(merged_packet, packet_header_size + page_blocks_size, packet, packet_header_size + page_blocks_size);
         fragment_offset += (packet_header_size + page_blocks_size);
         free(packet);
@@ -442,7 +454,9 @@ void* get_merged_packet(void* packet, struct_fragment *p_frag)
         free(packet);
         if (fragment_offset == merged_packet_size) { 
             seq_num = 0;
-            return merged_packet;
+            merged_packet_tmp = merged_packet;
+            merged_packet = NULL;
+            return merged_packet_tmp;
         } 
     } 
     return NULL;
@@ -566,15 +580,11 @@ void thread_pool_submit(ThreadPool *pool, void *(*task_func)(void *), void *arg)
 void thread_pool_destroy(ThreadPool *pool)
 {
     /* Stop accepting new tasks. */
-    pool->destroying = 1;
+    pthread_mutex_lock(&pool->task_mutex); 
+    pool->destroying = 1;	 
+    pthread_mutex_unlock(&pool->task_mutex);
     pthread_cond_broadcast(&pool->queue_not_empty);
-    pthread_cancel(pool->admin_tid);
-    pthread_join(pool->admin_tid, NULL);
-
-    for(int i = 0; i < THREAD_POOL_SIZE; i++) {
-        if (pool->threads[i] != 0)
-            pthread_join(pool->threads[i], NULL);
-    }
+    pthread_join(pool->admin_tid, NULL); 
 }
 
 void set_thread_session_id(ThreadPool *pool, pthread_t thd, unsigned int id)
