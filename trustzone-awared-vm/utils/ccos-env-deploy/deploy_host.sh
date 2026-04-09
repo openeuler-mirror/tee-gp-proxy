@@ -594,9 +594,10 @@ main() {
     echo ""
     log_info "Host deployment completed successfully!"
     echo ""
-    log_info "After system reboot, run the following commands to start services:"
+    log_info "Please run the following commands to start services:"
     log_info "  insmod ${TRUSTZONE_INSTALL_DIR}/tzdriver.ko"
     log_info "  nohup /usr/bin/teecd &"
+    log_info "NOTICE! Every time the system reboots, the two commands above also need to be run."
     echo ""
 }
 
