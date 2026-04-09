@@ -13,14 +13,14 @@
 - `kunpeng_sec_drv.sec` - 鲲鹏安全驱动文件
 
 如需部署鲲鹏密码模块，请将以下文件放置在脚本同级目录下：
-- `sdf-utils-1.2-1.aarch64.rpm` - 鲲鹏密码模块 RPM 包
+- `sdf-utils-*.rpm` - 鲲鹏密码模块 RPM 包
 
 ### 2. 配置文件
-项目包含 `deploy.conf` 配置文件，此文件定义了相关组件的版本信息：
+项目包含 `deploy.conf` 配置文件，此文件定义了相关组件的版本信息，请根据需要修改为合适的分支：
 ```
-ITRUSTEE_TZDRIVER_BRANCH="iTrustee_7.9.1_release"
-ITRUSTEE_CLIENT_BRANCH="iTrustee_7.9.1_release"
-TEE_GP_PROXY_BRANCH="25.3.0"
+ITRUSTEE_TZDRIVER_BRANCH="iTrustee_7.10.0_release"
+ITRUSTEE_CLIENT_BRANCH="iTrustee_7.10.0_release"
+TEE_GP_PROXY_BRANCH="26.0.RC1"
 ```
 
 ### 3. 网络连接
