@@ -72,7 +72,7 @@ OPENSSL_armcap=0 ./sm4_benchmark 10000 # sm4算法有硬件加速，取消硬件
 ##  打补丁
 ```bash
 # 将补丁文件放置在openssl_1_1_1wa-src同级目录下，进入 openssl_1_1_1wa-src 目录执行该命令
-git apply ../0001-Add-defence-code-of-sm2-and-sm4.patch 
+git apply ../0001-Add-side-channel-protection-code-for-sm2-and-sm4.patch 
 ```
 使用如下命令查看补丁是否应用成功
 ```bash
