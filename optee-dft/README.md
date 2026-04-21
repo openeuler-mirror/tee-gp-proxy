@@ -1,5 +1,5 @@
 # 鲲鹏920L/S/M模组烧录设备密钥和设备证书
-本文档描述鲲鹏920L/S/M模组使用开源OPTEE OS在openEuler 22.03环境测试，完成装备环境烧录设备密钥和设备证书流程。使用本文档需提前安装装备BIOS，并获取已发布的和本文档配套使用的CA/TA；具体烧录具体如下：
+本文档描述鲲鹏920L/S/M模组使用开源OPTEE OS在openEuler 22.03环境测试，完成装备环境烧录设备密钥和设备证书流程。使用本文档需获取工具版BIOS、商用版BIOS和已发布的和本文档配套使用的CA/TA。预先安装装备BIOS；具体烧录具体如下：
 ## 1. 部署环境
 ### 1.1 安装依赖
 ```
@@ -117,7 +117,7 @@ cp 21be2d5a-eef8-4940-ad16-95832f89290e.ta /usr/lib/optee_armtz/
 |0x1830000|cert.bin|
 |0x1840000|cert.bin|
 ## 4. 替换商用CCOS
-完成装备环节密钥和设备证书预置后，下载商用CCOS的hpm包，执行`pares_hpm.py`脚本获取`teeos.bin`文件，直接烧录到flash的0x1860000上。
+完成装备环节密钥和设备证书预置后，下载[商用CCOS安装包：BoostKit-VF_teeos_2.3.x.zip](https://www.hikunpeng.com/developer/download)，解压后进入文件夹，执行`pares_hpm.py`脚本获取`teeos.bin`文件，直接烧录到flash的0x1860000上。
 ```
 # 输入待提取HPM包名称，生成teeos.bin
 python3 pares_hpm.py *.hpm
