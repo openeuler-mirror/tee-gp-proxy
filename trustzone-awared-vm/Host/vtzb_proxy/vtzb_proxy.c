@@ -33,6 +33,8 @@
 #include "config.h"
 
 ThreadPool g_pool = {0};
+pthread_mutex_t g_private_fd_lock;
+int g_private_dev_fd;
 extern struct pollfd g_pollfd[SERIAL_PORT_NUM_MAX];
 extern struct serial_port_file *g_serial_array[SERIAL_PORT_NUM_MAX];
 
@@ -759,15 +761,21 @@ static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
     packet_rsp.vmid = serial_port->vm_file->vmpid;
     serial_port->vm_file->nsid = packet_cmd->nsid;
 
-    int fd = open(TC_TEECD_PRIVATE_DEV_NAME, O_RDWR);
-    if (fd < 0) {
-        tloge("open %s failed\n", TC_TEECD_PRIVATE_DEV_NAME);
-        ret = -1;
-        goto END;
+    pthread_mutex_lock(&g_private_fd_lock);
+    if (!g_private_dev_fd) {
+        int fd = open(TC_TEECD_PRIVATE_DEV_NAME, O_RDWR);
+        if (fd < 0) {
+            tloge("open %s failed\n", TC_TEECD_PRIVATE_DEV_NAME);
+            ret = -1;
+            pthread_mutex_unlock(&g_private_fd_lock);
+            goto END;
+        }
+        g_private_dev_fd = fd;
     }
+    pthread_mutex_unlock(&g_private_fd_lock);
     vm_info.vmid = serial_port->vm_file->vmpid;
     vm_info.nsid = packet_cmd->nsid;
-    ret = ioctl(fd, TC_NS_CLIENT_IOCTL_REGISTER_VM_VMID_NSID, &vm_info);
+    ret = ioctl(g_private_dev_fd, TC_NS_CLIENT_IOCTL_REGISTER_VM_VMID_NSID, &vm_info);
     if (ret != 0) {
         tloge("vtz register nsid vmid failed, vmid = %u, nsid = %u, ret = %d, path = %s, serial_port %p\n",\
             serial_port->vm_file->vmpid, packet_cmd->nsid, ret, serial_port->path, serial_port);
@@ -782,9 +790,6 @@ static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
     }
 
 END:
-    if (fd > 0) {
-	    close(fd);
-    }
     packet_rsp.ret = ret;
     ret = send_to_vm(serial_port, &packet_rsp, sizeof(packet_rsp));
     if (ret != sizeof(packet_rsp)) {
@@ -922,6 +927,7 @@ int main() {
     int serial_port_num = cfg->max_vm_count;
 
     serial_port_list_init();
+    pthread_mutex_init(&g_private_fd_lock, NULL);
     if (thread_pool_init(&g_pool))
         goto END2;
     if (check_stat_serial_port_first())
@@ -945,6 +951,8 @@ int main() {
     }
 
 END1:
+    if (g_private_dev_fd > 0)
+        close(g_private_dev_fd);
     thread_pool_destroy(&g_pool);
 END2:
     serial_port_list_destroy();

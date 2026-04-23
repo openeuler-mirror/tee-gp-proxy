@@ -10,6 +10,7 @@
 
 extern ThreadPool g_pool;
 extern TimeOut g_time_out[THREAD_POOL_SIZE];
+extern int g_private_dev_fd;
 
 LIST_DECLARE(g_vm_list);
 pthread_mutex_t g_mutex_vm = PTHREAD_MUTEX_INITIALIZER;
@@ -210,22 +211,17 @@ END:
 static void unregister_nsid_vmid(struct vm_file * vm_file)
 {
     int ret;
-    if (vm_file->nsid == 0 || vm_file->vmpid == 0) {
+    if (vm_file->nsid == 0 || vm_file->vmpid == 0 || g_private_dev_fd <= 0) {
         return;
     }
     struct_vm_group_info vm_info;
-    int fd = open(TC_TEECD_PRIVATE_DEV_NAME, O_RDWR);
-    if (fd < 0) {
-        tloge("open %s failed\n", TC_TEECD_PRIVATE_DEV_NAME);
-        return;
-    }
+
     vm_info.vmid = vm_file->vmpid;
     vm_info.nsid = vm_file->nsid;
-    ret = ioctl(fd, TC_NS_CLIENT_IOCTL_UNREGISTER_VM_VMID_NSID, &vm_info);
+    ret = ioctl(g_private_dev_fd, TC_NS_CLIENT_IOCTL_UNREGISTER_VM_VMID_NSID, &vm_info);
     if (ret) {
         tloge("vtz UNregister nsid vmid failed, vmid = %d, nsid = %d, ret = %d\n", vm_info.vmid, vm_info.nsid, ret);
     }
-    close(fd);
     return;
 }
 
