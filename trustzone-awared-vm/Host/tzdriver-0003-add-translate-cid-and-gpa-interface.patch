@@ -1,0 +1,180 @@
+From af04b313bf7bffd51478c86b86d789f8b6b613ae Mon Sep 17 00:00:00 2001
+From: liuhao365 <liuhao365@h-partners.com>
+Date: Wed, 29 Apr 2026 11:17:47 +0800
+Subject: [PATCH 3/3] add translate cid and gpa interface
+
+---
+ core/tc_client_driver.c | 114 ++++++++++++++++++++++++++++++++++++++++
+ tc_ns_client.h          |  10 ++++
+ 2 files changed, 124 insertions(+)
+
+diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
+index 10d1292..044c826 100644
+--- a/core/tc_client_driver.c
++++ b/core/tc_client_driver.c
+@@ -52,6 +52,8 @@
+ #include <linux/slab.h>
+ #include <linux/types.h>
+ #include <linux/security.h>
++#include <linux/kallsyms.h>
++#include <linux/kprobes.h>
+ #if (KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE)
+ #include <linux/sched/mm.h>
+ #include <linux/sched/signal.h>
+@@ -207,6 +209,107 @@ static int tc_ns_operate_vm_nsid_vmid(const struct tc_ns_dev_file *dev_file, con
+ }
+ #endif
+ 
++typedef unsigned long (*kallsyms_lookup_name_t)(const char *name);
++static kallsyms_lookup_name_t fn_kallsyms_lookup_name = NULL;
++
++typedef uint32_t (*vhost_vsock_translate_cid_t)(uint32_t guest_cid);
++static vhost_vsock_translate_cid_t vhost_vsock_translate_cid_func = NULL;
++typedef uint64_t (*vhost_vsock_translate_gpa_t)(uint32_t cid, uint64_t gpa, uint64_t size);
++static vhost_vsock_translate_gpa_t vhost_vsock_translate_gpa_func = NULL;
++
++static struct kprobe kp_sym_lookup = {
++    .symbol_name = "kallsyms_lookup_name",
++};
++
++static void get_kallsyms_lookup_name(void)
++{
++    int ret;
++
++    ret = register_kprobe(&kp_sym_lookup);
++    if (ret < 0) {
++        pr_err("tmm_driver: register_kprobe failed, returned %d\n", ret);
++        return;
++    }
++
++    fn_kallsyms_lookup_name = (void *)kp_sym_lookup.addr;
++    unregister_kprobe(&kp_sym_lookup);
++}
++
++static int get_symbol_from_kernel(void)
++{
++    get_kallsyms_lookup_name();
++    if (!fn_kallsyms_lookup_name) {
++        pr_err("tmm_driver: cannot get function kallsyms_lookup_name\n");
++        return -1;
++    }
++
++    vhost_vsock_translate_cid_func = (vhost_vsock_translate_cid_t)
++        fn_kallsyms_lookup_name("vhost_vsock_translate_cid");
++    if (!vhost_vsock_translate_cid_func) {
++        pr_err("tz_driver: cannot get function vhost_vsock_translate_cid\n");
++        return -1;
++    }
++
++    vhost_vsock_translate_gpa_func = (vhost_vsock_translate_gpa_t)
++        fn_kallsyms_lookup_name("vhost_vsock_translate_gpa");
++    if (!vhost_vsock_translate_gpa_func) {
++        pr_err("tz_driver: cannot get function vhost_vsock_translate_gpa\n");
++        return -1;
++    }
++    return 0;
++}
++
++static uint32_t vhost_vsock_translate_cid(uint32_t guest_cid)
++{
++    return vhost_vsock_translate_cid_func(guest_cid);
++}
++
++static int tc_ns_translate_cid(const struct tc_ns_dev_file *dev_file, const void *argp, unsigned int cmd)
++{
++	u32 guest_cid;
++	u32 pid;
++
++	if (copy_from_user(&guest_cid, argp, sizeof(guest_cid))) {
++		tloge("copy_from_user failed for guest_cid\n");
++		return -EFAULT;
++	}
++
++	pid = vhost_vsock_translate_cid(guest_cid);
++
++	if (copy_to_user((u32 __user *)argp, &pid, sizeof(pid))) {
++		tloge("copy_to_user failed for pid\n");
++		return -EFAULT;
++	}
++
++	return 0;
++}
++
++static int tc_ns_translate_gpa(const struct tc_ns_dev_file *dev_file, const void *argp, unsigned int cmd)
++{
++
++	struct vm_gpa_info vm_gpa;
++
++    if (copy_from_user(&vm_gpa, argp, sizeof(vm_gpa))) {
++        tloge("copy_from_user failed for vm_gpa\n");
++        return -EFAULT;
++    }
++
++	vm_gpa.gpa = vhost_vsock_translate_gpa_func(vm_gpa.cid, vm_gpa.gpa, 1);
++	if (!vm_gpa.gpa) {
++		tloge("translate gpa fail\n");
++		return -EFAULT;
++	}
++
++    if (copy_to_user((u32 __user *)argp, &vm_gpa, sizeof(vm_gpa))) {
++        tloge("copy_to_user failed for pid\n");
++        return -EFAULT;
++    }
++
++    tlogd("translated gpa %llx succ\n", vm_gpa.gpa);
++
++    return 0;
++}
++
+ int tc_ns_register_host_nsid_vmid(void)
+ {
+ 	struct tc_ns_smc_cmd smc_cmd = {{0}, 0};
+@@ -1046,6 +1149,12 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
+ 	case TC_NS_CLIENT_IOCTL_UNREGISTER_VM_NSID_VMID:
+ 		ret = tc_ns_operate_vm_nsid_vmid(file->private_data, argp, cmd);
+ 		break;
++	case TC_NS_CLIENT_IOCTL_TRANSLATE_CID:
++		ret = tc_ns_translate_cid(file->private_data, argp, cmd);
++		break;
++	case TC_NS_CLIENT_IOCTL_TRANSLATE_GPA:
++		ret = tc_ns_translate_gpa(file->private_data, argp, cmd);
++		break;
+ 	default:
+ 		ret = public_ioctl(file, cmd, arg, false);
+ 		break;
+@@ -1601,6 +1710,11 @@ static __init int tc_init(void)
+ #if defined(DYNAMIC_DRV_DIR) || defined(DYNAMIC_CRYPTO_DRV_DIR) || defined(DYNAMIC_SRV_DIR)
+ 	tz_load_dynamic_dir();
+ #endif
++
++	ret = get_symbol_from_kernel();
++	if (ret)
++		return ret;
++
+ 	return 0;
+ 
+ class_device_destroy:
+diff --git a/tc_ns_client.h b/tc_ns_client.h
+index 576dced..0658cd3 100644
+--- a/tc_ns_client.h
++++ b/tc_ns_client.h
+@@ -229,6 +229,16 @@ typedef struct {
+     _IOWR(TC_NS_CLIENT_IOC_MAGIC, 29, struct_group)
+ #define TC_NS_CLIENT_IOCTL_CHECK_CCOS \
+ 	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 32, unsigned int)
++#define TC_NS_CLIENT_IOCTL_TRANSLATE_CID \
++    _IOWR(TC_NS_CLIENT_IOC_MAGIC, 33, unsigned int)
++
++struct vm_gpa_info {
++	uint32_t cid;
++	uint64_t gpa;
++};
++
++#define TC_NS_CLIENT_IOCTL_TRANSLATE_GPA \
++    _IOWR(TC_NS_CLIENT_IOC_MAGIC, 34, struct vm_gpa_info)
+ 
+ #ifdef CONFIG_CONFIDENTIAL_CONTAINER
+ enum REE_LOAD_MODE {
+-- 
+2.43.0
+

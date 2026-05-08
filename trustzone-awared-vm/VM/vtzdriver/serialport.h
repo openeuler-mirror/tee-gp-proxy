@@ -41,7 +41,8 @@ struct vtzf_wr_data_list {
 
 struct vtzf_serial_port_file
 {
-	struct file *filep;
+    struct file *filep;
+    struct socket *sock;
 	struct list_head head;
 	struct mutex lock;
 	wait_queue_head_t wr_wait_event_wq;

@@ -750,12 +750,28 @@ static int register_teleport(uint32_t vm_id)
     }
 }
 
+uint64_t vtz_translate_gpa(uint32_t cid, uint64_t gpa)
+{
+    struct vm_gpa_info vm_gpa;
+
+    vm_gpa.cid = cid;
+    vm_gpa.gpa = gpa;
+
+    int ret = ioctl(g_private_dev_fd, TC_NS_CLIENT_IOCTL_TRANSLATE_GPA, &vm_gpa);
+    if (ret != 0) {
+        return 0;
+    }
+
+    return vm_gpa.gpa;
+}
+
 static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
     struct serial_port_file *serial_port)
 {
     int ret;
     struct_packet_rsp_open_tzd packet_rsp;
     struct_vm_group_info vm_info;
+    uint32_t cid_to_vmid = serial_port->vm_file->cid;
     packet_rsp.seq_num = packet_cmd->seq_num + 1;
     packet_rsp.packet_size = sizeof(packet_rsp);
     packet_rsp.vmid = serial_port->vm_file->vmpid;
@@ -773,6 +789,15 @@ static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
         g_private_dev_fd = fd;
     }
     pthread_mutex_unlock(&g_private_fd_lock);
+    ret = ioctl(g_private_dev_fd, TC_NS_CLIENT_IOCTL_TRANSLATE_CID, &cid_to_vmid);
+    if (ret != 0) {
+        tloge("vtz translate cid failed, vmid = %u, ret = %d, serial_port %p\n",\
+            cid_to_vmid, ret, serial_port);
+        goto END;
+    }
+    tlogd("vtz translate cid succ, cid is %u, pid is %u.\n", serial_port->vm_file->cid, cid_to_vmid);
+    serial_port->vm_file->vmpid = cid_to_vmid;
+
     vm_info.vmid = serial_port->vm_file->vmpid;
     vm_info.nsid = packet_cmd->nsid;
     ret = ioctl(g_private_dev_fd, TC_NS_CLIENT_IOCTL_REGISTER_VM_VMID_NSID, &vm_info);
@@ -796,6 +821,79 @@ END:
         tloge("vtz register nsid vmid send to vm failed\n");
     }
     return;
+}
+
+static void translate_vm_addr(char *rd_buf, uint32_t cid)
+{
+    uint32_t ui32_cmd = *(uint32_t *)(rd_buf + sizeof(uint32_t));
+    struct_page_block *page_block;
+    uint32_t param_type, i, fragment_block_num;
+    uint64_t gpa, hva;
+    struct_packet_cmd_regagent *packet_cmd1;
+    struct_packet_cmd_session * packet_cmd2;
+    struct_packet_cmd_send_cmd * packet_cmd3;
+    struct_packet_cmd_load_sec *packet_cmd;
+
+    switch (ui32_cmd) {
+    case VTZ_LOAD_SEC:
+        packet_cmd = (struct_packet_cmd_load_sec *)rd_buf;
+        packet_cmd->ioctlArg.fileBuffer = (char *)vtz_translate_gpa(cid, (uint64_t)packet_cmd->ioctlArg.fileBuffer);
+        break;
+    case VTZ_FS_REGISTER_AGENT:
+        packet_cmd1 = (struct_packet_cmd_regagent *)rd_buf;
+        packet_cmd1->vmaddr = (void *)vtz_translate_gpa(cid, (uint64_t)packet_cmd1->vmaddr);
+        break;
+    case VTZ_OPEN_SESSION:
+        packet_cmd2 = (struct_packet_cmd_session *)rd_buf;
+        gpa = (uint64_t)packet_cmd2->cliContext.file_buffer;
+        packet_cmd2->cliContext.file_buffer = (char *)vtz_translate_gpa(cid, gpa);
+        for (i = 0; i < TEEC_PARAM_NUM; i++) {
+            param_type = TEEC_PARAM_TYPE_GET(packet_cmd2->cliContext.paramTypes, i);
+            if (IS_TEMP_MEM(param_type) || IS_PARTIAL_MEM(param_type)) {
+                gpa = (uint64_t)packet_cmd2->cliContext.params[i].memref.buffer |
+                    (uint64_t)packet_cmd2->cliContext.params[i].memref.buffer_h_addr << H_OFFSET;
+                hva = vtz_translate_gpa(cid, gpa);
+                packet_cmd2->cliContext.params[i].memref.buffer = (unsigned int)hva;
+                packet_cmd2->cliContext.params[i].memref.buffer_h_addr = (unsigned int)(hva >> H_OFFSET);
+            }
+        }
+        fragment_block_num = packet_cmd2->total_fragment_block_num;
+        if (fragment_block_num) {
+            page_block = (struct_page_block *)((char *)packet_cmd2 + sizeof(struct_packet_cmd_session));
+            for(uint32_t j = 0; j < fragment_block_num; j++) {
+                gpa= page_block[j].block.user_addr;
+                page_block[j].block.user_addr = vtz_translate_gpa(cid, gpa);
+                if (!page_block[j].block.user_addr)
+                   tloge("VTZ_OPEN_SESSION translate addr fail\n"); 
+            }
+        }
+        break;
+    case VTZ_SEND_CMD:
+        packet_cmd3 = (struct_packet_cmd_send_cmd *)rd_buf;
+        for (i = 0; i < TEEC_PARAM_NUM; i++) {
+            param_type = TEEC_PARAM_TYPE_GET(packet_cmd3->cliContext.paramTypes, i);
+            if (IS_TEMP_MEM(param_type) || IS_PARTIAL_MEM(param_type)) {
+                gpa = (uint64_t)packet_cmd3->cliContext.params[i].memref.buffer |
+                    (uint64_t)packet_cmd3->cliContext.params[i].memref.buffer_h_addr << H_OFFSET;
+                hva = vtz_translate_gpa(cid, gpa);
+                packet_cmd3->cliContext.params[i].memref.buffer = (unsigned int)hva;
+                packet_cmd3->cliContext.params[i].memref.buffer_h_addr = (unsigned int)(hva >> H_OFFSET);
+            }
+        }
+        fragment_block_num = packet_cmd3->total_fragment_block_num;
+        if (fragment_block_num) {
+            page_block = (struct_page_block *)((char *)packet_cmd3 + sizeof(struct_packet_cmd_session));
+            for(uint32_t j = 0; j < fragment_block_num; j++) {
+                gpa= page_block[j].block.user_addr;
+                page_block[j].block.user_addr = vtz_translate_gpa(cid, gpa);
+                if (!page_block[j].block.user_addr)
+                   tloge("VTZ_SEND_CMD translate addr fail\n"); 
+            }
+        }
+        break;
+    default:
+        break;
+    }
 }
 
 void *thread_entry(void *args)
@@ -840,6 +938,7 @@ void *thread_entry(void *args)
         goto END;
     }
 
+    translate_vm_addr(rd_buf, serial_port->vm_file->cid);
     switch (ui32_cmd) {
     case VTZ_CLOSE_TZD:
         (void)close_tzdriver((struct_packet_cmd_close_tzd *)rd_buf, serial_port);

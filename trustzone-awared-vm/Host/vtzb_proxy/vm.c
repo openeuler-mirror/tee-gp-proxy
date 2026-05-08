@@ -181,12 +181,12 @@ int remove_fd(int ptzfd, struct vm_file *vm_fp)
     return 0;
 }
 
-struct vm_file *create_vm_file(uint32_t vmid)
+struct vm_file *create_vm_file(uint32_t cid)
 {
     struct vm_file *tmp = NULL;
     pthread_mutex_lock(&g_mutex_vm);
 
-    tlogd("create new vm_file for vmid %d\n", vmid);
+    tlogd("create new vm_file for cid %d\n", cid);
     tmp = (struct vm_file *)malloc(sizeof(struct vm_file));
     if (!tmp) {
         tloge("Failed to allocate memory for vm_file\n");
@@ -200,8 +200,9 @@ struct vm_file *create_vm_file(uint32_t vmid)
     ListInit(&tmp->shrd_mem_head);
     ListInit(&tmp->workers_head);
 
-    tmp->vmpid = vmid;
+    tmp->vmpid = 0;
     tmp->nsid = 0;
+    tmp->cid = cid;
     ListInsertTail(&g_vm_list, &tmp->head);
 END:
     pthread_mutex_unlock(&g_mutex_vm);

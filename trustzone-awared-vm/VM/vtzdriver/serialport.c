@@ -1,8 +1,9 @@
 #include <linux/version.h>
-#include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/kthread.h>
 #include <linux/sched.h>
+#include <net/sock.h>
+#include <net/af_vsock.h>
 #include <securec.h>
 #include "serialport.h"
 #include "comm_structs.h"
@@ -34,6 +35,8 @@ struct vtzf_wr_data_list g_wr_data_list;
 int g_destroy_rd_thread = 0;
 int g_destroy_wr_thread = 0;
 struct vtzf_serial_port_file *g_serial_port_file;
+
+#define VSOCK_PORT 30000
 
 void dump_time(void)
 {
@@ -190,7 +193,6 @@ void free_serial_port_list(void)
 	struct vtzf_serial_port_file *dev_file = NULL;
 	struct vtzf_serial_port_file *tmp = NULL;
 	struct_packet_cmd_nothing packet_cmd = {0};
-	struct_packet_rsp_nothing packet_rsp = {0};
 	uint32_t seq_num = get_seq_num(0);
 	packet_cmd.packet_size = sizeof(packet_cmd);
 	packet_cmd.seq_num = seq_num;
@@ -218,8 +220,8 @@ void free_serial_port_list(void)
 			kfree(dev_file->rd_thread_name);
 		if (dev_file->wr_thread_name)
 			kfree(dev_file->wr_thread_name);
-		if (dev_file->filep)
-			filp_close(dev_file->filep, NULL);
+		if (dev_file->sock)
+			sock_release(dev_file->sock);
 		if (dev_file->buffer)
 			kfree(dev_file->buffer);
 		mutex_destroy(&dev_file->lock);
@@ -258,26 +260,35 @@ void put_event_data(void *packet, int packet_size, uint32_t seq_num, int result)
 int rd_thread_func(void *arg)
 {
 	struct vtzf_serial_port_file *file = (struct vtzf_serial_port_file *)arg;
-	loff_t off = 0;
 	int ssize_ret = 0;
 	uint32_t seq_num;
 	int buf_len = 0;
 	int offset = 0;
-	struct file *fp_serialport = NULL;
+	struct msghdr msg = {0};
+	struct kvec iov;
 
-	fp_serialport = file->filep;
+	if (!file || !file->sock) {
+		tloge("Invalid file or sock in rd thread func\n");
+		return -EINVAL;
+	}
+
 	while (!kthread_should_stop()) {
 		if (g_destroy_rd_thread)
 			break;
-		off = 0;
-		ssize_ret = kernel_read(file->filep, file->buffer + file->offset,
-			SERIAL_PORT_BUF_LEN - file->offset, &off);
-		tlogd("kernel_read, ret value = %d, offset = %ld \n", (int)ssize_ret, (long)off);
+
+		iov.iov_base = file->buffer + file->offset;
+		iov.iov_len = SERIAL_PORT_BUF_LEN - file->offset;
+		msg.msg_flags = 0;
+
+		ssize_ret = kernel_recvmsg(file->sock, &msg, &iov, 1, iov.iov_len, 0);
+
 		if (ssize_ret == 0) {
-			tloge("kernel_read read EOF, please check whether serialport file exist or status of vtz_proxy in host!");
+			tlogd("vsock connection closed by peer\n");
 			break;
-		}
-		if (ssize_ret < 0) {
+		} else if (ssize_ret == -EAGAIN) {
+			schedule();
+			continue;
+		} else if (ssize_ret < 0) {
 			tloge("kernel_read failed, ret = %d \n", (int)ssize_ret);
 			wake_tlog_thrd();
 			rd_decrement(file);
@@ -289,7 +300,6 @@ int rd_thread_func(void *arg)
 		}
 
 		buf_len = ssize_ret + file->offset;
-		tlogd("buf_len = %d\n", buf_len);
 		/*
 		* The data may span across multiple packets, and the last packet may even be incomplete. 
 		* Each time, complete packets are extracted from the buffer, and the last incomplete 
@@ -345,15 +355,39 @@ void destroy_wr_data(struct wr_data *write_data)
 	kfree(write_data);
 }
 
-static int do_write(struct file *fp_serialport, void *buf, uint32_t buf_size)
+int vsock_send(struct socket *sock, const void *buf, size_t len)
+{
+	struct msghdr msg = {0};
+	struct kvec iov;
+	int ret;
+
+	if (!sock || !buf || len == 0) {
+		tloge("Invalid parameters: sock=%p, buf=%p, len=%zu\n", sock, buf, len);
+		return -EINVAL;
+	}
+
+	iov.iov_base = (void *)buf;
+	iov.iov_len = len;
+
+	memset(&msg, 0, sizeof(msg));
+
+	ret = kernel_sendmsg(sock, &msg, &iov, 1, iov.iov_len);
+	if (ret < 0) {
+		tloge("vsock send failed: sock=%p, ret=%d\n", sock, ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int do_write(struct socket *sock, void *buf, uint32_t buf_size)
 {
 	int ret = 0;
-	loff_t off =0;
 
-	if (!fp_serialport || !buf || buf_size > PACKET_LEN_MAX)
+	if (!sock || !buf || buf_size > PACKET_LEN_MAX)
 		return -EINVAL;
 
-	ret = kernel_write(fp_serialport, buf, buf_size, &off);
+	ret = vsock_send(sock, buf, buf_size);
 	return ret < 0 ? ret : 0;
 }
 
@@ -454,7 +488,7 @@ static inline int get_total_page_block_num(void *wr_buf, uint32_t cmd)
 	return -1;
 }
 
-static int write_split(struct file *fp_serialport, void *wr_buf)
+static int write_split(struct socket *sock, void *wr_buf)
 {
 	int ret = 0;
 	int i = 0;
@@ -493,7 +527,7 @@ static int write_split(struct file *fp_serialport, void *wr_buf)
 		}
 		else
 			buf_size = get_sub_packet_size(cmd_size, BLOCK_MTU);
-		ret = do_write(fp_serialport, fragments[i], buf_size);
+		ret = do_write(sock, fragments[i], buf_size);
 		if(ret != 0) break;
 	}
 
@@ -523,17 +557,17 @@ static inline bool require_split(void *buf)
 	return false;
 }
 
-static int safe_write(struct wr_data *write_data, struct file *fp_serialport)
+static int safe_write(struct wr_data *write_data, struct socket *sock)
 {
 	int ret = 0;
 	if (!write_data || !write_data->wr_buf ||
 		write_data->size_wr_buf < 3 * sizeof(uint32_t))
 		return -EINVAL;
 	if (require_split(write_data->wr_buf)) {
-		if (write_split(fp_serialport, write_data->wr_buf))
+		if (write_split(sock, write_data->wr_buf))
 			return -EFAULT;
 	} else {
-		ret = do_write(fp_serialport, write_data->wr_buf, write_data->size_wr_buf);
+		ret = do_write(sock, write_data->wr_buf, write_data->size_wr_buf);
 	}
 	return ret;
 } 
@@ -541,12 +575,10 @@ static int safe_write(struct wr_data *write_data, struct file *fp_serialport)
 int wr_thread_func(void *arg)
 {
 	struct vtzf_serial_port_file *file = (struct vtzf_serial_port_file *)arg;
-	struct file *fp_serialport = NULL;
 	int ret = 0;
 	struct wr_data *write_data = NULL;
-	if (!file || !file->filep)
+	if (!file || !file->sock)
 		return -EFAULT;
-	fp_serialport = file->filep;
 
 	while (!kthread_should_stop()) {
 		ret = wait_event_interruptible(file->wr_wait_event_wq, file->wr_flag);
@@ -560,7 +592,7 @@ int wr_thread_func(void *arg)
 		wr_decrement(file);
 		if(!write_data)
 			continue;
-		ret = safe_write(write_data, fp_serialport);
+		ret = safe_write(write_data, file->sock);
 		if (ret < 0) {
 			struct_packet_rsp_general packet_rsp = {0};
 			tloge("write failed ret = %d\n", ret);
@@ -642,12 +674,9 @@ int create_thread(int pos, struct vtzf_serial_port_file *file)
 int serial_port_init(void)
 {
 	int ret = 0;
-	int i;
-	int size_written;
-	struct file *file;
+	struct sockaddr_vm addr;
 	struct vtzf_serial_port_file *serial_port_file = NULL;
 	void *buffer = NULL;
-	char device_path[256];
 
 	void *threads = kzalloc(sizeof(struct task_struct) * SERIAL_PORT_NUM, GFP_KERNEL);
 	if (!threads) {
@@ -663,45 +692,53 @@ int serial_port_init(void)
 	INIT_LIST_HEAD(&g_wr_data_list.head);
 	spin_lock_init(&g_wr_data_list.spinlock);
 
-	for (i = 0; i < SERIAL_PORT_NUM; i++) {
-		size_written = snprintf(device_path, sizeof(device_path), "%s%d", VTZF_SERIALPORT, i);
-		serial_port_file = kzalloc(sizeof(*serial_port_file), GFP_KERNEL);
-		if (ZERO_OR_NULL_PTR((unsigned long)(uintptr_t)serial_port_file)) {
-			tloge("alloc serial_port_file failed\n");
-			ret = -ENOMEM;
-			goto err;
-		}
-		buffer = kzalloc(SERIAL_PORT_BUF_LEN, GFP_KERNEL);
-		if (ZERO_OR_NULL_PTR((unsigned long)(uintptr_t)buffer)) {
-			tloge("alloc serial_port_file failed\n");
-			ret = -ENOMEM;
-			kfree(serial_port_file);
-			goto err;
-		}
-		file = filp_open(device_path, O_RDWR, 0);
-		if (IS_ERR(file)) {
-			tloge("open serial_pore failed \n");
-			ret = -EFAULT;
-			kfree(serial_port_file);
-			kfree(buffer);
-			goto err;
-		}
-		serial_port_file->filep = file;
-		serial_port_file->buffer = buffer;
-		serial_port_file->rd_flag = 0;
-		serial_port_file->wr_flag = 0;
-		serial_port_file->log_flag = 0;
-		mutex_init(&serial_port_file->lock);
-		mutex_init(&serial_port_file->rd_flag_lock);
-		mutex_init(&serial_port_file->wr_flag_lock);
-		init_waitqueue_head(&(serial_port_file->wr_wait_event_wq));
-		init_waitqueue_head(&(serial_port_file->log_wait_event_wq));
-		list_add_tail(&serial_port_file->head, &g_serial_port_list.head);
-		g_serial_port_file = serial_port_file;
-		if (create_thread(i, serial_port_file))
-			goto err;
+	serial_port_file = kzalloc(sizeof(*serial_port_file), GFP_KERNEL);
+	if (ZERO_OR_NULL_PTR((unsigned long)(uintptr_t)serial_port_file)) {
+		tloge("alloc serial_port_file failed\n");
+		ret = -ENOMEM;
+		goto err;
 	}
-	tlogi(" open serial port success\n");
+	buffer = kzalloc(SERIAL_PORT_BUF_LEN, GFP_KERNEL);
+	if (ZERO_OR_NULL_PTR((unsigned long)(uintptr_t)buffer)) {
+		tloge("alloc serial_port_file failed\n");
+		ret = -ENOMEM;
+		kfree(serial_port_file);
+		goto err;
+	}
+	
+	memset(&addr, 0, sizeof(addr));
+	addr.svm_family = AF_VSOCK;
+	addr.svm_cid = VMADDR_CID_HOST;
+	addr.svm_port = VSOCK_PORT;
+
+	ret = sock_create(AF_VSOCK, SOCK_STREAM, 0, &serial_port_file->sock);
+	if (ret < 0) {
+		tloge("vsock socket create failed, ret=%d\n", ret);
+		goto err;
+	}
+
+	ret = kernel_connect(serial_port_file->sock, (struct sockaddr *)&addr, sizeof(addr), 0);
+	if (ret < 0) {
+		tloge("vsock connect failed, port=%d, ret=%d\n", addr.svm_port, ret);
+		sock_release(serial_port_file->sock);
+		goto err;
+	}
+
+	tlogi("connect host connect success\n");
+
+	serial_port_file->buffer = buffer;
+	serial_port_file->rd_flag = 0;
+	serial_port_file->wr_flag = 0;
+	serial_port_file->log_flag = 0;
+	mutex_init(&serial_port_file->lock);
+	mutex_init(&serial_port_file->rd_flag_lock);
+	mutex_init(&serial_port_file->wr_flag_lock);
+	init_waitqueue_head(&(serial_port_file->wr_wait_event_wq));
+	init_waitqueue_head(&(serial_port_file->log_wait_event_wq));
+	list_add_tail(&serial_port_file->head, &g_serial_port_list.head);
+	g_serial_port_file = serial_port_file;
+	if (create_thread(0, serial_port_file))
+		goto err;
 	return 0;
 err:
 	free_serial_port_list();
