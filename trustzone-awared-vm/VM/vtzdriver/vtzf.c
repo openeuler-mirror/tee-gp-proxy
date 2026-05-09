@@ -10,8 +10,8 @@
 #include <linux/of.h>
 #include <linux/cdev.h>
 #include <linux/vmalloc.h>
-#include <linux/file.h>
 #include <linux/mman.h>
+#include <net/sock.h>
 #include "vtzf.h"
 #include "tlogger.h"
 #include "serialport.h"
@@ -61,6 +61,8 @@ static DEFINE_MUTEX(g_device_file_cnt_lock);
 
 #define MAX_AGENTS_NUM	10
 struct agent_buf g_agents_buf[MAX_AGENTS_NUM] = {0};
+
+extern struct vtzf_serial_port_file *g_serial_port_file;
 
 static struct vm_operations_struct g_shared_remap_vm_ops = {
 	.open = shared_vma_open,
@@ -167,7 +169,11 @@ static int tc_ns_client_init(void)
 {
 	int ret;
 
+#if (KERNEL_VERSION(6, 4, 0) <= LINUX_VERSION_CODE)
+	g_driver_class = class_create(TC_NS_CLIENT_DEV);
+#else
 	g_driver_class = class_create(THIS_MODULE, TC_NS_CLIENT_DEV);
+#endif
 	if (IS_ERR_OR_NULL(g_driver_class)) {
 		tloge("class create failed");
 		ret = -ENOMEM;
@@ -263,11 +269,16 @@ static int __init vtzf_init(void)
 
 class_device_destroy:
 #if defined(CONFIG_CONFIDENTIAL_CONTAINER) || defined(CONFIG_TEE_TELEPORT_SUPPORT)
-	destory_dev_node(&g_tc_cvm, g_driver_class);
+	if (g_tc_cvm.devt)
+		destory_dev_node(&g_tc_cvm, g_driver_class);
 #endif
-	destory_dev_node(&g_tc_client, g_driver_class);
-	destory_dev_node(&g_tc_private, g_driver_class);
+	if (g_tc_client.devt)
+		destory_dev_node(&g_tc_client, g_driver_class);
+	if (g_tc_private.devt)
+		destory_dev_node(&g_tc_private, g_driver_class);
 	class_destroy(g_driver_class);
+	if (g_serial_port_file && g_serial_port_file->sock)
+		sock_release(g_serial_port_file->sock);
 exit_tlogger:
 	tlogger_exit();
 	return ret;
@@ -450,7 +461,7 @@ static int open_tzdriver(struct vtzf_dev_file *dev_file, uint32_t flag)
 		}
 		dev_file->ptzfd = packet_rsp.ptzfd;
 	} else {
-		tloge("send to proxy failed ret is %d\n", ret);
+		tloge("send to proxy failed, open tzdriver ret is %d\n", ret);
 	}
 END:
 	return ret;
@@ -504,7 +515,7 @@ static int close_tzdriver(struct vtzf_dev_file *dev_file)
 			goto END;
 		}
 	} else {
-		tloge("send to proxy failed ret is %d\n", ret);
+		tloge("send to proxy failed, close tzdriver ret is %d\n", ret);
 	}
 END:
 	return ret;
@@ -631,7 +642,11 @@ static int vtzf_mmap(struct file *filp, struct vm_area_struct *vma)
 	tlogv("shared_mem physical       address = 0x%016llx \n", (uint64_t)shared_mem->phy_addr);
 	tlogv("shared_mem allocated buffer len   = 0x%08x, %d \n", (int)len, (int)len);
 
+#if (KERNEL_VERSION(6, 4, 0) <= LINUX_VERSION_CODE)
+	vma->__vm_flags |= VM_USERMAP;
+#else
 	vma->vm_flags |= VM_USERMAP;
+#endif
  
 	if (remap_pfn_range(vma, vma->vm_start,
 		virt_to_phys(addr)>>PAGE_SHIFT, len, vma->vm_page_prot)) {	
@@ -639,7 +654,11 @@ static int vtzf_mmap(struct file *filp, struct vm_area_struct *vma)
 		return -EAGAIN;
 	}
 
+#if (KERNEL_VERSION(6, 4, 0) <= LINUX_VERSION_CODE)
+	vma->__vm_flags |= VM_DONTCOPY;
+#else
 	vma->vm_flags |= VM_DONTCOPY;
+#endif
 	vma->vm_ops = &g_shared_remap_vm_ops;
 	shared_vma_open(vma);
 	vma->vm_private_data = (void *)dev_file;
@@ -930,7 +949,7 @@ static int tc_ns_close_session(struct vtzf_dev_file *dev_file, void __user *argp
 			tloge("close session failed ret is %d\n", ret);
 		}
 	} else if(ret != -EINTR) {
-		tloge("send to proxy failed ret is %d\n", ret);
+		tloge("send to proxy failed, open session ret is %d\n", ret);
 	}
 
 	ptr = del_reg_mem(packet_cmd.cliContext.session_id);
@@ -1567,7 +1586,7 @@ static int tc_ns_send_cmd(struct vtzf_dev_file *dev_file,
 			update_free_params(&packet_rsp.cliContext, context, addrs);
 		}
 	} else {
-		tloge("send to proxy failed ret is %d\n", ret);
+		tloge("send to proxy failed, send_cmd ret is %d\n", ret);
 		free_for_params(&packet_cmd.cliContext, addrs);
 	}
 
@@ -2094,7 +2113,7 @@ static int tc_ns_load_secfile(struct vtzf_dev_file *dev_file,
 			tloge("load_secfile failed ret is %d\n", ret);
 		}
 	} else {
-		tloge("send to proxy failed ret is %d\n", ret);
+		tloge("send to proxy failed, load secfile ret is %d\n", ret);
 	}
 END:
 	dealloc_res_shm((void *)buffer);

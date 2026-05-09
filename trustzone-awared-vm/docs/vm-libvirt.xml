@@ -55,23 +55,13 @@
         <controller type='usb' model='ehci'/>
         <input type='tablet' bus='usb'/>
         <input type='keyboard' bus='usb'/>
+        <vsock model='virtio'>
+            <cid auto='yes'/>
+        </vsock>
         <!-- port 为vnc连接端口，auth 为连接密码 -->
         <!--
         <graphics type='vnc' port='5901' listen='0.0.0.0' password='on' auth='passwd1234!'/>
         -->
     </devices>
-    <qemu:commandline>
-     <!-- 添加一个虚拟串口，映射到host路径/tmp/vm_vtzb_sock0 -->
-     <qemu:arg value='-chardev'/>
-     <qemu:arg value='socket,path=/tmp/vm_vtzb_sock1,server=on,wait=off,id=vm01_vtzb_sock'/>
-     <qemu:arg value='-device'/>
-     <qemu:arg value='virtio-serial'/>
-     <qemu:arg value='-device'/>
-     <qemu:arg value='virtserialport,chardev=vm01_vtzb_sock,name=vtzf_serialport0'/>
-     <!--
-     <qemu:arg value='-monitor'/>
-     <qemu:arg value='telnet:127.0.0.1:5556,server=on,wait=off'/>
-     -->
-    </qemu:commandline>
     <seclabel type='dynamic' model='dac' relabel='yes'/>
 </domain>

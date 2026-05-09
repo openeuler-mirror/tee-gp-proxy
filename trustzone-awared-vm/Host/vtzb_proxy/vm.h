@@ -36,6 +36,7 @@ struct vm_file {
     pthread_mutex_t workers_lock;
     struct ListNode workers_head;
     uint32_t nsid;
+    uint32_t cid;
 };
 
 typedef struct {
@@ -73,7 +74,7 @@ void add_fd_list(int fd, uint32_t fd_type, struct vm_file *vm_fp);
 void remove_session(int ptzfd, int session_id, struct vm_file *vm_fp);
 void add_session_list(int ptzfd, struct vm_file *vm_fp, TC_NS_ClientContext *clicontext);
 void *destroy_vm_file(void *args);
-struct vm_file *create_vm_file(uint32_t vmid);
+struct vm_file *create_vm_file(uint32_t cid);
 int set_start_time(pthread_t tid, int seq_num, struct serial_port_file *serial_port);
 void remove_start_time(int i);
 #endif

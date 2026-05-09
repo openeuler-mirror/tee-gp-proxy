@@ -520,6 +520,7 @@ static void *deal_packet_thread(void *arg)
 end:
     if (serial_port) {
         tlogi("reader thread %d exited\n", serial_port->index);
+        release_vm_file(serial_port, serial_port->index);
     } else {
         tloge("serial_port is null, and reader thread exit\n");
     }

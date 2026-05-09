@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <errno.h>
 #include <error.h>
 #include <unistd.h>
@@ -21,49 +22,81 @@
 #include "virt.h"
 #include "config.h"
 
+#include <linux/vm_sockets.h>
+
+#define VSOCK_PORT 30000
+int g_server_fd = -1;
+int g_index = 0;
+
 extern ThreadPool g_pool;
 struct serial_port_list g_serial_list;
 struct pollfd g_pollfd[SERIAL_PORT_NUM_MAX];
 struct timeval g_last_time, g_cur_time;
 struct serial_port_file *g_serial_array[SERIAL_PORT_NUM_MAX];
 
+static void pollfd_init()
+{
+    for (int i = 0; i < SERIAL_PORT_NUM_MAX; ++i) {
+        g_pollfd[i].fd = -1;
+    }
+}
+
 int serial_port_list_init()
 {
-    int i;
-    struct serial_port_file *serial_port;
     VtzbConfig *cfg = get_global_config();
     int serial_port_num = cfg->max_vm_count;
     gettimeofday(&g_last_time, NULL);
     gettimeofday(&g_cur_time, NULL);
     pthread_mutex_init(&g_serial_list.lock, NULL);
     ListInit(&g_serial_list.head);
-    for (i = 0; i < serial_port_num; i++) {
-        serial_port = (struct serial_port_file *)malloc(sizeof(struct serial_port_file));
-        if (!serial_port) {
-            tloge("Failed to allocate memory for serial_port\n");
-            goto ERR;
-        }
-        memset_s(serial_port, sizeof(struct serial_port_file), 0, sizeof(struct serial_port_file));
-        snprintf(serial_port->path, PATH_MAX_LEN, "%s%d", cfg->socket_path, i);
-        serial_port->opened = false;
-        serial_port->offset = 0;
-        serial_port->rd_buf = (char *)malloc(BUF_LEN_MAX_RD);
-        serial_port->vm_file = NULL;
-        serial_port->index = i;
-        g_pollfd[i].fd = -1;
-        if (!serial_port->rd_buf) {
-            tloge("Failed to allocate memory for rd_buf\n");
-            free(serial_port);
-            goto ERR;
-        }
-        pthread_mutex_init(&serial_port->lock, NULL);
-        ListInsertTail(&g_serial_list.head, &serial_port->head);
+    pollfd_init();
+
+    g_server_fd = socket(AF_VSOCK, SOCK_STREAM, 0);
+    if (g_server_fd < 0) {
+        tloge("vsock server socket creation failed\n");
+        return -1;
     }
 
+    struct sockaddr_vm addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.svm_family = AF_VSOCK;
+    addr.svm_cid = VMADDR_CID_HOST;
+    addr.svm_port = VSOCK_PORT;
+
+    if (bind(g_server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+        tloge("bind vsock server failed\n");
+        close(g_server_fd);
+        return -1;
+    }
+
+    if (listen(g_server_fd, serial_port_num) < 0) {
+        tloge("listen vsock server failed\n");
+        close(g_server_fd);
+        return -1;
+    }
+
+    tlogi("vsock server start to listen\n");
     return 0;
-ERR:
+
     serial_port_list_destroy();
     return -ENOMEM;
+}
+
+struct serial_port_file* find_port_by_cid(uint32_t cid)
+{
+    struct serial_port_file *port;
+
+    (void)pthread_mutex_lock(&g_serial_list.lock);
+
+    LIST_FOR_EACH_ENTRY(port, &g_serial_list.head, head) {
+        if (port->vm_file->cid == cid) {
+            (void)pthread_mutex_unlock(&g_serial_list.lock);
+            return port;
+        }
+    }
+
+    (void)pthread_mutex_unlock(&g_serial_list.lock);
+    return NULL;
 }
 
 void serial_port_list_destroy()
@@ -108,48 +141,6 @@ int send_to_vm(struct serial_port_file *serial_port, void *packet_rsp, size_t si
     return ret;
 }
 
-static int connect_domsock_chardev(char *dev_path, int *sock, int *vmid)
-{
-    int ret;
-    struct ucred cred;
-    socklen_t cred_len = sizeof(cred);
-    ret = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (ret == -1) {
-        tloge("execute socket() failed \n");
-        return -1;
-    }
-
-    *sock = ret;
-
-    struct sockaddr_un sock_addr;
-    (void)memset_s(&sock_addr, sizeof(struct sockaddr_un), 0, sizeof(struct sockaddr_un));
-    sock_addr.sun_family = AF_UNIX;
-    if (memcpy_s(&sock_addr.sun_path, sizeof(sock_addr.sun_path), dev_path,
-        strlen(dev_path) + 1)) {
-        tloge("memcpy_s err\n");
-        goto CLOSE;
-    }
-    ret = connect(*sock, (struct sockaddr *)&sock_addr, sizeof(sock_addr));
-    if (ret < 0) {
-        tloge("connect domain socket %s failed, ret is %d \n", dev_path, ret);
-        goto CLOSE;
-    }
-
-    if (getsockopt(*sock, SOL_SOCKET, SO_PEERCRED, &cred, &cred_len) == -1) {
-        tloge("domain socket %s get pid failed", dev_path);
-        ret = -1;
-        goto CLOSE;
-    }
-    *vmid = cred.pid;
-
-    return ret;
-
-CLOSE:
-    close(*sock);
-    *sock = -1;
-    return ret;
-}
-
 void release_vm_file(struct serial_port_file *serial_port, int i)
 {
     if (!serial_port) {
@@ -171,44 +162,73 @@ void release_vm_file(struct serial_port_file *serial_port, int i)
     serial_port->vm_file = NULL;
 }
 
+int set_serial_port_index(struct serial_port_file *serial_port)
+{
+    for (int i = 0; i < SERIAL_PORT_NUM_MAX; ++i) {
+        if (g_pollfd[i].fd == -1) {
+            serial_port->index = i;
+            g_pollfd[i].fd = serial_port->sock;
+            g_pollfd[i].events = (POLLERR|POLLHUP|POLLRDHUP);
+            return 0;
+        }
+    }
+    return -1;
+}
+
 void do_check_stat_serial_port()
 {
     int ret;
-    int i = 0;
-    struct serial_port_file *serial_port;
-    int vmid = -1;
-    (void)pthread_mutex_lock(&g_serial_list.lock);
-    LIST_FOR_EACH_ENTRY(serial_port, &g_serial_list.head, head) {
-        if (serial_port->opened == false) {
-            ret = access(serial_port->path, R_OK | W_OK);
-            if (ret == 0) {
-                ret = connect_domsock_chardev(serial_port->path, &(serial_port->sock), &vmid);
-                if (ret < 0) {
-                    tloge("connect_domsock_chardev(%s) failed, ret = %d \n", serial_port->path, ret);
-                } else {
-                    tlogi("vm %d started, connect fd %d, create read thread\n", i, serial_port->sock);
-                    serial_port->opened = true;
-                    serial_port->offset = 0;
-                    g_pollfd[i].fd = serial_port->sock;
-                    g_serial_array[i] = serial_port;
-                    serial_port->vm_file = create_vm_file(vmid);
-                    create_reader_thread(serial_port, i);
-                    create_rebootmonitor_thread(serial_port, i);
-                }
+    struct serial_port_file *serial_port = NULL;
+    struct pollfd pfd = {0};
+    VtzbConfig *cfg = get_global_config();
+    int client_fd;
+
+    pfd.fd = g_server_fd;
+    pfd.events = POLLIN;
+
+    ret = safepoll(&pfd, 1, 1000);
+    if (ret <= 0)
+        return;
+
+    if (pfd.revents & POLLIN) {
+        struct sockaddr_vm addr;
+        socklen_t len = sizeof(addr);
+
+        while(1) {
+            client_fd = accept(g_server_fd, (struct sockaddr*)&addr, &len);
+            if (client_fd < 0) {
+                if (errno != EAGAIN && errno != EWOULDBLOCK)
+                    tloge("accept failed, errno=%d\n", errno);
+                return;
             }
-        } else {
-            ret = access(serial_port->path, R_OK | W_OK);
-            if (ret) {
-                tlogd("vm %d closed, fd %d is invalid, should close\n", i, serial_port->sock);
-                g_pollfd[i].fd = -1;
-                serial_port->opened = false;
-                g_serial_array[i] = NULL;
-                release_vm_file(serial_port, i);
+
+            serial_port = (struct serial_port_file *)malloc(sizeof(struct serial_port_file));
+            if (!serial_port) {
+                tloge("Failed to allocate memory for serial_port\n");
+                close(client_fd);
+                return;
             }
+            memset_s(serial_port, sizeof(struct serial_port_file), 0, sizeof(struct serial_port_file));
+            serial_port->sock = client_fd;
+            if (set_serial_port_index(serial_port)) {
+                tloge("vm num upper limit\n");
+                close(client_fd);
+                return;
+            }
+            serial_port->offset = 0;
+            serial_port->rd_buf = (char *)malloc(BUF_LEN_MAX_RD);
+            memset(serial_port->rd_buf, 0x55, BUF_LEN_MAX_RD);
+            snprintf(serial_port->path, PATH_MAX_LEN, "%s%d", cfg->socket_path, serial_port->index);
+            serial_port->vm_file = create_vm_file(addr.svm_cid);
+            g_serial_array[serial_port->index] = serial_port;
+
+            create_reader_thread(serial_port, serial_port->index);
+
+            (void)pthread_mutex_lock(&g_serial_list.lock);
+            ListInsertTail(&g_serial_list.head, &serial_port->head);
+            (void)pthread_mutex_unlock(&g_serial_list.lock);
         }
-        i++;
     }
-    (void)pthread_mutex_unlock(&g_serial_list.lock);
 }
 
 void check_stat_serial_port()

@@ -6,9 +6,7 @@
 
 ## 软件架构
 
-<img src="docs/picture/arch.png" alt="trustzone-awared-vm架构" style="zoom: 50%;" />
-
-本项目借助qemu虚拟串口 virtserial、充分利用内存拷贝与内存共享，构建TrustZone感知的机密虚拟机，其整体架构如图 所示。构建vtzdriver，提供与tzdriver相同的接口供上层应用和库调用。利用qemu提供的virtserial，在VM侧创建字符设备，在Host侧创建socket，连通VM与Host。vtz_proxy接受识别由vtzdriver转发的tzdriver调用，识别后调用tzdriver对应接口。调用结果由vtz_proxy、qemu、vtzdriver返回给上层应用。从而实现在VM中使用TEE的体验与本地Host上无差异。
+本项目借助内核 vhost_vsock驱动的接发消息能力，构建TrustZone感知的机密虚拟机。构建vtzdriver，提供与tzdriver相同的接口供上层应用和库调用。在Host侧创建vsock服务端，在VM侧创建vsock客户端，连通VM与Host。vtz_proxy接受识别由vtzdriver转发的tzdriver调用，识别后调用tzdriver对应接口。调用结果由vtz_proxy、vsock、vtzdriver返回给上层应用。从而实现在VM中使用TEE的体验与本地Host上无差异。
 
 ## 使用说明
 
@@ -46,6 +44,10 @@
 
 - `numa_bindings`：`vtz_proxy` 线程池绑核配置
 
+### 端口
+
+Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部署环境请保证Host 30000端口未被使用。
+
 ## Host 环境搭建
 
 1. 安装依赖
@@ -54,6 +56,7 @@
     yum install glib2 glib2-devel pixman-devel
     yum install openssl-devel
     yum install libxml2-devel libvirt-devel
+    yum install compat-openssl11-libs # 当内核版本大于等于6.6需安装
     ```
 2. `vtzb_proxy`编译
     ```shell
@@ -68,7 +71,16 @@
         make
         sudo cp ./vtz_proxy /usr/bin/vtz_proxy
         ```	
-5. `tzdriver`和`client`编译安装
+3. `vhost_vsock`编译
+    1. 根据实际内核版本4.19、5.10、6.6，进入对应vsock源码目录，执行编译后，将`vhost_vsock.ko` 复制到指定目录。
+    ```shell
+    cd tee-gp-proxy/trustzone-awared-vm/Host/vsock-$(uname -r | awk -F. '{printf "%s.%s\n", $1, $2}')
+    git am 0001-vsock-driver-add-translate-cid-and-gpa-interface.patch
+    make
+    mkdir -p "/lib/modules/$(uname -r)/kernel/drivers/trustzone/"
+    cp vhost_vsock.ko /lib/modules/$(uname -r)/kernel/drivers/trustzone
+    ```
+4. `tzdriver`和`client`编译安装
     1. 进入`itrustee_tzdriver`的根目录，补丁文件路径按照实际路径修改。
     ``` 
     git am ../tee-gp-proxy/trustzone-awared-vm/Host/tzdriver-00*.patch
@@ -81,7 +93,6 @@
     4. 920 新型号请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/cca/devg/Kunpeng_ommercialcryptography_16_0015.html)
     5. 在`tzdriver`编译后，将`tzdriver.ko` 复制到指定目录
         ```shell 
-        mkdir -p "/lib/modules/$(uname -r)/kernel/drivers/trustzone/"
         cp tzdriver.ko /lib/modules/$(uname -r)/kernel/drivers/trustzone
         ```
 ## qemu与虚机配置
@@ -89,12 +100,7 @@
     ```shell
     git clone -b v6.2.0 https://git.qemu.org/git/qemu.git
     ```
-4. 应用补丁文件
-    1. 进入目标目录 `qemu` 的根目录，补丁文件路径按照实际路径修改。
-    ```shell
-    git am ../tee-gp-proxy/trustzone-awared-vm/Host/qemu-00*.patch
-    ```
-5. 编译`qemu`
+2. 编译`qemu`
     ```shell
     cd qemu
     mkdir build
@@ -107,11 +113,11 @@
     > 1.若出现GCC将warning视为error的报错，可通过 --disable-werror解决
     >
     > 2.若提示gcc版本过低， 请升级gcc版本后再编译
-6. 虚拟机镜像
+3. 虚拟机镜像
     1. [openEuler22.03-LTS-SP4下载地址](https://repo.openeuler.org/openEuler-22.03-LTS-SP4/virtual_machine_img/aarch64/)
     2. [kylin-v10 qcow2镜像制作方法](docs/kylin-v10-qcow2/kylin-v10-qcow2.md)
-7. 虚机配置请参考[虚机配置](docs/vm-libvirt.xml)
-8. 定义并启动虚拟机
+4. 虚机配置请参考[虚机配置](docs/vm-libvirt.xml)
+5. 定义并启动虚拟机
     1. 安装依赖：
         ```shell
         yum -y install edk2-aarch64.noarch libvirt
@@ -125,22 +131,11 @@
         /* 若新安装，用VNC登录安装，注意打开端口防火墙 */
         iptables -I INPUT -p tcp –dport 5901 -j ACCEPT
         ```
-9. 多虚机配置
-    ```xml
-     <qemu:arg value='-chardev'/>
-     <qemu:arg value='socket,path=/var/vtzb/vm_vtzb_sock1,server=on,wait=off,id=vm01_vtzb_sock'/>
-     <qemu:arg value='-device'/>
-     <qemu:arg value='virtio-serial'/>
-     <qemu:arg value='-device'/>
-     <qemu:arg value='virtserialport,chardev=vm01_vtzb_sock,name=vtzf_serialport0'/>
-    ```
-    1. 在虚机配置文件中修改如上代码：`path`按照`/var/vtzb/vm_vtzb_sock0`，`/var/vtzb/vm_vtzb_sock1`，`/var/vtzb/vm_vtzb_sock2`且接着上一个虚机配置文件中的`path`有序递增，且数字不能大于配置文件中的 `max_vm_count`
-    2. 修改`id`与`chardev` 一致且唯一
-    3. `name` 恒为`vtzf_serialport0`
 ## VM环境搭建
 1. 安装依赖
     ```shell
     yum install make kernel-devel-$(uname -r) git gcc openssl-devel 
+    yum install compat-openssl11-libs  # 当内核版本大于等于6.6需安装
     ```
 2. 下载`tee-gp-proxy`仓库，其中包含`vtzdriver`与`virtio`(5.10内核)源码。
     ```
@@ -153,17 +148,7 @@
         1. ``` git am ../tee-gp-proxy/trustzone-awared-vm/Host/client-00*.patch```
     2. 920 机型请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/trustzone/fg/kunpengtrustzone_20_0019.html)。
     3. 920 新型号请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/cca/devg/Kunpeng_ommercialcryptography_16_0015.html)
-4. 编译`virtio_console.ko`并加载（仅5.10内核需要执行此步骤）
-    1. 编译`virtio_console` 并替换内核默认的`virtio_console`！
-    ```shell
-    cd tee-gp-proxy/trustzone-awared-vm/VM/virtio/char
-    make
-    mkdir -p /lib/modules/$(uname -r)/kernel/drivers/trustzone
-    cp virtio_console.ko /lib/modules/$(uname -r)/kernel/drivers/trustzone
-    rmmod virtio_console
-    insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/virtio_console.ko
-    ```
-5. 编译`vtzdriver`并加载`vtzfdriver.ko`, `vtzfdriver`加载后不可卸载, 如需卸载请重启
+4. 编译`vtzdriver`并加载`vtzfdriver.ko`
     ```shell
     cd tee-gp-proxy/trustzone-awared-vm/VM/vtzdriver
     make
@@ -179,18 +164,15 @@
 首先要确认`Host`与`VM`中已搭建好`ccos`环境，然后每次重启后需执行以下命令：
 #### 在`Host`中需要执行以下命令
 ```shell
+modprobe vmw_vsock_virtio_transport_common && modprobe vhost
+insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/vhost_vsock.ko
 insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/tzdriver.ko
 nohup /usr/bin/teecd &
 nohup /usr/bin/vtz_proxy &
 ```
 #### 在`VM`中需要执行以下命令
 
-1. 重新加载`virtio_console`模块（仅5.10内核需要执行此步骤）
-```shell
-rmmod virtio_console
-insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/virtio_console.ko
-```
-2. 加载`vtzfdriver.ko`和`teecd`
+1. 加载`vtzfdriver.ko`和`teecd`
 ```bash
 insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/vtzfdriver.ko
 nohup /usr/bin/teecd &

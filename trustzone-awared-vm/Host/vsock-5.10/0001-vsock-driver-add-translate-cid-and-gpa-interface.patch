@@ -1,0 +1,141 @@
+From 85c2691ed5cacf5941c76a4d026e1d9fc277669e Mon Sep 17 00:00:00 2001
+From: root <root@localhost.localdomain>
+Date: Thu, 7 May 2026 19:05:04 +0800
+Subject: [PATCH] vsock driver add translate cid and gpa interface
+
+---
+ trustzone-awared-vm/Host/vsock-5.10/vsock.c | 93 ++++++++++++++++++++-
+ 1 file changed, 92 insertions(+), 1 deletion(-)
+
+diff --git a/trustzone-awared-vm/Host/vsock-5.10/vsock.c b/trustzone-awared-vm/Host/vsock-5.10/vsock.c
+index 7bce5f9..39aa543 100644
+--- a/trustzone-awared-vm/Host/vsock-5.10/vsock.c
++++ b/trustzone-awared-vm/Host/vsock-5.10/vsock.c
+@@ -37,6 +37,14 @@ enum {
+ static DEFINE_MUTEX(vhost_vsock_mutex);
+ static DEFINE_READ_MOSTLY_HASHTABLE(vhost_vsock_hash, 8);
+ 
++static DEFINE_HASHTABLE(cid_pid_hash, 8);
++
++struct vhost_vsock_cid_pid_map {
++	u32 cid;
++	u32 pid;
++	struct hlist_node node;
++};
++
+ struct vhost_vsock {
+ 	struct vhost_dev dev;
+ 	struct vhost_virtqueue vqs[2];
+@@ -683,13 +691,50 @@ static void vhost_vsock_reset_orphans(struct sock *sk)
+ 	sk->sk_error_report(sk);
+ }
+ 
++static void vhost_vsock_add_cid_pid(u32 cid, u32 pid)
++{
++	struct vhost_vsock_cid_pid_map *entry;
++
++	hash_for_each_possible(cid_pid_hash, entry, node, cid) {
++		if (entry->cid == cid) {
++			entry->pid = pid;
++			return;
++		}
++	}
++
++	entry = kmalloc(sizeof(*entry), GFP_KERNEL);
++	if (!entry)
++		return;
++
++	entry->cid = cid;
++	entry->pid = pid;
++
++	hash_add(cid_pid_hash, &entry->node, cid);
++}
++
++static void vhost_vsock_remote_cid_pid(u32 guest_cid)
++{
++	struct vhost_vsock_cid_pid_map *entry;
++	struct hlist_node *tmp;
++
++	hash_for_each_possible_safe(cid_pid_hash, entry, tmp, node, guest_cid) {
++		if (entry->cid == guest_cid) {
++			hash_del(&entry->node);
++			kfree(entry);
++			return;
++		}
++	}
++}
++
+ static int vhost_vsock_dev_release(struct inode *inode, struct file *file)
+ {
+ 	struct vhost_vsock *vsock = file->private_data;
+ 
+ 	mutex_lock(&vhost_vsock_mutex);
+-	if (vsock->guest_cid)
++	if (vsock->guest_cid) {
++		vhost_vsock_remote_cid_pid(vsock->guest_cid);
+ 		hash_del_rcu(&vsock->hash);
++	}
+ 	mutex_unlock(&vhost_vsock_mutex);
+ 
+ 	/* Wait for other CPUs to finish using vsock */
+@@ -758,11 +803,57 @@ static int vhost_vsock_set_cid(struct vhost_vsock *vsock, u64 guest_cid)
+ 
+ 	vsock->guest_cid = guest_cid;
+ 	hash_add_rcu(vhost_vsock_hash, &vsock->hash, vsock->guest_cid);
++	vhost_vsock_add_cid_pid(guest_cid, current->tgid);
++
+ 	mutex_unlock(&vhost_vsock_mutex);
+ 
+ 	return 0;
+ }
+ 
++u64 vhost_vsock_translate_gpa(u32 cid, u64 gpa, u64 size)
++{
++	struct vhost_vsock *vsock;
++	struct vhost_iotlb_map *map;
++	u64 hva = 0;
++
++	if (cid <= VMADDR_CID_HOST || size == 0)
++		return 0;
++
++	mutex_lock(&vhost_vsock_mutex);
++	vsock = vhost_vsock_get(cid);
++	if (!vsock || !vsock->dev.umem)
++		goto out;
++
++	map = vhost_iotlb_itree_first(vsock->dev.umem, gpa, gpa);
++	if (!map || gpa < map->start || gpa > map->last)
++		goto out;
++
++	if (gpa + size > map->start + map->size)
++		goto out;
++	hva = map->addr + (gpa - map->start);
++out:
++	mutex_unlock(&vhost_vsock_mutex);
++	return hva;
++}
++EXPORT_SYMBOL_GPL(vhost_vsock_translate_gpa);
++
++u32 vhost_vsock_translate_cid(u32 guest_cid)
++{
++	struct vhost_vsock_cid_pid_map *entry;
++	u32 pid = 0;
++
++	mutex_lock(&vhost_vsock_mutex);
++	hash_for_each_possible(cid_pid_hash, entry, node, guest_cid) {
++		if (entry->cid == guest_cid) {
++			pid = entry->pid;
++			break;
++		}
++	}
++	mutex_unlock(&vhost_vsock_mutex);
++	return pid;
++}
++EXPORT_SYMBOL_GPL(vhost_vsock_translate_cid);
++
+ static int vhost_vsock_set_features(struct vhost_vsock *vsock, u64 features)
+ {
+ 	struct vhost_virtqueue *vq;
+-- 
+2.33.0
+
