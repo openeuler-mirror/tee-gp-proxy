@@ -44,6 +44,10 @@
 
 - `numa_bindings`：`vtz_proxy` 线程池绑核配置
 
+### 端口
+
+Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部署环境请保证Host 30000端口未被使用。
+
 ## Host 环境搭建
 
 1. 安装依赖

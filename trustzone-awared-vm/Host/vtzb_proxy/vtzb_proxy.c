@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "vtzb_proxy.h"
 #include <errno.h>
 #include <error.h>
@@ -914,7 +915,7 @@ void *thread_entry(void *args)
     pthread_mutex_unlock(&vm_fp->workers_lock);
 
     struct_packet_cmd_nothing *p = (struct_packet_cmd_nothing *)rd_buf;
-    tloge("worker_p tid %lu, vm %u cmd %u, size %u, seq %u, path is %s\n", worker_p->tid, data->vmid, p->cmd, p->packet_size, p->seq_num, serial_port->path);
+    tlogd("worker_p tid %lu, vm %u cmd %u, size %u, seq %u, path is %s\n", worker_p->tid, data->vmid, p->cmd, p->packet_size, p->seq_num, serial_port->path);
 
     if (ui32_cmd == VTZ_REGISTER_VM_VMID_NSID) {
         (void)vtz_register_nsid_vmid((struct_packet_cmd_open_tzd *)rd_buf, serial_port);
@@ -1040,9 +1041,8 @@ int main() {
         }
         for (int i = 0; i < serial_port_num; i++) {
             // when vm restart quickly, use poll can capture this event
-            if (g_pollfd[i].revents & POLLHUP) {
+            if (g_pollfd[i].revents & (POLLERR|POLLHUP|POLLRDHUP)) {
                 tlogi("vm %d got POLLHUP event, release vm\n", i);
-                release_vm_file(g_serial_array[i], i);
 		        g_pollfd[i].revents = 0;
             }
         }

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <errno.h>
 #include <error.h>
 #include <unistd.h>
@@ -33,6 +34,13 @@ struct pollfd g_pollfd[SERIAL_PORT_NUM_MAX];
 struct timeval g_last_time, g_cur_time;
 struct serial_port_file *g_serial_array[SERIAL_PORT_NUM_MAX];
 
+static void pollfd_init()
+{
+    for (int i = 0; i < SERIAL_PORT_NUM_MAX; ++i) {
+        g_pollfd[i].fd = -1;
+    }
+}
+
 int serial_port_list_init()
 {
     VtzbConfig *cfg = get_global_config();
@@ -41,6 +49,7 @@ int serial_port_list_init()
     gettimeofday(&g_cur_time, NULL);
     pthread_mutex_init(&g_serial_list.lock, NULL);
     ListInit(&g_serial_list.head);
+    pollfd_init();
 
     g_server_fd = socket(AF_VSOCK, SOCK_STREAM, 0);
     if (g_server_fd < 0) {
@@ -153,6 +162,19 @@ void release_vm_file(struct serial_port_file *serial_port, int i)
     serial_port->vm_file = NULL;
 }
 
+int set_serial_port_index(struct serial_port_file *serial_port)
+{
+    for (int i = 0; i < SERIAL_PORT_NUM_MAX; ++i) {
+        if (g_pollfd[i].fd == -1) {
+            serial_port->index = i;
+            g_pollfd[i].fd = serial_port->sock;
+            g_pollfd[i].events = (POLLERR|POLLHUP|POLLRDHUP);
+            return 0;
+        }
+    }
+    return -1;
+}
+
 void do_check_stat_serial_port()
 {
     int ret;
@@ -164,7 +186,7 @@ void do_check_stat_serial_port()
     pfd.fd = g_server_fd;
     pfd.events = POLLIN;
 
-    ret = safepoll(&pfd, 1, 2000);
+    ret = safepoll(&pfd, 1, 1000);
     if (ret <= 0)
         return;
 
@@ -172,32 +194,40 @@ void do_check_stat_serial_port()
         struct sockaddr_vm addr;
         socklen_t len = sizeof(addr);
 
-        // 
-        client_fd = accept(g_server_fd, (struct sockaddr*)&addr, &len);
-        if (client_fd < 0) {
-            tloge("accept failed, fd=%d\n", client_fd);
-            return;
+        while(1) {
+            client_fd = accept(g_server_fd, (struct sockaddr*)&addr, &len);
+            if (client_fd < 0) {
+                if (errno != EAGAIN && errno != EWOULDBLOCK)
+                    tloge("accept failed, errno=%d\n", errno);
+                return;
+            }
+
+            serial_port = (struct serial_port_file *)malloc(sizeof(struct serial_port_file));
+            if (!serial_port) {
+                tloge("Failed to allocate memory for serial_port\n");
+                close(client_fd);
+                return;
+            }
+            memset_s(serial_port, sizeof(struct serial_port_file), 0, sizeof(struct serial_port_file));
+            serial_port->sock = client_fd;
+            if (set_serial_port_index(serial_port)) {
+                tloge("vm num upper limit\n");
+                close(client_fd);
+                return;
+            }
+            serial_port->offset = 0;
+            serial_port->rd_buf = (char *)malloc(BUF_LEN_MAX_RD);
+            memset(serial_port->rd_buf, 0x55, BUF_LEN_MAX_RD);
+            snprintf(serial_port->path, PATH_MAX_LEN, "%s%d", cfg->socket_path, serial_port->index);
+            serial_port->vm_file = create_vm_file(addr.svm_cid);
+            g_serial_array[serial_port->index] = serial_port;
+
+            create_reader_thread(serial_port, serial_port->index);
+
+            (void)pthread_mutex_lock(&g_serial_list.lock);
+            ListInsertTail(&g_serial_list.head, &serial_port->head);
+            (void)pthread_mutex_unlock(&g_serial_list.lock);
         }
-
-        serial_port = (struct serial_port_file *)malloc(sizeof(struct serial_port_file));
-        if (!serial_port) {
-            tloge("Failed to allocate memory for serial_port\n");
-            return;
-        }
-        memset_s(serial_port, sizeof(struct serial_port_file), 0, sizeof(struct serial_port_file));
-        serial_port->sock = client_fd;
-        serial_port->offset = 0;
-        serial_port->rd_buf = (char *)malloc(BUF_LEN_MAX_RD);
-        memset(serial_port->rd_buf, 0x55, BUF_LEN_MAX_RD);
-        serial_port->index = g_index++;
-        snprintf(serial_port->path, PATH_MAX_LEN, "%s%d", cfg->socket_path, serial_port->index);
-        serial_port->vm_file = create_vm_file(addr.svm_cid);
-
-        create_reader_thread(serial_port, serial_port->index);
-
-        (void)pthread_mutex_lock(&g_serial_list.lock);
-        ListInsertTail(&g_serial_list.head, &serial_port->head);
-        (void)pthread_mutex_unlock(&g_serial_list.lock);
     }
 }
 

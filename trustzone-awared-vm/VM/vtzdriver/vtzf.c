@@ -11,6 +11,7 @@
 #include <linux/cdev.h>
 #include <linux/vmalloc.h>
 #include <linux/mman.h>
+#include <net/sock.h>
 #include "vtzf.h"
 #include "tlogger.h"
 #include "serialport.h"
@@ -60,6 +61,8 @@ static DEFINE_MUTEX(g_device_file_cnt_lock);
 
 #define MAX_AGENTS_NUM	10
 struct agent_buf g_agents_buf[MAX_AGENTS_NUM] = {0};
+
+extern struct vtzf_serial_port_file *g_serial_port_file;
 
 static struct vm_operations_struct g_shared_remap_vm_ops = {
 	.open = shared_vma_open,
@@ -266,11 +269,16 @@ static int __init vtzf_init(void)
 
 class_device_destroy:
 #if defined(CONFIG_CONFIDENTIAL_CONTAINER) || defined(CONFIG_TEE_TELEPORT_SUPPORT)
-	destory_dev_node(&g_tc_cvm, g_driver_class);
+	if (g_tc_cvm.devt)
+		destory_dev_node(&g_tc_cvm, g_driver_class);
 #endif
-	destory_dev_node(&g_tc_client, g_driver_class);
-	destory_dev_node(&g_tc_private, g_driver_class);
+	if (g_tc_client.devt)
+		destory_dev_node(&g_tc_client, g_driver_class);
+	if (g_tc_private.devt)
+		destory_dev_node(&g_tc_private, g_driver_class);
 	class_destroy(g_driver_class);
+	if (g_serial_port_file && g_serial_port_file->sock)
+		sock_release(g_serial_port_file->sock);
 exit_tlogger:
 	tlogger_exit();
 	return ret;
