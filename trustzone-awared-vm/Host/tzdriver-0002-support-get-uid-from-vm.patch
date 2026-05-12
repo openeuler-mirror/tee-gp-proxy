@@ -1,9 +1,8 @@
-From 03878ecbe0d21f7f844266f163ea18f54a537722 Mon Sep 17 00:00:00 2001
+From c2c442a9a73ed0081164136e9ddcf78c4b844ccf Mon Sep 17 00:00:00 2001
 From: gongchangsui <gongchangsui@outlook.com>
-Date: Sat, 29 Nov 2025 02:08:04 -0500
+Date: Tue, 12 May 2026 19:55:08 +0800
 Subject: [PATCH] support get uid from vm
 
-Signed-off-by: gongchangsui <gongchangsui@outlook.com>
 ---
  Makefile               |  1 +
  core/gp_ops.c          | 15 ++++++++++++++-
@@ -12,22 +11,22 @@ Signed-off-by: gongchangsui <gongchangsui@outlook.com>
  4 files changed, 59 insertions(+), 1 deletion(-)
 
 diff --git a/Makefile b/Makefile
-index 1a07db1..ff940d9 100644
+index fc5410f..377b86f 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -55,6 +55,7 @@ EXTRA_CFLAGS += -DCONFIG_AUTH_SUPPORT_UNAME -DCONFIG_AUTH_HASH -std=gnu99
+@@ -64,6 +64,7 @@ EXTRA_CFLAGS += -DCONFIG_AUTH_SUPPORT_UNAME -DCONFIG_AUTH_HASH -std=gnu99
  EXTRA_CFLAGS += -DCONFIG_TEE_UPGRADE -DCONFIG_TEE_REBOOT -DCONFIG_CONFIDENTIAL_TEE
  EXTRA_CFLAGS += -I$(PWD)/tzdriver_internal/tee_reboot
  EXTRA_CFLAGS += -DMAILBOX_POOL_COUNT=32 -DLATE_KILL_WHEN_TA_LOAD
 +EXTRA_CFLAGS += -DVM_DEPLOY
- ifeq ($(CPU_GROUP_BINDING), y)
- EXTRA_CFLAGS += -DCONFIG_CPU_GROUP_BINDING -DCONFIG_NUM_TEE_DIE=4 -DCONFIG_NUM_TEE_PHY_CORE_PER_DIE=32
+ ifeq ($(CPU_BINDING), y)
+ EXTRA_CFLAGS += -DCONFIG_CPU_BINDING -DCONFIG_NUM_TEE_DIE=4 -DCONFIG_NUM_TEE_PHY_CORE_PER_DIE=32
  endif
 diff --git a/core/gp_ops.c b/core/gp_ops.c
-index 0d42a6c..6e39fbe 100644
+index b9f6ab1..e6cc009 100644
 --- a/core/gp_ops.c
 +++ b/core/gp_ops.c
-@@ -1442,7 +1442,20 @@ int tc_client_call(const struct tc_call_params *call_params)
+@@ -1448,7 +1448,20 @@ int tc_client_call(const struct tc_call_params *call_params)
  		return -ENOMEM;
  
  	op_params.smc_cmd->err_origin = TEEC_ORIGIN_COMMS;
@@ -50,10 +49,10 @@ index 0d42a6c..6e39fbe 100644
  		ret = alloc_operation(call_params, &op_params);
  		if (ret != 0)
 diff --git a/core/session_manager.c b/core/session_manager.c
-index e218ebd..416cf7e 100644
+index 8365b4c..332e403 100644
 --- a/core/session_manager.c
 +++ b/core/session_manager.c
-@@ -1211,6 +1211,42 @@ static int close_session(struct tc_ns_dev_file *dev,
+@@ -1201,6 +1201,42 @@ static int close_session(struct tc_ns_dev_file *dev,
  	return ret;
  }
  
@@ -96,7 +95,7 @@ index e218ebd..416cf7e 100644
  static void close_session_in_service_list(struct tc_ns_dev_file *dev,
  	struct tc_ns_service *service)
  {
-@@ -1347,8 +1383,13 @@ int tc_ns_close_session(struct tc_ns_dev_file *dev_file,
+@@ -1337,8 +1373,13 @@ int tc_ns_close_session(struct tc_ns_dev_file *dev_file,
  	if (session) {
  		int ret2;
  		mutex_lock(&session->ta_session_lock);
@@ -111,10 +110,10 @@ index e218ebd..416cf7e 100644
  		if (ret2 != 0)
  			tloge("close session smc failed!\n");
 diff --git a/tc_ns_client.h b/tc_ns_client.h
-index 72dc8e3..9277ba8 100644
+index cdad6d5..576dced 100644
 --- a/tc_ns_client.h
 +++ b/tc_ns_client.h
-@@ -88,6 +88,9 @@ struct tc_ns_client_context {
+@@ -90,6 +90,9 @@ struct tc_ns_client_context {
  			uint32_t file_h_addr;
  		} memref;
  	};
@@ -125,5 +124,5 @@ index 72dc8e3..9277ba8 100644
  
  struct tc_ns_client_time {
 -- 
-1.8.3.1
+2.53.0
 
