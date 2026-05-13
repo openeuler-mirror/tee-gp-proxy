@@ -163,7 +163,6 @@ struct AgentIoctlArgs {
 #define TC_NS_CLIENT_IOCTL_SET_VM_FLAG                    _IOWR(TC_NS_CLIENT_IOC_MAGIC, 27, struct_vm_group_info)
 #define TC_NS_CLIENT_IOCTL_REGISTER_VM_VMID_NSID          _IOWR(TC_NS_CLIENT_IOC_MAGIC, 28, struct_vm_group_info)
 #define TC_NS_CLIENT_IOCTL_UNREGISTER_VM_VMID_NSID        _IOWR(TC_NS_CLIENT_IOC_MAGIC, 29, struct_vm_group_info)
-#define TC_NS_CLIENT_IOCTL_TRANSLATE_CID                  _IOWR(TC_NS_CLIENT_IOC_MAGIC, 33, uint32_t)
 
 struct vm_gpa_info {
        uint32_t cid;

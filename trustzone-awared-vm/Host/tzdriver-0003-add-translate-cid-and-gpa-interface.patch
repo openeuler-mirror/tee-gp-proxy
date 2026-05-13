@@ -1,15 +1,15 @@
-From a83cbc94202e37792b24f6b2b6a63d4db357dbce Mon Sep 17 00:00:00 2001
+From b7166e3b17b03fb35cfe30faa44907c45d53c9d8 Mon Sep 17 00:00:00 2001
 From: liuhao365 <liuhao365@h-partners.com>
 Date: Wed, 29 Apr 2026 11:17:47 +0800
 Subject: [PATCH 3/3] add translate cid and gpa interface
 
 ---
- core/tc_client_driver.c | 129 ++++++++++++++++++++++++++++++++++++++++
- tc_ns_client.h          |  10 ++++
- 2 files changed, 139 insertions(+)
+ core/tc_client_driver.c | 89 +++++++++++++++++++++++++++++++++++++++++
+ tc_ns_client.h          |  8 ++++
+ 2 files changed, 97 insertions(+)
 
 diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
-index 10d1292..d576588 100644
+index 10d1292..33d64ed 100644
 --- a/core/tc_client_driver.c
 +++ b/core/tc_client_driver.c
 @@ -52,6 +52,8 @@
@@ -30,15 +30,13 @@ index 10d1292..d576588 100644
  struct class *get_driver_class(void)
  {
  	return g_driver_class;
-@@ -207,6 +211,118 @@ static int tc_ns_operate_vm_nsid_vmid(const struct tc_ns_dev_file *dev_file, con
+@@ -207,6 +211,81 @@ static int tc_ns_operate_vm_nsid_vmid(const struct tc_ns_dev_file *dev_file, con
  }
  #endif
  
 +typedef unsigned long (*kallsyms_lookup_name_t)(const char *name);
 +static kallsyms_lookup_name_t fn_kallsyms_lookup_name = NULL;
 +
-+typedef uint32_t (*vhost_vsock_translate_cid_t)(uint32_t guest_cid);
-+static vhost_vsock_translate_cid_t vhost_vsock_translate_cid_func = NULL;
 +typedef uint64_t (*vhost_vsock_translate_gpa_t)(uint32_t cid, uint64_t gpa, uint64_t size);
 +static vhost_vsock_translate_gpa_t vhost_vsock_translate_gpa_func = NULL;
 +
@@ -68,13 +66,6 @@ index 10d1292..d576588 100644
 +		return -1;
 +	}
 +
-+	vhost_vsock_translate_cid_func = (vhost_vsock_translate_cid_t)
-+		fn_kallsyms_lookup_name("vhost_vsock_translate_cid");
-+	if (!vhost_vsock_translate_cid_func) {
-+		pr_warn("tz_driver: cannot get function vhost_vsock_translate_cid\n");
-+		return -1;
-+	}
-+
 +	vhost_vsock_translate_gpa_func = (vhost_vsock_translate_gpa_t)
 +		fn_kallsyms_lookup_name("vhost_vsock_translate_gpa");
 +	if (!vhost_vsock_translate_gpa_func) {
@@ -84,38 +75,10 @@ index 10d1292..d576588 100644
 +	return 0;
 +}
 +
-+static uint32_t vhost_vsock_translate_cid(uint32_t guest_cid)
-+{
-+	if (vhost_vsock_translate_cid_func)
-+		return vhost_vsock_translate_cid_func(guest_cid);
-+
-+	return 0;
-+}
-+
 +static uint64_t vhost_vsock_translate_gpa(uint32_t cid, uint64_t gpa, uint64_t size)
 +{
 +	if (vhost_vsock_translate_gpa_func)
 +		return vhost_vsock_translate_gpa_func(cid, gpa, size);
-+
-+	return 0;
-+}
-+
-+static int tc_ns_translate_cid(const struct tc_ns_dev_file *dev_file, const void *argp, unsigned int cmd)
-+{
-+	u32 guest_cid;
-+	u32 pid;
-+
-+	if (copy_from_user(&guest_cid, argp, sizeof(guest_cid))) {
-+		tloge("copy_from_user failed for guest_cid\n");
-+		return -EFAULT;
-+	}
-+
-+	pid = vhost_vsock_translate_cid(guest_cid);
-+
-+	if (copy_to_user((u32 __user *)argp, &pid, sizeof(pid))) {
-+		tloge("copy_to_user failed for pid\n");
-+		return -EFAULT;
-+	}
 +
 +	return 0;
 +}
@@ -149,20 +112,17 @@ index 10d1292..d576588 100644
  int tc_ns_register_host_nsid_vmid(void)
  {
  	struct tc_ns_smc_cmd smc_cmd = {{0}, 0};
-@@ -1046,6 +1162,12 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
+@@ -1046,6 +1125,9 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
  	case TC_NS_CLIENT_IOCTL_UNREGISTER_VM_NSID_VMID:
  		ret = tc_ns_operate_vm_nsid_vmid(file->private_data, argp, cmd);
  		break;
-+	case TC_NS_CLIENT_IOCTL_TRANSLATE_CID:
-+		ret = tc_ns_translate_cid(file->private_data, argp, cmd);
-+		break;
 +	case TC_NS_CLIENT_IOCTL_TRANSLATE_GPA:
 +		ret = tc_ns_translate_gpa(file->private_data, argp, cmd);
 +		break;
  	default:
  		ret = public_ioctl(file, cmd, arg, false);
  		break;
-@@ -1113,6 +1235,8 @@ static int tc_client_open(struct inode *inode, struct file *file)
+@@ -1113,6 +1195,8 @@ static int tc_client_open(struct inode *inode, struct file *file)
  			return -EACCES;
  		}
  	} else {
@@ -171,7 +131,7 @@ index 10d1292..d576588 100644
  		vm = 1;
  	}
  
-@@ -1601,6 +1725,11 @@ static __init int tc_init(void)
+@@ -1601,6 +1685,11 @@ static __init int tc_init(void)
  #if defined(DYNAMIC_DRV_DIR) || defined(DYNAMIC_CRYPTO_DRV_DIR) || defined(DYNAMIC_SRV_DIR)
  	tz_load_dynamic_dir();
  #endif
@@ -184,16 +144,13 @@ index 10d1292..d576588 100644
  
  class_device_destroy:
 diff --git a/tc_ns_client.h b/tc_ns_client.h
-index 576dced..fccdf78 100644
+index 576dced..8a1d6ff 100644
 --- a/tc_ns_client.h
 +++ b/tc_ns_client.h
-@@ -229,6 +229,16 @@ typedef struct {
-     _IOWR(TC_NS_CLIENT_IOC_MAGIC, 29, struct_group)
+@@ -230,6 +230,14 @@ typedef struct {
  #define TC_NS_CLIENT_IOCTL_CHECK_CCOS \
  	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 32, unsigned int)
-+#define TC_NS_CLIENT_IOCTL_TRANSLATE_CID \
-+	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 33, unsigned int)
-+
+ 
 +struct vm_gpa_info {
 +	uint32_t cid;
 +	uint64_t gpa;
@@ -201,9 +158,11 @@ index 576dced..fccdf78 100644
 +
 +#define TC_NS_CLIENT_IOCTL_TRANSLATE_GPA \
 +	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 34, struct vm_gpa_info)
- 
++
  #ifdef CONFIG_CONFIDENTIAL_CONTAINER
  enum REE_LOAD_MODE {
+ 	REE_CONTAINER = 1,
 -- 
 2.33.0
+
 

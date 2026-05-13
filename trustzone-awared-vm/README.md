@@ -75,7 +75,6 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
     1. 根据实际内核版本4.19、5.10、6.6，进入对应vsock源码目录，执行编译后，将`vhost_vsock.ko` 复制到指定目录。
     ```shell
     cd tee-gp-proxy/trustzone-awared-vm/Host/vsock-$(uname -r | awk -F. '{printf "%s.%s\n", $1, $2}')
-    git am 0001-vsock-driver-add-translate-cid-and-gpa-interface.patch
     make
     mkdir -p "/lib/modules/$(uname -r)/kernel/drivers/trustzone/"
     cp vhost_vsock.ko /lib/modules/$(uname -r)/kernel/drivers/trustzone

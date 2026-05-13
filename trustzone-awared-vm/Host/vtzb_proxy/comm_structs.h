@@ -43,6 +43,11 @@
 #define VTZ_REGISTER_VM_VMID_NSID 69
 #define VTZ_UNREGISTER_VM_VMID_NSID 71
 
+#define HASH_TABLE_SIZE 16
+#define CMD_BUFFER_LEN 4096
+#define PID_BUFFER_LEN 1024
+#define PROC_PATH_LEN  64
+
 typedef struct {
     uint32_t packet_size;
     uint32_t cmd;
@@ -298,4 +303,15 @@ typedef struct {
     uint32_t nsid;
     uint32_t vmid;
 } struct_vm_group_info;
+
+typedef struct hash_node {
+    pid_t pid;
+    uint32_t cid;
+    struct hash_node* next;
+} hash_node;
+
+typedef struct {
+    hash_node* buckets[HASH_TABLE_SIZE];
+} hash_table;
+
 #endif

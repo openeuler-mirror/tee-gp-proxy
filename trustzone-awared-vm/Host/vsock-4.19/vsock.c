@@ -16,6 +16,7 @@
 #include <linux/virtio_vsock.h>
 #include <linux/vhost.h>
 #include <linux/hashtable.h>
+#include <linux/interval_tree_generic.h>
 
 #include <net/af_vsock.h>
 #include "vhost.h"
@@ -53,6 +54,10 @@ struct vhost_vsock {
 
 	u32 guest_cid;
 };
+
+INTERVAL_TREE_DEFINE(struct vhost_umem_node,
+		     rb, __u64, __subtree_last,
+		     START, LAST, static inline, vhost_umem_interval_tree);
 
 static u32 vhost_transport_get_local_cid(void)
 {
@@ -698,6 +703,40 @@ static int vhost_vsock_set_cid(struct vhost_vsock *vsock, u64 guest_cid)
 
 	return 0;
 }
+
+u64 vhost_vsock_translate_gpa(u32 cid, u64 gpa, u64 size)
+{
+	struct vhost_vsock *vsock;
+	struct vhost_umem_node *node;
+	struct vhost_virtqueue *vq;
+	struct vhost_dev *dev;
+	struct vhost_umem *umem;
+	u64 hva = 0;
+
+	if (cid <= VMADDR_CID_HOST || size == 0)
+		return 0;
+
+	spin_lock_bh(&vhost_vsock_lock);
+	vsock = vhost_vsock_get(cid);
+	if (!vsock || !vsock->dev.umem)
+		goto out;
+
+	vq = &vsock->vqs[VSOCK_VQ_TX];
+	dev = vq->dev;
+	umem = dev->iotlb ? dev->iotlb : dev->umem;
+
+	node = vhost_umem_interval_tree_iter_first(&umem->umem_tree, gpa, gpa + size - 1);
+	if (!node || gpa < node->start || gpa > node->last)
+		goto out;
+
+	if (gpa + size > node->start + node->size)
+		goto out;
+	hva = node->userspace_addr + (gpa - node->start);
+out:
+	spin_unlock_bh(&vhost_vsock_lock);
+	return hva;
+}
+EXPORT_SYMBOL_GPL(vhost_vsock_translate_gpa);
 
 static int vhost_vsock_set_features(struct vhost_vsock *vsock, u64 features)
 {
