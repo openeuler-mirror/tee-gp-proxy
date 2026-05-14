@@ -766,6 +766,139 @@ uint64_t vtz_translate_gpa(uint32_t cid, uint64_t gpa)
     return vm_gpa.gpa;
 }
 
+static unsigned int hash(pid_t pid)
+{
+    return (unsigned int)(pid % HASH_TABLE_SIZE);
+}
+
+static void insert_pid_hash(hash_table* ht, pid_t pid, int cid)
+{
+    unsigned int index = hash(pid);
+
+    hash_node* new_node = (hash_node*)malloc(sizeof(hash_node));
+    if (!new_node) {
+        perror("malloc failed");
+        return;
+    }
+    new_node->pid = pid;
+    new_node->cid = cid;
+    new_node->next = NULL;
+
+    if (ht->buckets[index] == NULL) {
+        ht->buckets[index] = new_node;
+    } else {
+        new_node->next = ht->buckets[index];
+        ht->buckets[index] = new_node;
+    }
+}
+
+static hash_node* query_hash_table(hash_table* ht, pid_t pid)
+{
+    unsigned int index = hash(pid);
+
+    hash_node* current = ht->buckets[index];
+    if (current != NULL) {
+        while (current != NULL) {
+            if (current->pid == pid)
+                return current;
+            current = current->next;
+        }
+    }
+    return NULL;
+}
+
+void free_hash_table(hash_table* ht)
+{
+    for (int i = 0; i < HASH_TABLE_SIZE; i++) {
+        hash_node* current = ht->buckets[i];
+        while (current != NULL) {
+            hash_node* temp = current;
+            current = current->next;
+            free(temp);
+        }
+    }
+}
+
+static char cmdline_buffer[CMD_BUFFER_LEN];
+static hash_table pid_hash_table = {0};
+
+static int get_guest_cid(pid_t pid)
+{
+    int fd;
+    char path[PROC_PATH_LEN] = {0};
+    size_t bytes_read, scan_byte = 0;
+    int cid = -1;
+    char *pos, *search_key = "guest-cid=";
+
+    snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+    fd = open(path, O_RDONLY);
+    if (fd < 0)
+        return -1;
+
+    bytes_read = read(fd, cmdline_buffer, sizeof(cmdline_buffer));
+    close(fd);
+    if (bytes_read <= 0)
+        return -1;
+
+    while (scan_byte < bytes_read) {
+        pos = strstr(cmdline_buffer + scan_byte, search_key);
+        if (pos != NULL) {
+            char *endptr;
+            long value;
+            pos += strlen(search_key);
+            value = strtol(pos, &endptr, 10);
+            if (value < INT_MAX)
+                cid = (int)value;
+            if (endptr == pos)
+                cid = -1;
+        }
+        scan_byte += strlen(cmdline_buffer + scan_byte) + 1;
+    }
+
+    return cid;
+}
+
+static int translate_cid_to_pid(uint32_t cid)
+{
+    int tmp_cid;
+    char buffer[PID_BUFFER_LEN];
+	FILE* fp;
+    const char* command = "pidof qemu-system-aarch64";
+
+    fp = popen(command, "r");
+    if (fp == NULL) {
+        perror("Failed to run command");
+        return 1;
+    }
+
+    if (fgets(buffer, sizeof(buffer), fp) != NULL) {
+        char* token = strtok(buffer, " \t\n");
+        while (token != NULL) {
+            pid_t pid = atoi(token);
+            if (pid > 0) {
+                hash_node* node = query_hash_table(&pid_hash_table, pid);
+                if (!node) {
+                    tmp_cid = get_guest_cid(pid);
+                    if (tmp_cid > 0)
+                        insert_pid_hash(&pid_hash_table, pid, tmp_cid);
+                    if ((uint32_t)tmp_cid == cid) {
+                        pclose(fp);
+                        return pid;
+                    }
+                } else {
+                    if ((uint32_t)node->cid == cid) {
+                        pclose(fp);
+                        return node->pid;
+                    }
+                }
+            }
+            token = strtok(NULL, " \t\n");
+        }
+    }
+    pclose(fp);
+    return -1;
+}
+
 static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
     struct serial_port_file *serial_port)
 {
@@ -789,13 +922,14 @@ static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
         }
         g_private_dev_fd = fd;
     }
+
+    ret = translate_cid_to_pid(cid_to_vmid);
     pthread_mutex_unlock(&g_private_fd_lock);
-    ret = ioctl(g_private_dev_fd, TC_NS_CLIENT_IOCTL_TRANSLATE_CID, &cid_to_vmid);
-    if (ret != 0) {
-        tloge("vtz translate cid failed, vmid = %u, ret = %d, serial_port %p\n",\
-            cid_to_vmid, ret, serial_port);
+    if (ret < 0) {
+        tloge("vtz translate cid failed, cid = %u\n", cid_to_vmid);
         goto END;
     }
+    cid_to_vmid = ret;
     tlogd("vtz translate cid succ, cid is %u, pid is %u.\n", serial_port->vm_file->cid, cid_to_vmid);
     serial_port->vm_file->vmpid = cid_to_vmid;
 
