@@ -25,7 +25,8 @@ VtzbConfig g_config = {
     .socket_path = DEFAULT_SOCKET_PATH,
     .libvirt_uri = DEFAULT_LIBVIRT_URI,
     .max_vm_count = DEFAULT_MAX_VM_COUNT,
-    .cpuset = {{0}}
+    .cpuset = {{0}},
+    .use_vcpuset = DEFAULT_USE_VCPUSET
 };
 
 static char *trim(char *str)
@@ -104,6 +105,27 @@ static int set_max_vm_count(const char *value)
 
     g_config.max_vm_count = (int)max_vm_count;
     tlogi("set_max_vm_count: successfully set max vm count to %d\n", g_config.max_vm_count);
+    return 0;
+}
+
+static int set_use_vcpuset(const char *value)
+{
+    if (value == NULL) {
+        tloge("set_use_vcpuset: value is NULL\n");
+        return -1;
+    }
+
+    if (strcasecmp(value, "true") == 0) {
+        g_config.use_vcpuset = true;
+    } else if (strcasecmp(value, "false") == 0) {
+        g_config.use_vcpuset = false;
+    } else {
+        tlogw("set_use_vcpuset: invalid value '%s', using default true\n", value);
+        g_config.use_vcpuset = DEFAULT_USE_VCPUSET;
+    }
+
+    tlogi("set_use_vcpuset: successfully set use_vcpuset to %s\n",
+          g_config.use_vcpuset ? "true" : "false");
     return 0;
 }
 
@@ -277,6 +299,8 @@ static int set_g_config(const char *key, const char *value)
         return set_max_vm_count(value);
     } else if (strcmp(key, "numa_bindings") == 0) {
         return set_numa_bindings(value);
+    } else if (strcmp(key, "use_vcpuset") == 0) {
+        return set_use_vcpuset(value);
     } else {
         tloge("set_g_config: undefined configuration: %s\n", key);
         return -1;
@@ -353,6 +377,7 @@ print_config:
     tlogi("Config: socket_path = %s\n", g_config.socket_path);
     tlogi("Config: max_vm_count = %d\n", g_config.max_vm_count);
     tlogi("Config: libvirt_uri = %s\n", g_config.libvirt_uri);
+    tlogi("Config: use_vcpuset = %s\n", g_config.use_vcpuset ? "true" : "false");
 }
 
 VtzbConfig *get_global_config(void)

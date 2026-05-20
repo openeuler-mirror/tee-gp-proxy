@@ -28,12 +28,14 @@
 #define DEFAULT_SOCKET_PATH "/var/vtzb/vm_vtzb_sock"
 #define DEFAULT_MAX_VM_COUNT 64
 #define DEFAULT_LIBVIRT_URI "qemu:///system"
+#define DEFAULT_USE_VCPUSET true
 
 typedef struct {
     char socket_path[MAX_PATH_LEN];         /* Virtual serial port socket path prefix */
     char libvirt_uri[MAX_URI_LEN];          /* Libvirt connection URI */
     int max_vm_count;                       /* Maximum number of VMs supported */
     cpu_set_t cpuset;
+    bool use_vcpuset;                       /* Whether to enable vcpu mapping */
 } VtzbConfig;
 
 void print_cpuset(cpu_set_t *cpuset);
