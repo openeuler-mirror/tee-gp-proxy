@@ -19,6 +19,8 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <limits.h>
 #include "securec.h"
 #include "tc_ns_client.h"
 #include "tee_client_list.h"
@@ -958,7 +960,196 @@ END:
     return;
 }
 
-static void translate_vm_addr(char *rd_buf, uint32_t cid)
+static int str_to_int(char *str, int *num)
+{
+    char *endptr = NULL;
+    long num_l = strtol(str, &endptr, BASE);
+    if (*endptr != '\0' || num_l <= 0 || num_l > INT_MAX) {
+        tloge("parse number failed\n");
+        return 1;
+    }
+    *num = (int)num_l;
+    return 0;
+}
+
+static int find_vcpu_threads(pid_t vmpid, pid_t *vcpu_tids, int max_vcpus)
+{
+    char task_path[PROC_PATH_LEN];
+    DIR *dir = NULL;
+    struct dirent *entry = NULL;
+    int count = 0;
+
+    if (vmpid == 0 || vcpu_tids == NULL || max_vcpus <= 0) {
+        tloge("invalid params\n");
+        return -1;
+    }
+
+    (void)snprintf_s(task_path, sizeof(task_path), sizeof(task_path) - 1, "/proc/%d/task", vmpid);
+    dir = opendir(task_path);
+    if (dir == NULL) {
+        tloge("opendir %s failed, %s\n", task_path, strerror(errno));
+        return -1;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
+        char comm_path[COMM_PATH_LEN] = {0};
+        char comm[BUFFER_LEN] = {0};
+        int vcpu_idx = -1;
+        int tid = 0;
+        if (str_to_int(entry->d_name, &tid)) {
+            continue;
+        }
+
+        (void)snprintf_s(comm_path, sizeof(comm_path), sizeof(comm_path) - 1, "/proc/%d/task/%d/comm", vmpid, tid);
+        FILE *fp = fopen(comm_path, "r");
+        if (fp == NULL) {
+            continue;;
+        }
+
+        if (fgets(comm, sizeof(comm), fp) != NULL) {
+            if (sscanf(comm, "CPU %d", &vcpu_idx) == 1 && vcpu_idx >= 0 && vcpu_idx < max_vcpus) {
+                vcpu_tids[vcpu_idx] = tid;
+                count++;
+            }
+        }
+        (void)fclose(fp);
+    }
+
+    (void)closedir(dir);
+    return count;
+}
+
+static int get_thread_affinity(pid_t tid, cpu_set_t *affinity)
+{
+    if (sched_getaffinity(tid, sizeof(cpu_set_t), affinity) != 0) {
+        tloge("sched_getaffinity failed for tid %d, %s\n", tid, strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
+static void set_pcpu_set(cpu_set_t *pcpu_set, cpu_set_t *thread_affinity)
+{
+    for (int i = 0; i < CPU_SETSIZE; i++) {
+        if (CPU_ISSET(i, thread_affinity)) {
+            CPU_SET(i, pcpu_set);
+        }
+    }
+}
+
+static int map_vcpu_set_to_pcpu_set(uint32_t vmpid, const cpu_set_t *vcpu_set, cpu_set_t *pcpu_set)
+{
+    pid_t vcpu_tids[MAX_VCPU_COUNT];
+    cpu_set_t thread_affinity;
+    int vcpu_count;
+    int i;
+
+    if (vmpid == 0) {
+        tloge("vmpid is 0, not resolved yet\n");
+        return -1;
+    }
+
+    (void)memset_s(vcpu_tids, sizeof(vcpu_tids), 0, sizeof(vcpu_tids));
+    vcpu_count = find_vcpu_threads((pid_t)vmpid, vcpu_tids, MAX_VCPU_COUNT);
+    if (vcpu_count <= 0) {
+        tlogw("no vcpu threads found for vmpid %u\n", vmpid);
+        return -1;
+    }
+
+    CPU_ZERO(pcpu_set);
+    for (i = 0; i < MAX_VCPU_COUNT; i++) {
+        if (CPU_ISSET(i, vcpu_set)) {
+            if (vcpu_tids[i] == 0) {
+                tlogw("vcpu %d thread not found\n", i);
+                continue;
+            }
+            if (get_thread_affinity(vcpu_tids[i], &thread_affinity) == 0) {
+                set_pcpu_set(pcpu_set, &thread_affinity);
+            }
+        }
+    }
+
+    if (CPU_COUNT(pcpu_set) == 0) {
+        tlogw("no physical cpus found after mapping\n");
+        return -1;
+    }
+    return 0;
+}
+
+static int get_ta_cpuset_from_kernel(cpu_set_t *ta_cpu_set, int *ta_cpu_set_enabled,
+                                     struct rd_info *info, worker_attr_t *attr_buf)
+{
+    int ret = ioctl(g_private_dev_fd, TC_NS_CLIENT_IOCTL_TRANSFER_DATA, info);
+    if (ret != 0) {
+        tloge("ioctl TRANSFER_DATA read failed, ret=%d\n", ret);
+        return -1;
+    }
+    
+    *ta_cpu_set_enabled = attr_buf->ta_cpu_set_enabled;
+    (void)memcpy_s(ta_cpu_set, sizeof(cpu_set_t), &attr_buf->ta_cpu_set, sizeof(cpu_set_t));
+    return 0;
+}
+
+static int set_ta_cpuset_to_kernel(cpu_set_t *pcpu_set, struct rd_info *info, worker_attr_t *attr_buf)
+{
+    (void)memcpy_s(&attr_buf->ta_cpu_set, sizeof(cpu_set_t), pcpu_set, sizeof(cpu_set_t));
+    int ret = ioctl(g_private_dev_fd, TC_NS_CLIENT_IOCTL_TRANSFER_DATA, info);
+    if (ret != 0) {
+        tloge("ioctl TRANSFER_DATA write failed, ret=%d\n", ret);
+        return -1;
+    }
+    return 0;
+}
+
+static void do_vcpu_mapping(uint64_t worker_attr_hva, struct vm_file *vm_file)
+{
+    cpu_set_t ta_cpu_set;
+    int ta_cpu_set_enabled = 0;
+    cpu_set_t pcpu_set;
+    worker_attr_t attr_buf;
+    struct rd_info info = {0};
+
+    info.src_addr = worker_attr_hva;
+    info.src_size = sizeof(worker_attr_t);
+    info.dst_addr = (uint64_t)(uintptr_t)&attr_buf;
+    info.dst_size = sizeof(worker_attr_t);
+    info.write_back = 0;
+    info.vmpid = vm_file->vmpid;
+
+    if (worker_attr_hva == 0 || vm_file == NULL) {
+        tloge("invalid param\n");
+        return;
+    }
+
+    if (get_ta_cpuset_from_kernel(&ta_cpu_set, &ta_cpu_set_enabled, &info, &attr_buf) != 0) {
+        tloge("failed to read ta_cpuset from kernel for vmpid %u\n", vm_file->vmpid);
+        return;
+    }
+
+    if (!ta_cpu_set_enabled || CPU_COUNT(&ta_cpu_set) == 0) {
+        tloge("ta_cpu_set not enabled or empty\n");
+        return;
+    }
+
+    CPU_ZERO(&pcpu_set);
+    if (map_vcpu_set_to_pcpu_set(vm_file->vmpid, &ta_cpu_set, &pcpu_set) != 0) {
+        tloge("failed to map vcpu set to pcpu set for vmpid %u\n", vm_file->vmpid);
+        return;
+    }
+    info.write_back = 1;
+    if (set_ta_cpuset_to_kernel(&pcpu_set, &info, &attr_buf) != 0) {
+        tloge("failed to write ta_cpuset back for vmpid %u\n", vm_file->vmpid);
+        return;
+    }
+
+    tlogi("updated ta_cpu_set for vmpid %u\n", vm_file->vmpid);
+    print_cpuset(&pcpu_set);
+}
+
+static void translate_vm_addr(char *rd_buf, struct vm_file *vm_file)
 {
     uint32_t ui32_cmd = *(uint32_t *)(rd_buf + sizeof(uint32_t));
     struct_page_block *page_block;
@@ -972,24 +1163,35 @@ static void translate_vm_addr(char *rd_buf, uint32_t cid)
     switch (ui32_cmd) {
     case VTZ_LOAD_SEC:
         packet_cmd = (struct_packet_cmd_load_sec *)rd_buf;
-        packet_cmd->ioctlArg.fileBuffer = (char *)vtz_translate_gpa(cid, (uint64_t)packet_cmd->ioctlArg.fileBuffer);
+        packet_cmd->ioctlArg.fileBuffer = (char *)vtz_translate_gpa(vm_file->cid, (uint64_t)packet_cmd->ioctlArg.fileBuffer);
         break;
     case VTZ_FS_REGISTER_AGENT:
         packet_cmd1 = (struct_packet_cmd_regagent *)rd_buf;
-        packet_cmd1->vmaddr = (void *)vtz_translate_gpa(cid, (uint64_t)packet_cmd1->vmaddr);
+        packet_cmd1->vmaddr = (void *)vtz_translate_gpa(vm_file->cid, (uint64_t)packet_cmd1->vmaddr);
         break;
     case VTZ_OPEN_SESSION:
         packet_cmd2 = (struct_packet_cmd_session *)rd_buf;
         gpa = (uint64_t)packet_cmd2->cliContext.file_buffer;
-        packet_cmd2->cliContext.file_buffer = (char *)vtz_translate_gpa(cid, gpa);
+        packet_cmd2->cliContext.file_buffer = (char *)vtz_translate_gpa(vm_file->cid, gpa);
         for (i = 0; i < TEEC_PARAM_NUM; i++) {
             param_type = TEEC_PARAM_TYPE_GET(packet_cmd2->cliContext.paramTypes, i);
             if (IS_TEMP_MEM(param_type) || IS_PARTIAL_MEM(param_type)) {
                 gpa = (uint64_t)packet_cmd2->cliContext.params[i].memref.buffer |
                     (uint64_t)packet_cmd2->cliContext.params[i].memref.buffer_h_addr << H_OFFSET;
-                hva = vtz_translate_gpa(cid, gpa);
+                hva = vtz_translate_gpa(vm_file->cid, gpa);
                 packet_cmd2->cliContext.params[i].memref.buffer = (unsigned int)hva;
                 packet_cmd2->cliContext.params[i].memref.buffer_h_addr = (unsigned int)(hva >> H_OFFSET);
+            }
+        }
+        uint32_t param_type_0 = TEEC_PARAM_TYPE_GET(packet_cmd2->cliContext.paramTypes, 0);
+        uint32_t param_type_1 = TEEC_PARAM_TYPE_GET(packet_cmd2->cliContext.paramTypes, 1);
+        if (param_type_0 == TEEC_MEMREF_REGISTER_INOUT &&
+            param_type_1 == TEEC_MEMREF_TEMP_INPUT &&
+            get_global_config()->use_vcpuset) {
+            uint64_t worker_attr_hva = (uint64_t)packet_cmd2->cliContext.params[1].memref.buffer |
+                (uint64_t)packet_cmd2->cliContext.params[1].memref.buffer_h_addr << H_OFFSET;
+            if (worker_attr_hva != 0) {
+                do_vcpu_mapping(worker_attr_hva, vm_file);
             }
         }
         fragment_block_num = packet_cmd2->total_fragment_block_num;
@@ -997,9 +1199,9 @@ static void translate_vm_addr(char *rd_buf, uint32_t cid)
             page_block = (struct_page_block *)((char *)packet_cmd2 + sizeof(struct_packet_cmd_session));
             for(uint32_t j = 0; j < fragment_block_num; j++) {
                 gpa= page_block[j].block.user_addr;
-                page_block[j].block.user_addr = vtz_translate_gpa(cid, gpa);
+                page_block[j].block.user_addr = vtz_translate_gpa(vm_file->cid, gpa);
                 if (!page_block[j].block.user_addr)
-                   tloge("VTZ_OPEN_SESSION translate addr fail\n"); 
+                   tloge("VTZ_OPEN_SESSION translate addr fail\n");
             }
         }
         break;
@@ -1010,7 +1212,7 @@ static void translate_vm_addr(char *rd_buf, uint32_t cid)
             if (IS_TEMP_MEM(param_type) || IS_PARTIAL_MEM(param_type)) {
                 gpa = (uint64_t)packet_cmd3->cliContext.params[i].memref.buffer |
                     (uint64_t)packet_cmd3->cliContext.params[i].memref.buffer_h_addr << H_OFFSET;
-                hva = vtz_translate_gpa(cid, gpa);
+                hva = vtz_translate_gpa(vm_file->cid, gpa);
                 packet_cmd3->cliContext.params[i].memref.buffer = (unsigned int)hva;
                 packet_cmd3->cliContext.params[i].memref.buffer_h_addr = (unsigned int)(hva >> H_OFFSET);
             }
@@ -1020,9 +1222,9 @@ static void translate_vm_addr(char *rd_buf, uint32_t cid)
             page_block = (struct_page_block *)((char *)packet_cmd3 + sizeof(struct_packet_cmd_session));
             for(uint32_t j = 0; j < fragment_block_num; j++) {
                 gpa= page_block[j].block.user_addr;
-                page_block[j].block.user_addr = vtz_translate_gpa(cid, gpa);
+                page_block[j].block.user_addr = vtz_translate_gpa(vm_file->cid, gpa);
                 if (!page_block[j].block.user_addr)
-                   tloge("VTZ_SEND_CMD translate addr fail\n"); 
+                   tloge("VTZ_SEND_CMD translate addr fail\n");
             }
         }
         break;
@@ -1073,7 +1275,7 @@ void *thread_entry(void *args)
         goto END;
     }
 
-    translate_vm_addr(rd_buf, serial_port->vm_file->cid);
+    translate_vm_addr(rd_buf, serial_port->vm_file);
     switch (ui32_cmd) {
     case VTZ_CLOSE_TZD:
         (void)close_tzdriver((struct_packet_cmd_close_tzd *)rd_buf, serial_port);

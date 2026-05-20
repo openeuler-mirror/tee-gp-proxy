@@ -47,6 +47,9 @@
 #define CMD_BUFFER_LEN 4096
 #define PID_BUFFER_LEN 1024
 #define PROC_PATH_LEN  64
+#define BASE 10
+#define COMM_PATH_LEN 80
+#define BUFFER_LEN 256
 
 typedef struct {
     uint32_t packet_size;
@@ -313,5 +316,21 @@ typedef struct hash_node {
 typedef struct {
     hash_node* buckets[HASH_TABLE_SIZE];
 } hash_table;
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <sched.h>
+
+#define MAX_VCPU_COUNT 256
+
+typedef struct {
+    size_t id;
+    size_t device_id;
+    int timeout;
+    cpu_set_t ta_cpu_set;
+    int ta_cpu_set_enabled;
+    int selftest_required;
+} worker_attr_t;
 
 #endif

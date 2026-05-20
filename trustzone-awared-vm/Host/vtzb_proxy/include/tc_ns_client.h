@@ -169,6 +169,18 @@ struct vm_gpa_info {
        uint64_t gpa;
 };
 
+struct rd_info {
+    uint64_t src_addr;
+    uint64_t src_size;
+    uint64_t dst_addr;
+    uint64_t dst_size;
+    int write_back;
+    int32_t vmpid;
+};
+
+#define TC_NS_CLIENT_IOCTL_TRANSFER_DATA \
+    _IOWR(TC_NS_CLIENT_IOC_MAGIC, 33, struct rd_info)
+
 #define TC_NS_CLIENT_IOCTL_TRANSLATE_GPA \
     _IOWR(TC_NS_CLIENT_IOC_MAGIC, 34, struct vm_gpa_info)
 
