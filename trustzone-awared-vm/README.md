@@ -161,7 +161,7 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
 
 ## 开始运行
 首先要确认`Host`与`VM`中已搭建好`ccos`环境，然后每次重启后需执行以下命令：
-#### 在`Host`中需要执行以下命令
+#### 在`Host`中需要按顺序执行以下命令，请确保vsock相关命令先执行，且需在虚机启动前执行
 ```shell
 modprobe vmw_vsock_virtio_transport_common && modprobe vhost
 insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/vhost_vsock.ko

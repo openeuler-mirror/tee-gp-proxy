@@ -174,20 +174,29 @@ pre_deployment_check() {
 install_dependencies() {
     log_step "[Step 1] Installing dependencies..."
 
-    yum install -y gcc patch make git openssl-devel zlib-devel kernel-devel-"$(uname -r)"
-
-    if [[ $? -ne 0 ]]; then
+    yum install -y gcc patch make git openssl-devel zlib-devel kernel-devel-"$(uname -r)" || {
         log_error "Failed to install dependencies"
         return 1
-    fi
+    }
 
     if [[ "$VM_SCALABILITY" = "true" ]]; then
         log_info "Installing vm scalibility dependencies..."
-        yum install -y ninja-build glib2 glib2-devel pixman-devel
-        yum install -y libxml2-devel libvirt-devel
-        if [[ $? -ne 0 ]]; then
+        yum install -y ninja-build glib2 glib2-devel pixman-devel libxml2-devel libvirt-devel || {
             log_error "Failed to install vm scalability dependencies"
             return 1
+        }
+
+        local kernel_version
+        kernel_version=$(uname -r | cut -d'-' -f1)
+        local kernel_major kernel_minor
+        kernel_major=$(echo "${kernel_version}" | cut -d'.' -f1)
+        kernel_minor=$(echo "${kernel_version}" | cut -d'.' -f2)
+        if [[ "${kernel_major}" -gt 6 ]] || { [[ "${kernel_major}" -eq 6 ]] && [[ "${kernel_minor}" -ge 6 ]]; }; then
+            log_info "Kernel version ${kernel_version} >= 6.6, installing compat-openssl11-libs..."
+            yum install -y compat-openssl11-libs || {
+                log_error "Failed to install compat-openssl11-libs"
+                return 1
+            }
         fi
     fi
 
@@ -201,20 +210,23 @@ clone_libboundscheck() {
     log_step "[Step 2] Cloning libboundscheck repository..."
 
     if [[ -d "${LIBBOUNDSCHECK_DIR}" ]]; then
-        log_warn "libboundscheck directory already exists, delete it before clone"
-        rm -rf ${LIBBOUNDSCHECK_DIR}
-        if [[ $? -ne 0 ]]; then
-            log_error "Failed to delete libboundscheck directory"
-            return 1
+        if [[ "${LENIENT_MODE}" == "true" ]]; then
+            log_info "libboundscheck directory already exists, lenient mode enabled, skipping clone"
+            return 0
+        else
+            log_warn "libboundscheck directory already exists, delete it before clone"
+            rm -rf ${LIBBOUNDSCHECK_DIR} || {
+                log_error "Failed to delete libboundscheck directory"
+                return 1
+            }
+            log_info "Delete libboundscheck directory successfully"
         fi
-        log_info "Delete libboundscheck directory successfully"
     fi
 
-    git clone "${LIBBOUNDSCHECK_REPO}"
-    if [[ $? -ne 0 ]]; then
+    git clone "${LIBBOUNDSCHECK_REPO}" || {
         log_error "Failed to clone libboundscheck"
         return 1
-    fi
+    }
 
     log_info "libboundscheck cloned successfully"
     return 0
@@ -227,20 +239,23 @@ clone_tee_gp_proxy() {
     log_step "[Step 2.1] Cloning tee-gp-proxy..."
 
     if [[ -d "${TEE_GP_PROXY_DIR}" ]]; then
-        log_warn "tee-gp-proxy directory already exists, delete it before clone"
-        rm -rf ${TEE_GP_PROXY_DIR}
-        if [[ $? -ne 0 ]]; then
-            log_error "Failed to delete tee-gp-proxy directory"
-            return 1
+        if [[ "${LENIENT_MODE}" == "true" ]]; then
+            log_info "tee-gp-proxy directory already exists, lenient mode enabled, skipping clone"
+            return 0
+        else
+            log_warn "tee-gp-proxy directory already exists, delete it before clone"
+            rm -rf ${TEE_GP_PROXY_DIR} || {
+                log_error "Failed to delete tee-gp-proxy directory"
+                return 1
+            }
+            log_info "Delete tee-gp-proxy directory successfully"
         fi
-        log_info "Delete tee-gp-proxy directory successfully"
     fi
 
-    git clone --branch ${TEE_GP_PROXY_BRANCH} ${TEE_GP_PROXY_REPO}
-    if [[ $? -ne 0 ]]; then
+    git clone --branch ${TEE_GP_PROXY_BRANCH} ${TEE_GP_PROXY_REPO} || {
         log_error "Failed to clone tee-gp-proxy"
         return 1
-    fi
+    }
 
     log_info "tee-gp-proxy cloned successfully"
     return 0
@@ -254,33 +269,69 @@ build_and_copy_vtzb_proxy() {
 
     # Copy libboundscheck to vtzb_proxy directory
     log_info "Copying libboundscheck to vtzb_proxy directory..."
-    cp -rf "${LIBBOUNDSCHECK_DIR}" "${VTZ_PROXY_DIR}/"
-    if [[ $? -ne 0 ]]; then
+    cp -rf "${LIBBOUNDSCHECK_DIR}" "${VTZ_PROXY_DIR}/" || {
         log_error "Failed to copy libboundscheck to vtzb_proxy"
         return 1
-    fi
+    }
 
     # Build vtzb_proxy
     log_info "Building vtzb_proxy..."
     pushd "${VTZ_PROXY_DIR}/" > /dev/null || return 1
 
-    make
-    if [[ $? -ne 0 ]]; then
+    make || {
         log_error "Failed to build vtzb_proxy"
-        popd > /dev/null || return 1
+        popd > /dev/null
         return 1
-    fi
+    }
 
     log_info "Copying vtzb_proxy..."
-    cp "${VTZ_PROXY_DIR}/vtz_proxy" /usr/bin/vtz_proxy
-    if [[ $? -ne 0 ]]; then
+    cp "${VTZ_PROXY_DIR}/vtz_proxy" /usr/bin/vtz_proxy || {
         log_error "Failed to copy vtzb_proxy"
-        popd > /dev/null || return 1
+        popd > /dev/null
+        return 1
+    }
+
+    popd > /dev/null
+    log_info "vtzb-proxy built and copied successfully"
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# Step 2.3: build and copy_vsock
+# -----------------------------------------------------------------------------
+build_and_copy_vsock() {
+    log_step "[Step 2.3] Building and copying vhost_vsock..."
+
+    local kernel_ver
+    kernel_ver=$(uname -r | awk -F. '{printf "%s.%s\n", $1, $2}')
+    local vsock_dir="${TEE_GP_PROXY_DIR}/trustzone-awared-vm/Host/vsock-${kernel_ver}"
+
+    if [[ ! -d "${vsock_dir}" ]]; then
+        log_error "vsock source directory not found for kernel ${kernel_ver}: ${vsock_dir}"
         return 1
     fi
 
-    popd > /dev/null || return 1
-    log_info "vtzb-proxy built and copied successfully"
+    pushd "${vsock_dir}" > /dev/null || return 1
+
+    make || {
+        log_error "Failed to build vhost_vsock"
+        popd > /dev/null
+        return 1
+    }
+
+    if [[ ! -d "${TRUSTZONE_INSTALL_DIR}" ]]; then
+        log_info "Trustzone install directory does not exist, make directory first"
+        mkdir -p "${TRUSTZONE_INSTALL_DIR}"
+    fi
+
+    cp vhost_vsock.ko "${TRUSTZONE_INSTALL_DIR}/" || {
+        log_error "Failed to copy vhost_vsock.ko to ${TRUSTZONE_INSTALL_DIR}"
+        popd > /dev/null
+        return 1
+    }
+
+    popd > /dev/null
+    log_info "vhost_vsock built and copied successfully"
     return 0
 }
 
@@ -291,20 +342,40 @@ clone_itrustee_tzdriver() {
     log_step "[Step 3] Cloning itrustee_tzdriver repository..."
 
     if [[ -d "${ITRUSTEE_TZDRIVER_DIR}" ]]; then
-        log_warn "itrustee_tzdriver directory already exists, delete it before clone"
-        rm -rf ${ITRUSTEE_TZDRIVER_DIR}
-        if [[ $? -ne 0 ]]; then
-            log_error "Failed to delete itrustee_tzdriver directory"
-            return 1
+        if [[ "${LENIENT_MODE}" == "true" ]]; then
+            log_info "itrustee_tzdriver directory already exists, lenient mode enabled, skipping clone"
+            if [[ "$VM_SCALABILITY" = "true" ]]; then
+                log_info "VM_SCALABILITY is enabled"
+                pushd "${ITRUSTEE_TZDRIVER_DIR}" > /dev/null || return 1
+
+                log_info "Applying tzdriver-00*.patch..."
+                for patch in ${TEE_GP_PROXY_DIR}/trustzone-awared-vm/Host/tzdriver-00*.patch; do
+                    log_info "Patching: $patch"
+                    git am "$patch" || {
+                        log_error "Patch failed: $patch"
+                        popd > /dev/null
+                        return 1
+                    }
+                done
+
+                popd > /dev/null
+                log_info "tzdriver patches applied successfully"
+            fi
+            return 0
+        else
+            log_warn "itrustee_tzdriver directory already exists, delete it before clone"
+            rm -rf ${ITRUSTEE_TZDRIVER_DIR} || {
+                log_error "Failed to delete itrustee_tzdriver directory"
+                return 1
+            }
+            log_info "Delete itrustee_tzdriver directory successfully"
         fi
-        log_info "Delete itrustee_tzdriver directory successfully"
     fi
 
-    git clone "${ITRUSTEE_TZDRIVER_REPO}" -b "${ITRUSTEE_TZDRIVER_BRANCH}"
-    if [[ $? -ne 0 ]]; then
+    git clone "${ITRUSTEE_TZDRIVER_REPO}" -b "${ITRUSTEE_TZDRIVER_BRANCH}" || {
         log_error "Failed to clone itrustee_tzdriver"
         return 1
-    fi
+    }
 
     if [[ "$VM_SCALABILITY" = "true" ]]; then
         pushd "${ITRUSTEE_TZDRIVER_DIR}" > /dev/null || return 1
@@ -314,11 +385,12 @@ clone_itrustee_tzdriver() {
             log_info "Patching: $patch"
             git am "$patch" || {
                 log_error "Patch failed: $patch"
+                popd > /dev/null
                 return 1
             }
         done
 
-        popd > /dev/null || return 1
+        popd > /dev/null
         log_info "tzdriver patches applied successfully"
     fi
 
@@ -332,33 +404,49 @@ clone_itrustee_client() {
     log_step "[Step 4] Cloning itrustee_client repository..."
 
     if [[ -d "${ITRUSTEE_CLIENT_DIR}" ]]; then
-        log_warn "itrustee_client directory already exists, delete it before clone"
-        rm -rf ${ITRUSTEE_CLIENT_DIR}
-        if [[ $? -ne 0 ]]; then
-            log_error "Failed to delete itrustee_client directory"
-            return 1
+        if [[ "${LENIENT_MODE}" == "true" ]]; then
+            log_info "itrustee_client directory already exists, lenient mode enabled, skipping clone"
+            if [[ "$VM_SCALABILITY" = "true" ]]; then
+                log_info "VM_SCALABILITY is enabled"
+                pushd "${ITRUSTEE_CLIENT_DIR}" > /dev/null || return 1
+
+                log_info "Applying client-0001-add-vm-uid-in-TC_NS_ClientContext.patch..."
+                git am "${TEE_GP_PROXY_DIR}/trustzone-awared-vm/Host/client-0001-add-vm-uid-in-TC_NS_ClientContext.patch" || {
+                    log_error "Failed to apply client-0001-add-vm-uid-in-TC_NS_ClientContext.patch"
+                    popd > /dev/null
+                    return 1
+                }
+
+                popd > /dev/null
+                log_info "client patches applied successfully"
+            fi
+            return 0
+        else
+            log_warn "itrustee_client directory already exists, delete it before clone"
+            rm -rf ${ITRUSTEE_CLIENT_DIR} || {
+                log_error "Failed to delete itrustee_client directory"
+                return 1
+            }
+            log_info "Delete itrustee_client directory successfully"
         fi
-        log_info "Delete itrustee_client directory successfully"
     fi
 
-    git clone "${ITRUSTEE_CLIENT_REPO}" -b "${ITRUSTEE_CLIENT_BRANCH}"
-    if [[ $? -ne 0 ]]; then
+    git clone "${ITRUSTEE_CLIENT_REPO}" -b "${ITRUSTEE_CLIENT_BRANCH}" || {
         log_error "Failed to clone itrustee_client"
         return 1
-    fi
+    }
 
     if [[ "$VM_SCALABILITY" = "true" ]]; then
         pushd "${ITRUSTEE_CLIENT_DIR}" > /dev/null || return 1
 
         log_info "Applying client-0001-add-vm-uid-in-TC_NS_ClientContext.patch..."
-        git am "${TEE_GP_PROXY_DIR}/trustzone-awared-vm/Host/client-0001-add-vm-uid-in-TC_NS_ClientContext.patch"
-        if [[ $? -ne 0 ]]; then
+        git am "${TEE_GP_PROXY_DIR}/trustzone-awared-vm/Host/client-0001-add-vm-uid-in-TC_NS_ClientContext.patch" || {
             log_error "Failed to apply client-0001-add-vm-uid-in-TC_NS_ClientContext.patch"
-            popd > /dev/null || return 1
+            popd > /dev/null
             return 1
-        fi
+        }
 
-        popd > /dev/null || return 1
+        popd > /dev/null
         log_info "client patches applied successfully"
     fi
 
@@ -371,12 +459,14 @@ clone_itrustee_client() {
 copy_libboundscheck() {
     log_step "[Step 5] Copying libboundscheck to itrustee_client and itrustee_tzdriver..."
 
-    cp -rf "${LIBBOUNDSCHECK_DIR}" "${ITRUSTEE_CLIENT_DIR}/"
-    cp -rf "${LIBBOUNDSCHECK_DIR}" "${ITRUSTEE_TZDRIVER_DIR}/"
-    if [[ $? -ne 0 ]]; then
-        log_error "Failed to copy libboundscheck"
+    cp -rf "${LIBBOUNDSCHECK_DIR}" "${ITRUSTEE_CLIENT_DIR}/" || {
+        log_error "Failed to copy libboundscheck to itrustee_client"
         return 1
-    fi
+    }
+    cp -rf "${LIBBOUNDSCHECK_DIR}" "${ITRUSTEE_TZDRIVER_DIR}/" || {
+        log_error "Failed to copy libboundscheck to itrustee_tzdriver"
+        return 1
+    }
 
     log_info "libboundscheck copied successfully"
     return 0
@@ -398,23 +488,26 @@ build_tzdriver() {
 
     # Build based on machine model
     if [[ "$MACHINE_MODEL" == "920v200" ]]; then
-        log_info "Building for 920v200 model with CPU_GROUP_BINDING=y..."
-        make CPU_GROUP_BINDING=y
+        log_info "Building for 920v200 model with CONFIG_CPU_BINDING=y..."
+        make CONFIG_CPU_BINDING=y || {
+            log_error "Failed to build tzdriver"
+            popd > /dev/null
+            return 1
+        }
     elif [[ "$MACHINE_MODEL" == "920v100" ]]; then
         log_info "Building for ${MACHINE_MODEL} model..."
-        make
+        make || {
+            log_error "Failed to build tzdriver"
+            popd > /dev/null
+            return 1
+        }
     else
         log_error "Unsupported machine model"
+        popd > /dev/null
         return 1
     fi
 
-    if [[ $? -ne 0 ]]; then
-        log_error "Failed to build tzdriver"
-        popd > /dev/null || return 1
-        return 1
-    fi
-
-    popd > /dev/null || return 1
+    popd > /dev/null
     log_info "tzdriver built successfully"
 }
 
@@ -429,11 +522,10 @@ copy_tzdriver() {
         mkdir -p "${TRUSTZONE_INSTALL_DIR}"
     fi
 
-    cp "${ITRUSTEE_TZDRIVER_DIR}/tzdriver.ko" "${TRUSTZONE_INSTALL_DIR}/"
-    if [[ $? -ne 0 ]]; then
+    cp "${ITRUSTEE_TZDRIVER_DIR}/tzdriver.ko" "${TRUSTZONE_INSTALL_DIR}/" || {
         log_error "Failed to copy tzdriver.ko"
         return 1
-    fi
+    }
 
     log_info "tzdriver.ko copied to ${TRUSTZONE_INSTALL_DIR}"
 }
@@ -446,21 +538,19 @@ build_itrustee_client() {
 
     pushd "${ITRUSTEE_CLIENT_DIR}" > /dev/null || return 1
 
-    make
-    if [[ $? -ne 0 ]]; then
+    make || {
         log_error "Failed to build itrustee_client"
-        popd > /dev/null || return 1
+        popd > /dev/null
         return 1
-    fi
+    }
 
-    make install
-    if [[ $? -ne 0 ]]; then
+    make install || {
         log_error "Failed to install itrustee_client"
-        popd > /dev/null || return 1
+        popd > /dev/null
         return 1
-    fi
+    }
 
-    popd > /dev/null || return 1
+    popd > /dev/null
     log_info "itrustee_client built and installed successfully"
 }
 
@@ -472,18 +562,16 @@ deploy_security_driver() {
 
     if [[ ! -d "${KUNPENG_SEC_DRV_DIR}" ]]; then
         log_info "tee_dynamic_drv directory does not exist, make directory first"
-        mkdir -p "${KUNPENG_SEC_DRV_DIR}"
-    fi
-    if [[ $? -ne 0 ]]; then
-        log_error "Failed to create directory /var/itrustee/tee_dynamic_drv/crypto"
-        return 1
+        mkdir -p "${KUNPENG_SEC_DRV_DIR}" || {
+            log_error "Failed to create directory ${KUNPENG_SEC_DRV_DIR}"
+            return 1
+        }
     fi
 
-    cp "${KUNPENG_SEC_DRV_FILE}" "${KUNPENG_SEC_DRV_DIR}/"
-    if [[ $? -ne 0 ]]; then
+    cp "${KUNPENG_SEC_DRV_FILE}" "${KUNPENG_SEC_DRV_DIR}/" || {
         log_error "Failed to copy kunpeng_sec_drv.sec"
         return 1
-    fi
+    }
 
     log_info "kunpeng_sec_drv.sec deployed successfully"
     return 0
@@ -499,30 +587,26 @@ install_sdf_utils_rpm() {
         log_info "All sdf-utils related rpm packages are as follows"
         log_info "$matching_packages"
         log_info "Uninstalling..."
-        
+
         while IFS= read -r package; do
             log_info "Uninstalling: $package"
-            rpm -e "$package"
-            
-            if [[ $? -eq 0 ]]; then
-                log_info "Uninstalled successfully: $package"
-            else
+            rpm -e "$package" || {
                 log_error "Uninstalled failed: $package"
                 return 1
-            fi
+            }
+            log_info "Uninstalled successfully: $package"
         done <<< "$matching_packages"
-        
+
         log_info "All sdf-utils related rpm packages are uninstalled"
     else
         log_info "No sdf-utils related rpm packages"
     fi
     log_info "Installing sdf-utils RPM package..."
 
-    rpm -ivh ${SDF_UTILS_RPM}
-    if [[ $? -ne 0 ]]; then
+    rpm -ivh ${SDF_UTILS_RPM} || {
         log_error "Failed to install sdf-utils RPM"
         return 1
-    fi
+    }
 
     log_info "sdf-utils installed successfully"
     RPM_PKG_INSTALLED="true"
@@ -570,6 +654,7 @@ deploy_host() {
     if [[ "$VM_SCALABILITY" = "true" ]]; then
         clone_tee_gp_proxy || { log_error "Step 2.1 failed"; return 1; }
         build_and_copy_vtzb_proxy || { log_error "Step 2.2 failed"; return 1; }
+        build_and_copy_vsock || { log_error "Step 2.3 failed"; return 1; }
     fi
     clone_itrustee_tzdriver || { log_error "Step 3 failed"; return 1; }
     clone_itrustee_client || { log_error "Step 4 failed"; return 1; }
@@ -594,10 +679,18 @@ main() {
     echo ""
     log_info "Host deployment completed successfully!"
     echo ""
-    log_info "Please run the following commands to start services:"
-    log_info "  insmod ${TRUSTZONE_INSTALL_DIR}/tzdriver.ko"
-    log_info "  nohup /usr/bin/teecd &"
-    log_info "NOTICE! Every time the system reboots, the two commands above also need to be run."
+    log_info "Please run the following commands to start services in order:"
+    if [[ "$VM_SCALABILITY" = "true" ]]; then
+        log_info "  modprobe vmw_vsock_virtio_transport_common && modprobe vhost"
+        log_info "  insmod /lib/modules/\$(uname -r)/kernel/drivers/trustzone/vhost_vsock.ko"
+        log_info "  insmod /lib/modules/\$(uname -r)/kernel/drivers/trustzone/tzdriver.ko"
+        log_info "  nohup /usr/bin/teecd &"
+        log_info "  nohup /usr/bin/vtz_proxy &"
+    else
+        log_info "  insmod ${TRUSTZONE_INSTALL_DIR}/tzdriver.ko"
+        log_info "  nohup /usr/bin/teecd &"
+    fi
+    log_info "NOTICE! Every time the system reboots, the commands above also need to be run."
     echo ""
 }
 

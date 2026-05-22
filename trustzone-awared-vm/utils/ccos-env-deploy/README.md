@@ -18,9 +18,9 @@
 ### 2. 配置文件
 项目包含 `deploy.conf` 配置文件，此文件定义了相关组件的版本信息，请根据需要修改为合适的分支：
 ```
-ITRUSTEE_TZDRIVER_BRANCH="iTrustee_7.10.0_release"
+ITRUSTEE_TZDRIVER_BRANCH="master"
 ITRUSTEE_CLIENT_BRANCH="iTrustee_7.10.0_release"
-TEE_GP_PROXY_BRANCH="26.0.RC1"
+TEE_GP_PROXY_BRANCH="master"
 ```
 
 ### 3. 网络连接
@@ -47,6 +47,7 @@ TEE_GP_PROXY_BRANCH="26.0.RC1"
 | `--vm_scalability` | `-v` | 虚机扩展功能（true/false） | `true` |
 | `--machine_model` | `-m` | 服务器型号（920v100/920v200） | `920v200` |
 | `--need_sdf_utils_rpm` | `-n` | 是否部署鲲鹏密码模块（true/false） | `true` |
+| `--lenient` | `-l` | 宽松模式，部署路径下存在相应组件代码时，将不再git clone获取，适合离线部署 | `false` |
 
 ### 使用示例
 
@@ -63,8 +64,11 @@ TEE_GP_PROXY_BRANCH="26.0.RC1"
 # 不需要部署鲲鹏密码模块
 ./deploy.sh -n false
 
+# 使用宽松模式部署
+./deploy -l true
+
 # 组合使用多个参数
-./deploy.sh -w /your/path -m 920v200 -v false -n true
+./deploy.sh -w /your/path -m 920v200 -v false -n true -l true
 ```
 
 ## 功能特性
@@ -75,12 +79,14 @@ TEE_GP_PROXY_BRANCH="26.0.RC1"
 4. **安全模块**：可选部署鲲鹏密码模块
 5. **版本控制**：通过配置文件管理各组件版本分支和标签
 6. **资源清理**：若部署失败，将会自动清理相关文件和资源，不影响再次部署
+7. **宽松模式**: 支持宽松模式部署，适合离线部署场景
 
 ## 注意事项
 
 - 确保执行脚本的用户具有足够的权限（通常需要 root 权限）
 - 部署前请确认服务器型号与参数匹配
 - 部署路径需要足够的磁盘空间
+- 使用宽松模式部署时，请确保涉及的组件源代码文件已放置在部署路径下；若为使用宽松模式，脚本中涉及git clone相关仓库以及安装依赖，运行脚本前请确保网络连接正常。
 
 ## 故障排查
 

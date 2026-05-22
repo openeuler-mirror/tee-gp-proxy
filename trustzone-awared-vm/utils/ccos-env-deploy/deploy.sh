@@ -27,6 +27,9 @@ MACHINE_MODEL=${MACHINE_MODEL:-"920v200"}
 # Whether to install huawei's sdf utils rpm package
 NEED_SDF_UTILS_RPM=${NEED_SDF_UTILS_RPM:-"true"}
 
+# Lenient mode: skip deletion of existing directories during clone operations
+LENIENT_MODE=${LENIENT_MODE:-"false"}
+
 
 
 # ======================== 内部变量 ==========================
@@ -109,6 +112,10 @@ print_config() {
     echo "Paths Configuration:"
     echo "  WORK_DIR              : ${WORK_DIR}"
     echo ""
+    echo "Deployment Options:"
+    echo "  VM_SCALABILITY        : ${VM_SCALABILITY}"
+    echo "  LENIENT_MODE          : ${LENIENT_MODE}"
+    echo ""
     echo "Required Files:"
     if [ $DEPLOY_MODE = "host" ]; then
         echo "  KUNPENG_SEC_DRV_FILE  : ${KUNPENG_SEC_DRV_FILE}"
@@ -175,6 +182,24 @@ is_virtual_machine() {
 
 check_params() {
     log_info "Checking params..."
+
+    # Convert relative path to absolute path for WORK_DIR
+    if [[ -n "${WORK_DIR}" ]]; then
+        if [[ "${WORK_DIR}" != /* ]]; then
+            # Relative path, convert to absolute
+            WORK_DIR="$(cd "$(dirname "${WORK_DIR}")" 2>/dev/null && pwd)/$(basename "${WORK_DIR}")" || {
+                # If parent directory doesn't exist, use realpath or manual construction
+                if command -v realpath &> /dev/null; then
+                    WORK_DIR="$(realpath -m "${WORK_DIR}")"
+                else
+                    # Fallback: construct absolute path manually
+                    WORK_DIR="$(pwd)/${WORK_DIR}"
+                fi
+            }
+            log_info "Converted relative path to absolute path: ${WORK_DIR}"
+        fi
+    fi
+
     if [[ ! -d "${WORK_DIR}" ]]; then
         log_warn "Work directory does not exist, make directory first"
         mkdir -p "${WORK_DIR}" && cd "${WORK_DIR}"
@@ -193,6 +218,11 @@ check_params() {
 
     if [[ "${NEED_SDF_UTILS_RPM}" != "true" ]] && [[ "${NEED_SDF_UTILS_RPM}" != "false" ]]; then
         log_error "Invalid param: NEED_SDF_UTILS_RPM"
+        return 1
+    fi
+
+    if [[ "${LENIENT_MODE}" != "true" ]] && [[ "${LENIENT_MODE}" != "false" ]]; then
+        log_error "Invalid param: LENIENT_MODE"
         return 1
     fi
 
@@ -227,6 +257,14 @@ main() {
     fi
 
     OS_TYPE=$(grep '^NAME=' /etc/os-release | cut -d'=' -f2 | tr -d '"')
+    # Normalize OS_TYPE for Kylin variants
+    if [[ "$OS_TYPE" =~ Kylin|NeoKylin|麒麟 ]]; then
+        OS_TYPE="Kylin"
+    fi
+    # Normalize OS_TYPE for UOS variants
+    if [[ "$OS_TYPE" =~ UOS|UnionTech|统信 ]]; then
+        OS_TYPE="UOS"
+    fi
     if [ ${NEED_SDF_UTILS_RPM} == "true" ]; then
         SDF_UTILS_RPM=$(ls ${SCRIPT_DIR}/${SDF_UTILS_RPM})
     fi
@@ -240,10 +278,32 @@ main() {
 
     # Print configuration and confirm with user
     confirm_config
-    WORK_DIR="${WORK_DIR}/tmp"
-    if [[ ! -d "${WORK_DIR}" ]]; then
-        mkdir -p "${WORK_DIR}"
+
+    if [[ "${LENIENT_MODE}" == "true" ]]; then
+        local src_dir="${WORK_DIR}"
+        WORK_DIR="${WORK_DIR}/tmp"
+        if [[ ! -d "${WORK_DIR}" ]]; then
+            mkdir -p "${WORK_DIR}"
+        fi
+        if [[ -d "${src_dir}" ]]; then
+            log_info "LENIENT_MODE: copying existing source files from ${src_dir} to ${WORK_DIR}..."
+            for item in "${src_dir}"/*; do
+                if [[ "$(basename "$item")" == "tmp" ]]; then
+                    continue
+                fi
+                cp -rf "$item" "${WORK_DIR}/" 2>/dev/null || {
+                    log_warn "Failed to copy $item to ${WORK_DIR}"
+                }
+            done
+            log_info "Source files copied successfully"
+        fi
+    else
+        WORK_DIR="${WORK_DIR}/tmp"
+        if [[ ! -d "${WORK_DIR}" ]]; then
+            mkdir -p "${WORK_DIR}"
+        fi
     fi
+    
     update_env_variable
     
     if is_virtual_machine; then
@@ -264,7 +324,7 @@ show_help() {
     echo ""
     echo "选项:"
     echo "  -h, --help                  显示帮助信息"
-    echo "  -w, --work_dir              部署路径"
+    echo "  -w, --work_dir              部署路径（支持绝对路径和相对路径）"
     echo "                              默认: /opt/ccos-deploy/"
     echo "  -v, --vm_scalability         虚机扩展，若后续有虚机场景，则设置为 true；仅涉及 host 场景，则可设置为 false"
     echo "                              默认: true"
@@ -272,13 +332,17 @@ show_help() {
     echo "                              默认: 920v200"
     echo "  -n, --need_sdf_utils_rpm    是否需要部署鲲鹏密码模块，可配置 true 或 false"
     echo "                              默认: true"
+    echo "  -l, --lenient               宽松模式，跳过 clone 时删除已存在目录的步骤"
+    echo "                              默认: false"
     echo ""
     echo "示例:"
     echo "  $0                          # 按照默认配置部署"
     echo "  $0 -w /opt/ccos-deploy      # 在 /opt/ccos-deploy 目录下进行安装和构建"
+    echo "  $0 -w ./my-deploy           # 使用相对路径进行部署"
     echo "  $0 -m 920v200               # 为920v200服务器安装部署"
     echo "  $0 -m 920v200 -v false      # 为920v200服务器安装部署，且不涉及虚机场景"
     echo "  $0 -n false                 # 不需要部署鲲鹏密码模块"
+    echo "  $0 -l                       # 使用宽松模式，保留已存在的目录"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -302,6 +366,10 @@ while [[ $# -gt 0 ]]; do
         -n|--need_sdf_utils_rpm)
             NEED_SDF_UTILS_RPM="$2"
             shift 2
+            ;;
+        -l|--lenient)
+            LENIENT_MODE="true"
+            shift
             ;;
         *)
             log_error "未知参数: $1"
