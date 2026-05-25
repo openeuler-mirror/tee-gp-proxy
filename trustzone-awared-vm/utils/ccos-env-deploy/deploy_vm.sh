@@ -78,13 +78,22 @@ pre_deployment_check() {
 install_dependencies() {
     log_step "[Step 0] Installing dependencies..."
 
-    yum install -y git make gcc openssl-devel kernel-devel-"$(uname -r)"
-
-    if [[ $? -ne 0 ]]; then
+    yum install -y git make gcc openssl-devel kernel-devel-"$(uname -r)" || {
         log_error "Failed to install dependencies"
         return 1
+    }
+    local kernel_version
+    kernel_version=$(uname -r | cut -d'-' -f1)
+    local kernel_major kernel_minor
+    kernel_major=$(echo "${kernel_version}" | cut -d'.' -f1)
+    kernel_minor=$(echo "${kernel_version}" | cut -d'.' -f2)
+    if [[ "${kernel_major}" -gt 6 ]] || { [[ "${kernel_major}" -eq 6 ]] && [[ "${kernel_minor}" -ge 6 ]]; }; then
+        log_info "Kernel version ${kernel_version} >= 6.6, installing compat-openssl11-libs..."
+        yum install -y compat-openssl11-libs || {
+            log_error "Failed to install compat-openssl11-libs"
+            return 1
+        }
     fi
-
     log_info "Dependencies installed successfully"
     return 0
 }
@@ -96,20 +105,23 @@ clone_libboundscheck() {
     log_step "[Step 1] Cloning libboundscheck repository..."
 
     if [[ -d "${LIBBOUNDSCHECK_DIR}" ]]; then
-        log_warn "libboundscheck directory already exists, delete it before clone"
-        rm -rf ${LIBBOUNDSCHECK_DIR}
-        if [[ $? -ne 0 ]]; then
-            log_error "Failed to delete libboundscheck directory"
-            return 1
+        if [[ "${LENIENT_MODE}" == "true" ]]; then
+            log_info "libboundscheck directory already exists, lenient mode enabled, skipping clone"
+            return 0
+        else
+            log_warn "libboundscheck directory already exists, delete it before clone"
+            rm -rf ${LIBBOUNDSCHECK_DIR} || {
+                log_error "Failed to delete libboundscheck directory"
+                return 1
+            }
+            log_info "Delete libboundscheck directory successfully"
         fi
-        log_info "Delete libboundscheck directory successfully"
     fi
 
-    git clone "${LIBBOUNDSCHECK_REPO}"
-    if [[ $? -ne 0 ]]; then
+    git clone "${LIBBOUNDSCHECK_REPO}" || {
         log_error "Failed to clone libboundscheck"
         return 1
-    fi
+    }
 
     log_info "libboundscheck cloned successfully"
     return 0
@@ -122,20 +134,23 @@ clone_tee_gp_proxy() {
     log_step "[Step 2] Cloning tee-gp-proxy..."
 
     if [[ -d "${TEE_GP_PROXY_DIR}" ]]; then
-        log_warn "tee-gp-proxy directory already exists, delete it before clone"
-        rm -rf ${TEE_GP_PROXY_DIR}
-        if [[ $? -ne 0 ]]; then
-            log_error "Failed to delete tee-gp-proxy directory"
-            return 1
+        if [[ "${LENIENT_MODE}" == "true" ]]; then
+            log_info "tee-gp-proxy directory already exists, lenient mode enabled, skipping clone"
+            return 0
+        else
+            log_warn "tee-gp-proxy directory already exists, delete it before clone"
+            rm -rf ${TEE_GP_PROXY_DIR} || {
+                log_error "Failed to delete tee-gp-proxy directory"
+                return 1
+            }
+            log_info "Delete tee-gp-proxy directory successfully"
         fi
-        log_info "Delete tee-gp-proxy directory successfully"
     fi
 
-    git clone --branch ${TEE_GP_PROXY_BRANCH} ${TEE_GP_PROXY_REPO}
-    if [[ $? -ne 0 ]]; then
+    git clone --branch ${TEE_GP_PROXY_BRANCH} ${TEE_GP_PROXY_REPO} || {
         log_error "Failed to clone tee-gp-proxy"
         return 1
-    fi
+    }
 
     log_info "tee-gp-proxy cloned successfully"
     return 0
@@ -148,20 +163,23 @@ clone_itrustee_client() {
     log_step "[Step 3] Cloning itrustee_client repository..."
 
     if [[ -d "${ITRUSTEE_CLIENT_DIR}" ]]; then
-        log_warn "itrustee_client directory already exists, delete it before clone"
-        rm -rf ${ITRUSTEE_CLIENT_DIR}
-        if [[ $? -ne 0 ]]; then
-            log_error "Failed to delete itrustee_client directory"
-            return 1
+        if [[ "${LENIENT_MODE}" == "true" ]]; then
+            log_info "itrustee_client directory already exists, lenient mode enabled, skipping clone"
+            return 0
+        else
+            log_warn "itrustee_client directory already exists, delete it before clone"
+            rm -rf ${ITRUSTEE_CLIENT_DIR} || {
+                log_error "Failed to delete itrustee_client directory"
+                return 1
+            }
+            log_info "Delete itrustee_client directory successfully"
         fi
-        log_info "Delete itrustee_client directory successfully"
     fi
 
-    git clone "${ITRUSTEE_CLIENT_REPO}" -b "${ITRUSTEE_CLIENT_BRANCH}"
-    if [[ $? -ne 0 ]]; then
+    git clone "${ITRUSTEE_CLIENT_REPO}" -b "${ITRUSTEE_CLIENT_BRANCH}" || {
         log_error "Failed to clone itrustee_client"
         return 1
-    fi
+    }
 
     log_info "itrustee_client cloned successfully"
     return 0
@@ -173,8 +191,14 @@ clone_itrustee_client() {
 copy_libboundscheck() {
     log_step "[Step 4] Copying libboundscheck to itrustee_client and vtzdriver..."
 
-    cp -rf "${LIBBOUNDSCHECK_DIR}" "${ITRUSTEE_CLIENT_DIR}/"
-    cp -rf "${LIBBOUNDSCHECK_DIR}" "${VTZDRIVER_DIR}/"
+    cp -rf "${LIBBOUNDSCHECK_DIR}" "${ITRUSTEE_CLIENT_DIR}/" || {
+        log_error "Failed to copy libboundscheck to itrustee_client"
+        return 1
+    }
+    cp -rf "${LIBBOUNDSCHECK_DIR}" "${VTZDRIVER_DIR}/" || {
+        log_error "Failed to copy libboundscheck to vtzdriver"
+        return 1
+    }
 
     if [[ ! -d "${ITRUSTEE_CLIENT_DIR}/libboundscheck" ]] || [[ ! -d "${VTZDRIVER_DIR}/libboundscheck" ]]; then
         log_error "copy libboundscheck failed"
@@ -198,11 +222,12 @@ patch_client() {
         log_info "Patching: $patch"
         git am "$patch" || {
             log_error "Patch failed: $patch"
+            popd > /dev/null
             return 1
         }
     done
-    
-    popd > /dev/null || return 1
+
+    popd > /dev/null
     log_info "client patches applied successfully"
     return 0
 }
@@ -215,93 +240,40 @@ build_itrustee_client() {
 
     pushd "${ITRUSTEE_CLIENT_DIR}" > /dev/null || return 1
 
-    make
-    if [[ $? -ne 0 ]]; then
+    make || {
         log_error "Failed to build itrustee_client"
-        popd > /dev/null || return 1
+        popd > /dev/null
         return 1
-    fi
+    }
 
-    make install
-    if [[ $? -ne 0 ]]; then
+    make install || {
         log_error "Failed to install itrustee_client"
-        popd > /dev/null || return 1
+        popd > /dev/null
         return 1
-    fi
+    }
 
-    popd > /dev/null || return 1
+    popd > /dev/null
     log_info "itrustee_client built and installed successfully"
 }
 
 # -----------------------------------------------------------------------------
-# Step 7: Build and copy virtio_console
-# -----------------------------------------------------------------------------
-build_and_copy_virtio_console() {
-    log_step "[Step 6] Build and copy virtio_console..."
-    local kernel_version
-    kernel_version=$(uname -r | cut -d'.' -f1,2)
-
-    # Skip for 4.19 kernel
-    if [[ "$kernel_version" == "4.19" ]]; then
-        log_info "Kernel version is 4.19, skipping virtio_console build"
-        return 0
-    fi
-
-    if [[ "$kernel_version" == "5.10" ]]; then
-        pushd "${VIRTIO_CONSOLE_DIR}" > /dev/null || return 1
-        log_info "Building virtio_console..."
-        make
-
-        if [[ $? -ne 0 ]]; then
-            log_error "Failed to build virtio_console"
-            popd > /dev/null || return 1
-            return 1
-        fi
-
-        log_info "virtio_console built successfully"
-
-        if [[ ! -d "${TRUSTZONE_INSTALL_DIR}" ]]; then
-            log_warn "trustzone install directory does not exist, make directory first"
-            mkdir -p "${TRUSTZONE_INSTALL_DIR}"
-        fi
-
-        log_info "copying virtio_console.ko to trustzone install directory..."
-        cp virtio_console.ko "${TRUSTZONE_INSTALL_DIR}/"
-
-        if [[ $? -ne 0 ]]; then
-            log_error "Failed to virtio_console.ko"
-            return 1
-        fi
-
-        log_info "virtio_console.ko copyed to ${TRUSTZONE_INSTALL_DIR}"
-        popd > /dev/null || return 1
-        return 0
-    else
-        log_error "unsupported kernel version"
-        return 1
-    fi
-}
-
-# -----------------------------------------------------------------------------
-# Step 8: Build and copy vtzfdriver
+# Step 7: Build and copy vtzfdriver
 # -----------------------------------------------------------------------------
 build_and_copy_vtzfdriver() {
     log_step "[Step 7] Build and copy vtzfdriver..."
     pushd "${VTZDRIVER_DIR}" > /dev/null || return 1
 
-    if [[ "$OS_TYPE" == "Kylin" ]]; then
+    if [[ "$OS_TYPE" == "Kylin" ]] || [[ "$OS_TYPE" == "UOS" ]]; then
         log_info "Detected ${OS_TYPE} OS, removing -fstack-protector-strong from Makefile..."
         sed -i 's/-fstack-protector-strong//g' Makefile
     fi
 
     log_info "Building vtzfdriver..."
-    make
-
-    if [[ $? -ne 0 ]]; then
+    make || {
         log_error "Failed to build vtzfdriver"
-        popd > /dev/null || return 1
+        popd > /dev/null
         return 1
-    fi
+    }
 
     log_info "vtzfdriver built successfully"
 
@@ -311,20 +283,19 @@ build_and_copy_vtzfdriver() {
     fi
 
     log_info "copying vtzfdriver.ko to trustzone install directory..."
-    cp vtzfdriver.ko "${TRUSTZONE_INSTALL_DIR}/"
-
-    if [[ $? -ne 0 ]]; then
+    cp vtzfdriver.ko "${TRUSTZONE_INSTALL_DIR}/" || {
         log_error "Failed to copy vtzfdriver.ko"
+        popd > /dev/null
         return 1
-    fi
+    }
 
     log_info "vtzfdriver.ko copyed to ${TRUSTZONE_INSTALL_DIR}"
-    popd > /dev/null || return 1
+    popd > /dev/null
     return 0
 }
 
 # -----------------------------------------------------------------------------
-# Step 8.1: Install sdf utils*.rpm
+# Step 7.1: Install sdf utils*.rpm
 # -----------------------------------------------------------------------------
 install_sdf_utils_rpm() {
     log_info "Checking sdf-utils RPM packages..."
@@ -333,30 +304,26 @@ install_sdf_utils_rpm() {
         log_info "All sdf-utils related rpm packages are as follows"
         log_info "$matching_packages"
         log_info "Uninstalling..."
-        
+
         while IFS= read -r package; do
             log_info "Uninstalling: $package"
-            rpm -e "$package"
-            
-            if [[ $? -eq 0 ]]; then
-                log_info "Uninstalled successfully: $package"
-            else
+            rpm -e "$package" || {
                 log_error "Uninstalled failed: $package"
                 return 1
-            fi
+            }
+            log_info "Uninstalled successfully: $package"
         done <<< "$matching_packages"
-        
+
         log_info "All sdf-utils related rpm packages are uninstalled"
     else
         log_info "No sdf-utils related rpm packages"
     fi
     log_info "Installing sdf-utils RPM package..."
 
-    rpm -ivh ${SDF_UTILS_RPM}
-    if [[ $? -ne 0 ]]; then
+    rpm -ivh ${SDF_UTILS_RPM} || {
         log_error "Failed to install sdf-utils RPM"
         return 1
-    fi
+    }
 
     log_info "sdf-utils installed successfully"
     RPM_PKG_INSTALLED="true"
@@ -406,10 +373,9 @@ deploy_vm() {
     copy_libboundscheck || { log_error "Step 4 failed";  return 1; }
     patch_client || { log_error "Step 5 failed"; return 1; }
     build_itrustee_client || { log_error "Step 6 failed"; return 1; }
-    build_and_copy_virtio_console || { log_error "Step 7 failed"; return 1; }
-    build_and_copy_vtzfdriver || { log_error "Step 8 failed"; return 1; }
+    build_and_copy_vtzfdriver || { log_error "Step 7 failed"; return 1; }
     if [[ "$NEED_SDF_UTILS_RPM" = "true" ]]; then
-        install_sdf_utils_rpm || { log_error "Step 8.1 failed"; return 1; }
+        install_sdf_utils_rpm || { log_error "Step 7.1 failed"; return 1; }
     fi
     log_info "========== VM Environment Deployment Completed =========="
 }
@@ -424,15 +390,10 @@ main() {
     echo ""
     log_info "VM deployment completed successfully!"
     echo ""
-    log_info "After system reboot, run the following commands to start services:"
-    log_info "Kernel 5.10:"
-    log_info "  rmmod virtio_console"
-    log_info "  insmod ${TRUSTZONE_INSTALL_DIR}/virtio_console.ko"
-    log_info "  insmod ${TRUSTZONE_INSTALL_DIR}/vtzfdriver.ko"
+    log_info "Please run the following commands to start services in order:"
+    log_info "  insmod /lib/modules/\$(uname -r)/kernel/drivers/trustzone/vtzfdriver.ko"
     log_info "  nohup /usr/bin/teecd &"
-    log_info "Kernel 4.19:"
-    log_info "  insmod ${TRUSTZONE_INSTALL_DIR}/vtzfdriver.ko"
-    log_info "  nohup /usr/bin/teecd &"
+    log_info "NOTICE! Every time the system reboots, the commands above also need to be run."
     echo ""
 }
 
