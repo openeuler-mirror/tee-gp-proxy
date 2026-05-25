@@ -180,7 +180,6 @@ void do_check_stat_serial_port()
     int ret;
     struct serial_port_file *serial_port = NULL;
     struct pollfd pfd = {0};
-    VtzbConfig *cfg = get_global_config();
     int client_fd;
 
     pfd.fd = g_server_fd;
@@ -218,7 +217,6 @@ void do_check_stat_serial_port()
             serial_port->offset = 0;
             serial_port->rd_buf = (char *)malloc(BUF_LEN_MAX_RD);
             memset(serial_port->rd_buf, 0x55, BUF_LEN_MAX_RD);
-            snprintf(serial_port->path, PATH_MAX_LEN, "%s%d", cfg->socket_path, serial_port->index);
             serial_port->vm_file = create_vm_file(addr.svm_cid);
             g_serial_array[serial_port->index] = serial_port;
 
