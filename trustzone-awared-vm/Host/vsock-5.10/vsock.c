@@ -772,7 +772,7 @@ u64 vhost_vsock_translate_gpa(u32 cid, u64 gpa, u64 size)
 	if (cid <= VMADDR_CID_HOST || size == 0)
 		return 0;
 
-	rcu_read_lock(&vhost_vsock_mutex);
+	rcu_read_lock();
 	vsock = vhost_vsock_get(cid);
 	if (!vsock || !vsock->dev.umem)
 		goto out;
@@ -785,7 +785,7 @@ u64 vhost_vsock_translate_gpa(u32 cid, u64 gpa, u64 size)
 		goto out;
 	hva = map->addr + (gpa - map->start);
 out:
-	rcu_read_unlock(&vhost_vsock_mutex);
+	rcu_read_unlock();
 	return hva;
 }
 EXPORT_SYMBOL_GPL(vhost_vsock_translate_gpa);
