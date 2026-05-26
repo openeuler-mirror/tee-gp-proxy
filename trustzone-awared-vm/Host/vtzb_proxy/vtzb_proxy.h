@@ -15,10 +15,11 @@
 
 #include <sys/ioctl.h>
 #include <sys/types.h>
+#include <limits.h>
+#include <libvirt/libvirt.h>
 #include "tc_ns_client.h"
 #include "tee_sys_log.h"
 #include "tee_client_list.h"
-#include "libvirt_api_wrap.h"
 
 
 #define TC_LOGGER_DEV_NAME       "/dev/teelog"

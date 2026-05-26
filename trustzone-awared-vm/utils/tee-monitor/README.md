@@ -38,13 +38,9 @@ TEE 服务进程 monitor，用于监控和保活 TEE 相关内核模块和进程
 
 ### 配置文件
 
-`vtzb_proxy.conf`为 `vtz_proxy` 的配置文件，可在其中定义了socket_path，最大虚机数量等参数，详细信息如下：
-
-- `socket_path`：虚拟串口路径前缀
+`vtzb_proxy.conf`为 `vtz_proxy` 的配置文件，可在其中定义了最大虚机数量等参数，详细信息如下：
 
 - `max_vm_count`：支持的最大虚机数量
-
-- `libvirt_uri`：`libvirt` 连接的虚拟uri
 
 - `numa_bindings`：`vtz_proxy` 线程池绑核配置
 

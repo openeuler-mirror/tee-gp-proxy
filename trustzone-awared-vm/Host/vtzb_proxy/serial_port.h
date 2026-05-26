@@ -32,7 +32,6 @@ struct serial_port_list {
 
 struct serial_port_file {
     pthread_mutex_t lock;
-    char path[PATH_MAX_LEN];
     int sock;
     bool opened;
     int index;

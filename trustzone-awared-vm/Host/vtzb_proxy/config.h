@@ -25,9 +25,7 @@
 #define MAX_URI_LEN 128
 
 /* Default values */
-#define DEFAULT_SOCKET_PATH "/var/vtzb/vm_vtzb_sock"
 #define DEFAULT_MAX_VM_COUNT 64
-#define DEFAULT_LIBVIRT_URI "qemu:///system"
 #define DEFAULT_USE_VCPUSET true
 
 typedef struct {

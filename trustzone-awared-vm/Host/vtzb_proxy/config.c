@@ -22,8 +22,6 @@
 #include "securec.h"
 
 VtzbConfig g_config = {
-    .socket_path = DEFAULT_SOCKET_PATH,
-    .libvirt_uri = DEFAULT_LIBVIRT_URI,
     .max_vm_count = DEFAULT_MAX_VM_COUNT,
     .cpuset = {{0}},
     .use_vcpuset = DEFAULT_USE_VCPUSET
@@ -43,50 +41,6 @@ static char *trim(char *str)
     }
     end[1] = '\0';
     return str;
-}
-
-static int set_socket_path(const char *value)
-{
-    if (value[0] != '/') {
-        tlogw("set_socket_path: socket path should be absolute path (start with '/')\n");
-    }
-    errno_t err = memset_s(g_config.socket_path, sizeof(g_config.socket_path), 0, sizeof(g_config.socket_path));
-    if (err != 0) {
-        tloge("set_socket_path: memset_s failed, error %d\n", err);
-        return -1;
-    }
-    
-    err = strcpy_s(g_config.socket_path, sizeof(g_config.socket_path), value);
-    if (err != 0) {
-        tloge("set_socket_path: strcpy_s failed, error %d\n", err);
-        return -1;
-    }
-    
-    tlogi("set_socket_path: successfully set socket path to '%s'\n", value);
-    return 0;
-}
-
-static int set_libvirt_uri(const char *value)
-{
-    if (value == NULL) {
-        tloge("set_libvirt_uri: value is NULL\n");
-        return -1;
-    }
-    
-    errno_t err = memset_s(g_config.libvirt_uri, sizeof(g_config.libvirt_uri), 0, sizeof(g_config.libvirt_uri));
-    if (err != 0) {
-        tloge("set_libvirt_uri: memset_s failed, error %d\n", err);
-        return -1;
-    }
-    
-    err = strcpy_s(g_config.libvirt_uri, sizeof(g_config.libvirt_uri), value);
-    if (err != 0) {
-        tloge("set_libvirt_uri: strcpy_s failed, error %d\n", err);
-        return -1;
-    }
-    
-    tlogi("set_libvirt_uri: successfully set libvirt uri to '%s'\n", value);
-    return 0;
 }
 
 static int set_max_vm_count(const char *value)
@@ -291,11 +245,7 @@ static int set_g_config(const char *key, const char *value)
         tloge("set_g_config: key or value is NULL\n");
         return -1;
     }
-    if (strcmp(key, "socket_path") == 0) {
-        return set_socket_path(value);
-    } else if (strcmp(key, "libvirt_uri") == 0) {
-        return set_libvirt_uri(value);
-    } else if (strcmp(key, "max_vm_count") == 0) {
+    if (strcmp(key, "max_vm_count") == 0) {
         return set_max_vm_count(value);
     } else if (strcmp(key, "numa_bindings") == 0) {
         return set_numa_bindings(value);
@@ -374,9 +324,7 @@ void config_init()
     goto print_config;
 
 print_config:
-    tlogi("Config: socket_path = %s\n", g_config.socket_path);
     tlogi("Config: max_vm_count = %d\n", g_config.max_vm_count);
-    tlogi("Config: libvirt_uri = %s\n", g_config.libvirt_uri);
     tlogi("Config: use_vcpuset = %s\n", g_config.use_vcpuset ? "true" : "false");
 }
 

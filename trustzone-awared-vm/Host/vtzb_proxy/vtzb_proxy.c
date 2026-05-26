@@ -939,15 +939,15 @@ static void vtz_register_nsid_vmid(struct_packet_cmd_open_tzd *packet_cmd,
     vm_info.nsid = packet_cmd->nsid;
     ret = ioctl(g_private_dev_fd, TC_NS_CLIENT_IOCTL_REGISTER_VM_VMID_NSID, &vm_info);
     if (ret != 0) {
-        tloge("vtz register nsid vmid failed, vmid = %u, nsid = %u, ret = %d, path = %s, serial_port %p\n",\
-            serial_port->vm_file->vmpid, packet_cmd->nsid, ret, serial_port->path, serial_port);
+        tloge("vtz register nsid vmid failed, vmid = %u, nsid = %u, ret = %d, serial_port %p\n",\
+            serial_port->vm_file->vmpid, packet_cmd->nsid, ret, serial_port);
         goto END;
     }
 
     ret = register_teleport(serial_port->vm_file->vmpid);
     if (ret != 0) {
-	    tloge("register teleport failed, vmpid is %u, ret is %d, path = %s, serial_port %p", \
-        serial_port->vm_file->vmpid, ret, serial_port->path, serial_port);
+	    tloge("register teleport failed, vmpid is %u, ret is %d, serial_port %p", \
+        serial_port->vm_file->vmpid, ret, serial_port);
         goto END;
     }
 
@@ -1251,7 +1251,7 @@ void *thread_entry(void *args)
     pthread_mutex_unlock(&vm_fp->workers_lock);
 
     struct_packet_cmd_nothing *p = (struct_packet_cmd_nothing *)rd_buf;
-    tlogd("worker_p tid %lu, vm %u cmd %u, size %u, seq %u, path is %s\n", worker_p->tid, data->vmid, p->cmd, p->packet_size, p->seq_num, serial_port->path);
+    tlogd("worker_p tid %lu, vm %u cmd %u, size %u, seq %u\n", worker_p->tid, data->vmid, p->cmd, p->packet_size, p->seq_num);
 
     if (ui32_cmd == VTZ_REGISTER_VM_VMID_NSID) {
         (void)vtz_register_nsid_vmid((struct_packet_cmd_open_tzd *)rd_buf, serial_port);
