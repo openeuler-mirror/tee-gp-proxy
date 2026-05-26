@@ -237,6 +237,24 @@ static int enable_dev_nodes(void)
 	return 0;
 }
 
+int vsock_file_repair(void)
+{
+	int ret;
+
+	if (g_serial_port_file)
+		free_serial_port_list();
+
+	ret = serial_port_init();
+	if (ret != 0)
+		return -EFAULT;
+
+	ret = tc_ns_register_vm_vmid_nsid();
+	if (ret != 0)
+		return -EFAULT;
+
+	return 0;
+}
+
 static int __init vtzf_init(void)
 {
 	int ret;
@@ -261,8 +279,11 @@ static int __init vtzf_init(void)
 	seq_num_init();
 	ret = tc_ns_register_vm_vmid_nsid();
 	if (ret != 0) {
-		tloge("failed to register nsid");
-		goto class_device_destroy;
+		ret = vsock_file_repair();
+		if (ret != 0) {
+			tloge("failed to register nsid");
+			goto class_device_destroy;
+		}
 	}
 
 	return 0;
@@ -277,8 +298,8 @@ class_device_destroy:
 	if (g_tc_private.devt)
 		destory_dev_node(&g_tc_private, g_driver_class);
 	class_destroy(g_driver_class);
-	if (g_serial_port_file && g_serial_port_file->sock)
-		sock_release(g_serial_port_file->sock);
+	if (g_serial_port_file)
+		free_serial_port_list();
 exit_tlogger:
 	tlogger_exit();
 	return ret;
@@ -420,11 +441,11 @@ static int tc_ns_register_vm_vmid_nsid(void)
 	if (!ret) {
 		ret = packet_rsp.ret;
 		if (ret) {
-			tloge("open TZdriver failed ret is %d, register vmid and nsid failed\n", ret);
+			tlogw("open TZdriver failed ret is %d, register vmid and nsid failed\n", ret);
 			goto END;
 		}
 	} else {
-		tloge("send to proxy failed ret is %d, register vmid and nsid failed\n", ret);
+		tlogw("send to proxy failed ret is %d, register vmid and nsid failed\n", ret);
 		goto END;
 	}
 	tloge("register vmid and nsid success\n");

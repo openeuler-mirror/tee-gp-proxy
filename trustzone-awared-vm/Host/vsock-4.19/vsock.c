@@ -716,7 +716,7 @@ u64 vhost_vsock_translate_gpa(u32 cid, u64 gpa, u64 size)
 	if (cid <= VMADDR_CID_HOST || size == 0)
 		return 0;
 
-	spin_lock_bh(&vhost_vsock_lock);
+	rcu_read_lock(&vhost_vsock_lock);
 	vsock = vhost_vsock_get(cid);
 	if (!vsock || !vsock->dev.umem)
 		goto out;
@@ -733,7 +733,7 @@ u64 vhost_vsock_translate_gpa(u32 cid, u64 gpa, u64 size)
 		goto out;
 	hva = node->userspace_addr + (gpa - node->start);
 out:
-	spin_unlock_bh(&vhost_vsock_lock);
+	rcu_read_unlock(&vhost_vsock_lock);
 	return hva;
 }
 EXPORT_SYMBOL_GPL(vhost_vsock_translate_gpa);
