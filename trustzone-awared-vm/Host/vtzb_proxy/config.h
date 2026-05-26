@@ -29,8 +29,6 @@
 #define DEFAULT_USE_VCPUSET true
 
 typedef struct {
-    char socket_path[MAX_PATH_LEN];         /* Virtual serial port socket path prefix */
-    char libvirt_uri[MAX_URI_LEN];          /* Libvirt connection URI */
     int max_vm_count;                       /* Maximum number of VMs supported */
     cpu_set_t cpuset;
     bool use_vcpuset;                       /* Whether to enable vcpu mapping */

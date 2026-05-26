@@ -197,7 +197,6 @@ void free_serial_port_list(void)
 	packet_cmd.packet_size = sizeof(packet_cmd);
 	packet_cmd.seq_num = seq_num;
 	packet_cmd.cmd = VTZ_NOTHING;
-	g_destroy_rd_thread = 1;
 
 	mutex_lock(&g_serial_port_list.lock);
 	/*In fact, there is only one serial port.*/
@@ -212,8 +211,8 @@ void free_serial_port_list(void)
 #endif
 		if (dev_file->wr_thread){
 			tlogd("before kthread_stop wr\n");
-			g_destroy_wr_thread = 1;
 			wake_up_wr_thread();
+			kthread_stop(dev_file->wr_thread);
 			tlogd("after kthread_stop wr\n");
 		}
 		if (dev_file->rd_thread_name)
@@ -232,6 +231,7 @@ void free_serial_port_list(void)
 	mutex_unlock(&g_serial_port_list.lock);
 	mutex_destroy(&g_serial_port_list.lock);
 	destroy_data_list();
+	dev_file = NULL;
 }
 
 void put_event_data(void *packet, int packet_size, uint32_t seq_num, int result)
@@ -292,7 +292,7 @@ int rd_thread_func(void *arg)
 			tloge("kernel_read failed, ret = %d \n", (int)ssize_ret);
 			wake_tlog_thrd();
 			rd_decrement(file);
-			continue;
+			break;
 		}
 		if (file->log_flag == 2) {
 			wake_tlog_thrd();
@@ -308,7 +308,7 @@ int rd_thread_func(void *arg)
 		* processing begins from the starting position of the buffer, so the offset is set to 0.
 		*/
 		offset = 0;
-		while(1) {
+		while(!kthread_should_stop()) {
 			void *packet = NULL;
 			int packet_size = 0;
 			packet = get_packet_item(file->buffer, buf_len, &offset, &packet_size);
