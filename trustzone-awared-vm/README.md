@@ -68,6 +68,13 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
         sudo cp ./vtz_proxy /usr/bin/vtz_proxy
         ```	
 3. `vhost_vsock`编译
+    > 注：当系统内核使用4.19内核基线版本大于4.19.149时，vsock驱动代码需要根据基线做修改适配。具体可根据版本号参考https://elixir.bootlin.com/linux/v4.19.150/source/drivers/vhost/vsock对vsock对应版本驱动源码进行修改。
+    > 示例修改：在vhost_vsock_handle_tx_kick函数前声明如下vhost_transport结构，同时修改virtio_transport_recv_pkt接口传参，增加&vhost_transport参数。
+    ```
+    static struct virtio_transport vhost_transport;
+
+    virtio_transport_recv_pkt(pkt);改为virtio_transport_recv_pkt(&vhost_transport, pkt);
+    ```
     1. 根据实际内核版本4.19、5.10、6.6，进入对应vsock源码目录，执行编译后，将`vhost_vsock.ko` 复制到指定目录。
     ```shell
     cd tee-gp-proxy/trustzone-awared-vm/Host/vsock-$(uname -r | awk -F. '{printf "%s.%s\n", $1, $2}')
