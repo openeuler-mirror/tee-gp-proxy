@@ -16,7 +16,6 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <limits.h>
-#include <libvirt/libvirt.h>
 #include "tc_ns_client.h"
 #include "tee_sys_log.h"
 #include "tee_client_list.h"
