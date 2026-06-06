@@ -45,7 +45,6 @@ ITRUSTEE_CLIENT_DIR="${WORK_DIR}/itrustee_client"
 TRUSTZONE_INSTALL_DIR="/lib/modules/$(uname -r)/kernel/drivers/trustzone"
 VTZ_PROXY_DIR="${WORK_DIR}/tee-gp-proxy/trustzone-awared-vm/Host/vtzb_proxy"
 VTZDRIVER_DIR="${TEE_GP_PROXY_DIR}/trustzone-awared-vm/VM/vtzdriver"
-VIRTIO_CONSOLE_DIR="${TEE_GP_PROXY_DIR}/trustzone-awared-vm/VM/virtio/char"
 KUNPENG_SEC_DRV_DIR="/var/itrustee/tee_dynamic_drv/crypto"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -92,7 +91,6 @@ update_env_variable() {
     ITRUSTEE_CLIENT_DIR="${WORK_DIR}/itrustee_client"
     VTZ_PROXY_DIR="${WORK_DIR}/tee-gp-proxy/trustzone-awared-vm/Host/vtzb_proxy"
     VTZDRIVER_DIR="${TEE_GP_PROXY_DIR}/trustzone-awared-vm/VM/vtzdriver"
-    VIRTIO_CONSOLE_DIR="${TEE_GP_PROXY_DIR}/trustzone-awared-vm/VM/virtio/char"
 }
 
 print_config() {

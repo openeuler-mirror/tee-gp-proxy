@@ -22,6 +22,7 @@ ITRUSTEE_TZDRIVER_BRANCH="master"
 ITRUSTEE_CLIENT_BRANCH="iTrustee_7.10.0_release"
 TEE_GP_PROXY_BRANCH="master"
 ```
+普通用户执行ca/ta时，需要给该用户增加/var/itrustee/teecd目录的相应权限， `USER=""`配置项可指定需要配置权限的普通用户名。该配置项可支持同时配置多名普通用户权限，用户名以空格分割。
 
 ### 3. 网络连接
 脚本中涉及git clone相关仓库以及安装依赖，运行脚本前请确保网络连接正常。
