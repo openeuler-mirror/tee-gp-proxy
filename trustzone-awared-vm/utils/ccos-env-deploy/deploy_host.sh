@@ -633,13 +633,16 @@ set_teecd_acl() {
   for user in "${USER_ARRAY[@]}"; do
     if id "$user" &>/dev/null; then
       log_info "Processing user: $user"
-      setfacl -m u:"$user":rwx "$dir"
+      setfacl -m u:"$user":rwx "$dir" || {
+        log_error "Failed to set default ACL for $user"
+        return 1
+      }
       setfacl -d -m u:"$user":rw "$dir" || {
         log_error "Failed to set default ACL for $user"
         return 1
       }
     else
-      log_warning "User $user does not exist, skipping"
+      log_warn "User $user does not exist, skipping"
     fi
   done
   
