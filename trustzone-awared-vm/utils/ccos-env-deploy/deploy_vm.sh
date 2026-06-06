@@ -330,6 +330,41 @@ install_sdf_utils_rpm() {
     return 0
 }
 
+# -----------------------------------------------------------------------------
+# Step 8: add access permission of teecd directory for normal user
+# -----------------------------------------------------------------------------
+set_teecd_acl() {
+  if [ -z "$USER" ]; then
+    return 0
+  fi
+  log_step "[Step 8] set teecd acl..."
+
+  local dir="/var/itrustee/teecd"
+  if [ ! -d "$dir" ]; then
+    log_error "Directory $dir does not exist"
+    return 1
+  fi
+
+  log_info "Setting ACL for users: $USER"
+
+  IFS=' ' read -ra USER_ARRAY <<< "$USER"
+  for user in "${USER_ARRAY[@]}"; do
+    if id "$user" &>/dev/null; then
+      log_info "Processing user: $user"
+      setfacl -m u:"$user":rwx "$dir"
+      setfacl -d -m u:"$user":rw "$dir" || {
+        log_error "Failed to set default ACL for $user"
+        return 1
+      }
+    else
+      log_warning "User $user does not exist, skipping"
+    fi
+  done
+  
+  log_info "ACL set successfully"
+  return 0
+}
+
 cleanup() {
     log_info "Cleaning resources..."
     cd ${SCRIPT_DIR}
@@ -377,6 +412,7 @@ deploy_vm() {
     if [[ "$NEED_SDF_UTILS_RPM" = "true" ]]; then
         install_sdf_utils_rpm || { log_error "Step 7.1 failed"; return 1; }
     fi
+    set_teecd_acl || { log_error "Step 8 failed"; return 1; }
     log_info "========== VM Environment Deployment Completed =========="
 }
 
