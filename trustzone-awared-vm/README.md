@@ -186,7 +186,7 @@ nohup /usr/bin/teecd &
     ```
     kill -9 $(pgrep teecd)
     rmmod vtzfdriver.ko 
-    insmod vtzdriver.ko
+    insmod vtzfdriver.ko
     nohup /usr/bin/teecd &
     ```
     2. 最后再重新拉起CA进程。

@@ -129,7 +129,7 @@ static void do_remove_fd(struct fd_file *fd_p)
     struct ListNode *n = NULL;
     unsigned long buf[2] = {0};
     int ret = -1;
-    ListRemoveEntry(&fd_p->head);
+
     pthread_mutex_lock(&fd_p->session_lock);
     if (!LIST_EMPTY(&fd_p->session_head)) {
         LIST_FOR_EACH_SAFE(ptr, n, &fd_p->session_head) {
@@ -160,6 +160,7 @@ int remove_fd(int ptzfd, struct vm_file *vm_fp)
     struct ListNode *ptr = NULL;
     struct ListNode *next_ptr = NULL;
     struct fd_file *fd_p = NULL;
+    struct fd_file *dst_fd = NULL;
 
     if (!vm_fp) {
         tloge("vm_file is null\n");
@@ -171,12 +172,17 @@ int remove_fd(int ptzfd, struct vm_file *vm_fp)
         LIST_FOR_EACH_SAFE(ptr, next_ptr, &vm_fp->fds_head) {
             fd_p = CONTAINER_OF(ptr, struct fd_file, head);
             if (fd_p->ptzfd == ptzfd) {
-                do_remove_fd(fd_p);
+                ListRemoveEntry(&fd_p->head);
+                dst_fd = fd_p;
+                break;
             }
         }
     }
     pthread_mutex_unlock(&vm_fp->fd_lock);
-    
+
+    if (dst_fd) {
+         do_remove_fd(dst_fd);
+    }
 
     return 0;
 }
