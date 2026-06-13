@@ -34,6 +34,7 @@
 #include "tlogcat.h"
 #include "enhance_stability.h"
 #include "config.h"
+#include <sys/utsname.h>
 
 ThreadPool g_pool = {0};
 pthread_mutex_t g_private_fd_lock;
@@ -823,6 +824,25 @@ void free_hash_table(hash_table* ht)
 
 static char cmdline_buffer[CMD_BUFFER_LEN];
 static hash_table pid_hash_table = {0};
+static bool is_euler = false;
+#define PID_OF_QEMU_CMD1  "pidof qemu-system-aarch64"
+#define PID_OF_QEMU_CMD2  "pidof qemu-kvm"
+
+static void test_system_release(void)
+{
+    struct utsname system_info;
+    char *euler = "euleros";
+
+    if (uname(&system_info) == -1) {
+        tloge("Error calling uname\n");
+        return;
+    }
+
+    tlogi("system_info:%s\n", system_info.release);
+    if (strstr(system_info.release, euler)) {
+        is_euler = true;
+    }
+}
 
 static int get_guest_cid(pid_t pid)
 {
@@ -830,7 +850,11 @@ static int get_guest_cid(pid_t pid)
     char path[PROC_PATH_LEN] = {0};
     size_t bytes_read, scan_byte = 0;
     int cid = -1;
-    char *pos, *search_key = "guest-cid=";
+    char *pos, *search_key = "guest-cid";
+    int offset = 1;
+
+    if (is_euler)
+        offset = 2;
 
     snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
     fd = open(path, O_RDONLY);
@@ -847,7 +871,7 @@ static int get_guest_cid(pid_t pid)
         if (pos != NULL) {
             char *endptr;
             long value;
-            pos += strlen(search_key);
+            pos += strlen(search_key) + offset;
             value = strtol(pos, &endptr, 10);
             if (value < INT_MAX)
                 cid = (int)value;
@@ -864,8 +888,11 @@ static int translate_cid_to_pid(uint32_t cid)
 {
     int tmp_cid;
     char buffer[PID_BUFFER_LEN];
-	FILE* fp;
-    const char* command = "pidof qemu-system-aarch64";
+    FILE* fp;
+    const char* command = PID_OF_QEMU_CMD1;
+
+    if (is_euler)
+        command = PID_OF_QEMU_CMD2;
 
     fp = popen(command, "r");
     if (fp == NULL) {
@@ -1357,6 +1384,7 @@ int main() {
         return -1;
     }
 
+    test_system_release();
     /* Initialize configuration (must be before thread_pool_init) */
     config_init();
     VtzbConfig *cfg = get_global_config();
