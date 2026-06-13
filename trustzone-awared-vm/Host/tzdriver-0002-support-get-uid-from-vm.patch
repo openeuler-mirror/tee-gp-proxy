@@ -1,7 +1,7 @@
-From c2c442a9a73ed0081164136e9ddcf78c4b844ccf Mon Sep 17 00:00:00 2001
+From 7a7b23f4e449eb506a754e7cbae566ae3baf786f Mon Sep 17 00:00:00 2001
 From: gongchangsui <gongchangsui@outlook.com>
-Date: Tue, 12 May 2026 19:55:08 +0800
-Subject: [PATCH] support get uid from vm
+Date: Sat, 13 Jun 2026 14:20:58 +0800
+Subject: [PATCH 5/8] support get uid fromm vm
 
 ---
  Makefile               |  1 +
@@ -11,13 +11,13 @@ Subject: [PATCH] support get uid from vm
  4 files changed, 59 insertions(+), 1 deletion(-)
 
 diff --git a/Makefile b/Makefile
-index fc5410f..377b86f 100644
+index 35e2abf..13dd419 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -64,6 +64,7 @@ EXTRA_CFLAGS += -DCONFIG_AUTH_SUPPORT_UNAME -DCONFIG_AUTH_HASH -std=gnu99
- EXTRA_CFLAGS += -DCONFIG_TEE_UPGRADE -DCONFIG_TEE_REBOOT -DCONFIG_CONFIDENTIAL_TEE
+@@ -60,6 +60,7 @@ EXTRA_CFLAGS += -DCONFIG_TEE_UPGRADE -DCONFIG_TEE_REBOOT -DCONFIG_CONFIDENTIAL_T
  EXTRA_CFLAGS += -I$(PWD)/tzdriver_internal/tee_reboot
  EXTRA_CFLAGS += -DMAILBOX_POOL_COUNT=32 -DLATE_KILL_WHEN_TA_LOAD
+ EXTRA_CFLAGS += -DCONFIG_DISABLE_SHOW_AGENT_STATUS
 +EXTRA_CFLAGS += -DVM_DEPLOY
  ifeq ($(CPU_BINDING), y)
  EXTRA_CFLAGS += -DCONFIG_CPU_BINDING -DCONFIG_NUM_TEE_DIE=4 -DCONFIG_NUM_TEE_PHY_CORE_PER_DIE=32
@@ -49,7 +49,7 @@ index b9f6ab1..e6cc009 100644
  		ret = alloc_operation(call_params, &op_params);
  		if (ret != 0)
 diff --git a/core/session_manager.c b/core/session_manager.c
-index 8365b4c..332e403 100644
+index 57e510a..5fc5abb 100644
 --- a/core/session_manager.c
 +++ b/core/session_manager.c
 @@ -1201,6 +1201,42 @@ static int close_session(struct tc_ns_dev_file *dev,
