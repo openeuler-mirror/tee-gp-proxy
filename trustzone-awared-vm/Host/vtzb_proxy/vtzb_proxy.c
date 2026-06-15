@@ -1246,7 +1246,7 @@ static void translate_vm_addr(char *rd_buf, struct vm_file *vm_file)
         }
         fragment_block_num = packet_cmd3->total_fragment_block_num;
         if (fragment_block_num) {
-            page_block = (struct_page_block *)((char *)packet_cmd3 + sizeof(struct_packet_cmd_session));
+            page_block = (struct_page_block *)((char *)packet_cmd3 + sizeof(struct_packet_cmd_send_cmd));
             for(uint32_t j = 0; j < fragment_block_num; j++) {
                 gpa= page_block[j].block.user_addr;
                 page_block[j].block.user_addr = vtz_translate_gpa(vm_file->cid, gpa);
