@@ -1,0 +1,25 @@
+From 8f3bc841f374197057204b18a4e17870ed7c00e1 Mon Sep 17 00:00:00 2001
+From: liuhao365 <liuhao365@h-partners.com>
+Date: Tue, 14 Jul 2026 20:30:35 +0800
+Subject: [PATCH 4/4] annotate disable show agent status config
+
+---
+ Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Makefile b/Makefile
+index 1cd5ba1..525e449 100644
+--- a/Makefile
++++ b/Makefile
+@@ -64,7 +64,7 @@ EXTRA_CFLAGS += -DCONFIG_AUTH_SUPPORT_UNAME -DCONFIG_AUTH_HASH -std=gnu99
+ EXTRA_CFLAGS += -DCONFIG_TEE_UPGRADE -DCONFIG_TEE_REBOOT -DCONFIG_CONFIDENTIAL_TEE
+ EXTRA_CFLAGS += -I$(PWD)/tzdriver_internal/tee_reboot
+ EXTRA_CFLAGS += -DMAILBOX_POOL_COUNT=32 -DLATE_KILL_WHEN_TA_LOAD
+-EXTRA_CFLAGS += -DCONFIG_DISABLE_SHOW_AGENT_STATUS
++# EXTRA_CFLAGS += -DCONFIG_DISABLE_SHOW_AGENT_STATUS
+ ifeq ($(CPU_BINDING), y)
+ EXTRA_CFLAGS += -DCONFIG_CPU_BINDING -DCONFIG_NUM_TEE_DIE=4 -DCONFIG_NUM_TEE_PHY_CORE_PER_DIE=32
+ endif
+-- 
+2.27.0
+

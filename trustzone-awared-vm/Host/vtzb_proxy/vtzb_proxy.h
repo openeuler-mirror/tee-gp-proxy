@@ -25,6 +25,7 @@
 #define H_OFFSET                 32
 
 #define VTZB_RSP_UNKOWN          0xfffffffe
+#define CPU_SET_OFFSET           24
 
 #define TEEC_PARAM_TYPE_GET(paramTypes, index) \
     (((paramTypes) >> (4 * (index))) & 0x0F)
