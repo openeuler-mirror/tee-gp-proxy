@@ -63,6 +63,8 @@ static DEFINE_MUTEX(g_device_file_cnt_lock);
 struct agent_buf g_agents_buf[MAX_AGENTS_NUM] = {0};
 
 extern struct vtzf_serial_port_file *g_serial_port_file;
+extern struct list_head delayed_free_mem_list;
+extern spinlock_t delayed_free_lock;
 
 static struct vm_operations_struct g_shared_remap_vm_ops = {
 	.open = shared_vma_open,
@@ -695,47 +697,6 @@ static int vtzf_mmap(struct file *filp, struct vm_area_struct *vma)
 	return 0;
 }
 
-#define INPUT  0
-#define OUTPUT 1
-#define INOUT  2
-
-static inline bool is_input_type(int dir)
-{
-	if (dir == INPUT || dir == INOUT)
-		return true;
-
-	return false;
-}
-
-static inline bool is_output_type(int dir)
-{
-	if (dir == OUTPUT || dir == INOUT)
-		return true;
-
-	return false;
-}
-
-static inline bool teec_value_type(unsigned int type, int dir)
-{
-	return ((is_input_type(dir) && type == TEEC_VALUE_INPUT) ||
-		(is_output_type(dir) && type == TEEC_VALUE_OUTPUT) ||
-		type == TEEC_VALUE_INOUT) ? true : false;
-}
-
-static inline bool teec_tmpmem_type(unsigned int type, int dir)
-{
-	return ((is_input_type(dir) && type == TEEC_MEMREF_TEMP_INPUT) ||
-		(is_output_type(dir) && type == TEEC_MEMREF_TEMP_OUTPUT) ||
-		type == TEEC_MEMREF_TEMP_INOUT) ? true : false;
-}
-
-static inline bool teec_memref_type(unsigned int type, int dir)
-{
-	return ((is_input_type(dir) && type == TEEC_MEMREF_PARTIAL_INPUT) ||
-		(is_output_type(dir) && type == TEEC_MEMREF_PARTIAL_OUTPUT) ||
-		type == TEEC_MEMREF_PARTIAL_INOUT) ? true : false;
-}
-
 static long tc_client_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int ret = -EFAULT;
@@ -769,8 +730,6 @@ static int alloc_for_params_sess(struct vtzf_dev_file *dev_file,
 	struct_packet_cmd_session *packet_cmd, uintptr_t addrs[][3]);
 static void update_free_params_sess(struct tc_ns_client_context *clicontext, 
 	struct tc_ns_client_context *context, uintptr_t addrs[4][3]);
-static void free_for_params(struct tc_ns_client_context *clicontext,
-	uintptr_t addrs[4][3]);
 static void free_for_params_reg_mem(uintptr_t addrs[4][3]);
 
 static void keep_reg_mem(struct_packet_cmd_session *packet_cmd, uintptr_t addrs[4][3], unsigned int session_id) 
@@ -825,39 +784,49 @@ static int tc_ns_open_session(struct vtzf_dev_file *dev_file,
 	uint32_t total_buf_size = 0;
 	void *cmd_buf = NULL;
 	uint32_t seq_num = get_seq_num(0);
-	struct_packet_cmd_session packet_cmd = {0};
+	struct_packet_cmd_session *packet_cmd;
 	struct_packet_rsp_session packet_rsp = {0};
 	size_t file_size = 0;
 	char *buffer = NULL;
 	char *tmp_buffer = NULL;
-	uintptr_t addrs[4][3];
+	struct session_param_mem_info *session_param;
+
 	if (!clicontext || !dev_file || dev_file->ptzfd <= 0) {
 		tloge("invalid params\n");
 		return -EINVAL;
 	}
 
-	packet_cmd.packet_size = sizeof(packet_cmd);
-	packet_cmd.seq_num = seq_num;
-	packet_cmd.cmd = VTZF_OPEN_SESSION;
-	packet_cmd.ptzfd = dev_file->ptzfd;
-	packet_cmd.cliContext = *clicontext;
-	packet_cmd.nsid = task_active_pid_ns(current)->ns.inum;
+	session_param = kmalloc(sizeof(struct session_param_mem_info), GFP_KERNEL | __GFP_ZERO);
+	if (!session_param) {
+		tloge("session_param_mem_info kmalloc failed\n");
+		return -ENOMEM;
+	}
+	packet_cmd = &session_param->packet_cmd;
 
+	packet_cmd->packet_size = sizeof(*packet_cmd);
+	packet_cmd->seq_num = seq_num;
+	packet_cmd->cmd = VTZF_OPEN_SESSION;
+	packet_cmd->ptzfd = dev_file->ptzfd;
+	packet_cmd->cliContext = *clicontext;
+	packet_cmd->nsid = task_active_pid_ns(current)->ns.inum;
+	session_param->seq_num = seq_num + 1;
 
-	file_size = (size_t)packet_cmd.cliContext.file_size;
+	file_size = (size_t)packet_cmd->cliContext.file_size;
 	tlogd("file_size = %lu \n", file_size);
 	buffer = (char *)alloc_res_shm(file_size);
 	/*
-	if (ZERO_OR_NULL_PTR((unsigned long)(uintptr_t)buffer)) {
+	if (!buffer || ZERO_OR_NULL_PTR((unsigned long)(uintptr_t)buffer)) {
 		tloge("vtzf_dev_file malloc failed\n");
-		return -ENOMEM;
+		ret = -EFAULT;
+		goto END;
 	}
-        */
+    */
+	session_param->buffer = buffer;
 
-	tmp_buffer = packet_cmd.cliContext.file_buffer;
+	tmp_buffer = packet_cmd->cliContext.file_buffer;
 	tlogd("buffer addr = %016llx ,tmp_buffer =%016llx \n",
 		(unsigned long long)clicontext->file_buffer, (unsigned long long)tmp_buffer);
-	packet_cmd.cliContext.file_buffer = (char *)virt_to_phys(buffer);
+	packet_cmd->cliContext.file_buffer = (char *)virt_to_phys(buffer);
 
 	if (copy_from_user(buffer, (const void __user *)tmp_buffer, file_size)) {
 		tloge("file buf get failed \n");
@@ -865,18 +834,19 @@ static int tc_ns_open_session(struct vtzf_dev_file *dev_file,
 		goto END;
 	}
 
-	ret = alloc_for_params_sess(dev_file, &packet_cmd, addrs);
+	ret = alloc_for_params_sess(dev_file, packet_cmd, session_param->addrs);
 	if (ret) {
 		tloge("alloc for params failed \n");
-		return ret;
+		ret = -EFAULT;
+		goto END;
 	}
 	for (i = 0;i < TEE_PARAM_NUM; i++) {
-		total_buf_size += packet_cmd.block_size[i];
+		total_buf_size += packet_cmd->block_size[i];
 	}
-	packet_cmd.fragment_block_num = total_buf_size / sizeof(struct page_block);
-	packet_cmd.total_fragment_block_num = packet_cmd.fragment_block_num;
-	total_buf_size += sizeof(packet_cmd);
-	packet_cmd.packet_size = total_buf_size;
+	packet_cmd->fragment_block_num = total_buf_size / sizeof(struct page_block);
+	packet_cmd->total_fragment_block_num = packet_cmd->fragment_block_num;
+	total_buf_size += sizeof(*packet_cmd);
+	packet_cmd->packet_size = total_buf_size;
 	cmd_buf = kzalloc(total_buf_size, GFP_KERNEL);
 	if (!cmd_buf) {
 		tloge("cmd_buf malloc failed\n");
@@ -884,20 +854,20 @@ static int tc_ns_open_session(struct vtzf_dev_file *dev_file,
 		goto err2;
 	}
 
-	if (memcpy_s(cmd_buf, sizeof(packet_cmd), &packet_cmd, sizeof(packet_cmd)) != 0) {
+	if (memcpy_s(cmd_buf, sizeof(*packet_cmd), packet_cmd, sizeof(*packet_cmd)) != 0) {
 		ret = -EFAULT;
 		goto err1;
 	}	
-	offset = sizeof(packet_cmd);
+	offset = sizeof(*packet_cmd);
 
 	for (i = 0; i < TEE_PARAM_NUM; i++) {
-		if (packet_cmd.block_size[i] != 0 && 
-			memcpy_s(cmd_buf + offset, packet_cmd.block_size[i],
-				(void *)packet_cmd.block_addrs[i], packet_cmd.block_size[i]) != 0) {
+		if (packet_cmd->block_size[i] != 0 &&
+			memcpy_s(cmd_buf + offset, packet_cmd->block_size[i],
+				(void *)packet_cmd->block_addrs[i], packet_cmd->block_size[i]) != 0) {
 			ret = -EFAULT;
 			goto err1;
 		}
-		offset += packet_cmd.block_size[i];
+		offset += packet_cmd->block_size[i];
 	}
 
 	ret = send_to_proxy(cmd_buf, total_buf_size, &packet_rsp, sizeof(packet_rsp), seq_num);
@@ -906,37 +876,52 @@ static int tc_ns_open_session(struct vtzf_dev_file *dev_file,
 		tlogd(" opensession ret =%d \n", ret);
 		if (!ret) {
 			packet_rsp.cliContext.file_buffer = tmp_buffer;
-			update_free_params_sess(&packet_rsp.cliContext, clicontext, addrs);
+			update_free_params_sess(&packet_rsp.cliContext, clicontext, session_param->addrs);
 			*clicontext = packet_rsp.cliContext;
-			keep_reg_mem(&packet_cmd, addrs, clicontext->session_id);
+			keep_reg_mem(packet_cmd, session_param->addrs, clicontext->session_id);
 		} else {
 			tloge("open session failed ret is %d\n", ret);
 			clicontext->returns = packet_rsp.cliContext.returns;
-			free_for_params(&packet_cmd.cliContext, addrs);
+			free_for_params(&packet_cmd->cliContext, session_param->addrs);
 		}
-	} else {
+	} else if (ret != -EINTR) {
 		tloge("send to proxy failed ret is %d\n", ret);
-		free_for_params(&packet_cmd.cliContext, addrs);
-	}
-	kfree(cmd_buf);
-	for (i = 0; i < TEE_PARAM_NUM; i++) {
-		if (packet_cmd.block_size[i] != 0 && packet_cmd.block_addrs[i]) {
-			kfree((void *)packet_cmd.block_addrs[i]);
-		}
+		free_for_params(&packet_cmd->cliContext, session_param->addrs);
+	} else {
+		tloge("close session, delay release mem.\n");
+		spin_lock(&delayed_free_lock);
+		list_add_tail(&session_param->node, &delayed_free_mem_list);
+		spin_unlock(&delayed_free_lock);
+		goto free_cmd;
 	}
 	dealloc_res_shm(buffer);
+	kfree(session_param);
+free_cmd:
+	kfree(cmd_buf);
+	for (i = 0; i < TEE_PARAM_NUM; i++) {
+		if (packet_cmd->block_size[i] != 0 && packet_cmd->block_addrs[i]) {
+			kfree((void *)packet_cmd->block_addrs[i]);
+		}
+	}
 	return ret;
 err1:
 	kfree(cmd_buf);
 	for (i = 0; i < TEE_PARAM_NUM; i++) {
-		if (packet_cmd.block_size[i] != 0 && packet_cmd.block_addrs[i]) {
-			kfree((void *)packet_cmd.block_addrs[i]);
+		if (packet_cmd->block_size[i] != 0 && packet_cmd->block_addrs[i]) {
+			kfree((void *)packet_cmd->block_addrs[i]);
 		}
 	}	
 err2:
-	free_for_params(&packet_cmd.cliContext, addrs);
+	free_for_params(&packet_cmd->cliContext, session_param->addrs);
 END:
-	dealloc_res_shm(buffer);
+	if (session_param->buffer) {
+		dealloc_res_shm(session_param->buffer);
+		session_param->buffer = NULL;
+	}
+	if (session_param) {
+		kfree(session_param);
+		session_param = NULL;
+	}
 	return ret;
 }
 
@@ -1493,31 +1478,6 @@ static void update_free_params_sess(struct tc_ns_client_context *clicontext,
 
 		if (ret) {
 			tloge(" ret =%d \n", ret);
-		}
-	}	
-}
-
-static void free_for_params(struct tc_ns_client_context *clicontext,
-	uintptr_t addrs[4][3])
-{
-	int index;
-	uint32_t param_type;
-	uintptr_t buf;
-
-	void *pages_buf = NULL;
-	uint32_t pages_buf_size = 0;
-	for (index = 0; index < TEE_PARAM_NUM; index++) {
-		param_type = teec_param_type_get(clicontext->param_types, index);
-		if (teec_tmpmem_type(param_type, INOUT) && addrs[index][1]) {
-			buf = addrs[index][1];
-			dealloc_res_shm((void *)buf);
-		}else if (param_type == TEEC_MEMREF_SHARED_INOUT || 
-					param_type == TEEC_MEMREF_REGISTER_INOUT){
-			pages_buf = (void *)addrs[index][1];
-			pages_buf_size = (uint32_t)addrs[index][0];
-			release_shared_mem_page((uint64_t)pages_buf, pages_buf_size);
-		} else {
-			/* nothing */
 		}
 	}	
 }

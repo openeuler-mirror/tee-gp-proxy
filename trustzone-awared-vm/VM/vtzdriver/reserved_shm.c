@@ -3,12 +3,17 @@
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <securec.h>
+#include "block_pages.h"
+#include "tc_ns_client.h"
 #include "tc_ns_log.h"
 
 struct reserved_shm_list g_res_shm_list;
 struct mutex g_lock;
 size_t g_alloc_size;
 size_t g_relese_size;
+
+LIST_HEAD(delayed_free_mem_list);
+DEFINE_SPINLOCK(delayed_free_lock);
 
 void put_alloc(size_t size)
 {
@@ -113,4 +118,94 @@ void dealloc_res_shm(void *kernel_buffer)
 	mutex_unlock(&g_res_shm_list.lock);
 	if (!bfind)
 		tloge("can't find res mem\n");
+}
+
+static inline bool is_input_type(int dir)
+{
+	if (dir == INPUT || dir == INOUT)
+		return true;
+
+	return false;
+}
+
+static inline bool is_output_type(int dir)
+{
+	if (dir == OUTPUT || dir == INOUT)
+		return true;
+
+	return false;
+}
+
+bool teec_value_type(unsigned int type, int dir)
+{
+	return ((is_input_type(dir) && type == TEEC_VALUE_INPUT) ||
+		(is_output_type(dir) && type == TEEC_VALUE_OUTPUT) ||
+		type == TEEC_VALUE_INOUT) ? true : false;
+}
+
+bool teec_tmpmem_type(unsigned int type, int dir)
+{
+	return ((is_input_type(dir) && type == TEEC_MEMREF_TEMP_INPUT) ||
+		(is_output_type(dir) && type == TEEC_MEMREF_TEMP_OUTPUT) ||
+		type == TEEC_MEMREF_TEMP_INOUT) ? true : false;
+}
+
+bool teec_memref_type(unsigned int type, int dir)
+{
+	return ((is_input_type(dir) && type == TEEC_MEMREF_PARTIAL_INPUT) ||
+		(is_output_type(dir) && type == TEEC_MEMREF_PARTIAL_OUTPUT) ||
+		type == TEEC_MEMREF_PARTIAL_INOUT) ? true : false;
+}
+
+
+void free_for_params(struct tc_ns_client_context *clicontext,
+	uintptr_t addrs[][ADDRS_NUM])
+{
+	int index;
+	uint32_t param_type;
+	uintptr_t buf;
+
+	void *pages_buf = NULL;
+	uint32_t pages_buf_size = 0;
+	for (index = 0; index < TEE_PARAM_NUM; index++) {
+		param_type = teec_param_type_get(clicontext->param_types, index);
+		if (teec_tmpmem_type(param_type, INOUT) && addrs[index][1]) {
+			buf = addrs[index][1];
+			dealloc_res_shm((void *)buf);
+		}else if (param_type == TEEC_MEMREF_SHARED_INOUT ||
+					param_type == TEEC_MEMREF_REGISTER_INOUT){
+			pages_buf = (void *)addrs[index][1];
+			pages_buf_size = (uint32_t)addrs[index][0];
+			release_shared_mem_page((uint64_t)pages_buf, pages_buf_size);
+		} else {
+			/* nothing */
+		}
+	}	
+}
+
+void find_and_free_session(uint32_t seq_num)
+{
+	struct session_param_mem_info *session_param, *session_param_tmp;
+
+	spin_lock(&delayed_free_lock);
+
+	list_for_each_entry_safe(session_param, session_param_tmp, &delayed_free_mem_list, node) {
+		if (session_param->seq_num == seq_num) {
+			list_del(&session_param->node);
+
+			free_for_params(&session_param->packet_cmd.cliContext, session_param->addrs);
+			if (session_param->buffer) {
+				dealloc_res_shm(session_param->buffer);
+				session_param->buffer = NULL;
+			}
+
+			kfree(session_param);
+			spin_unlock(&delayed_free_lock);
+
+			tlogd("Found and freed session with seq_num = %u\n", seq_num);
+			return;
+		}
+	}
+
+	spin_unlock(&delayed_free_lock);
 }
