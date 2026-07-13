@@ -11,6 +11,7 @@
 #include "block_pages.h"
 #include "tc_ns_log.h"
 #include "tlogger.h"
+#include "reserved_shm.h"
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(5, 0, 0)   
 #include <linux/timekeeping.h>
@@ -239,6 +240,9 @@ void put_event_data(void *packet, int packet_size, uint32_t seq_num, int result)
 	struct vhc_event_data *event_data;
 	struct vhc_event_data *tmp;
 	tlogd("put event: len %d, seq %d\n", packet_size, seq_num);
+
+	find_and_free_session(seq_num);
+
 	if (!packet)
 		return;
 	spin_lock(&g_event_data_list.spinlock);
