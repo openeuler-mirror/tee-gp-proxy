@@ -1,4 +1,4 @@
-From b60eff1aabd753f3534e9cb2ac8a1237bae32a67 Mon Sep 17 00:00:00 2001
+From ad441effa7e9fe01f798b11027e52344a6b7155e Mon Sep 17 00:00:00 2001
 From: liuhao365 <liuhao365@h-partners.com>
 Date: Wed, 15 Jul 2026 15:08:54 +0800
 Subject: [PATCH 2/4] add translate gpa interface
@@ -10,7 +10,7 @@ Signed-off-by: liuhao365 <liuhao365@h-partners.com>
  2 files changed, 119 insertions(+), 1 deletion(-)
 
 diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
-index 4bfa2f5..e043714 100644
+index d232b43..8ca8219 100644
 --- a/core/tc_client_driver.c
 +++ b/core/tc_client_driver.c
 @@ -52,6 +52,8 @@
@@ -133,7 +133,7 @@ index 4bfa2f5..e043714 100644
  int tc_ns_register_host_nsid_vmid(void)
  {
  	struct tc_ns_smc_cmd smc_cmd = {{0}, 0};
-@@ -1116,6 +1215,11 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
+@@ -1173,6 +1272,11 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
  	case TC_NS_CLIENT_IOCTL_UNREGISTER_VM_NSID_VMID:
  		ret = tc_ns_operate_vm_nsid_vmid(file->private_data, argp, cmd);
  		break;
@@ -145,7 +145,7 @@ index 4bfa2f5..e043714 100644
  	default:
  		ret = public_ioctl(file, cmd, arg, false);
  		break;
-@@ -1175,7 +1279,7 @@ static int tc_client_open(struct inode *inode, struct file *file)
+@@ -1232,7 +1336,7 @@ static int tc_client_open(struct inode *inode, struct file *file)
  	bool is_vm_dev = false;
  
  #ifdef CONFIG_VM_DEPLOY
@@ -154,7 +154,7 @@ index 4bfa2f5..e043714 100644
  		is_vm_dev = true;
  	}
  #endif /* CONFIG_VM_DEPLOY */
-@@ -1668,6 +1772,11 @@ static __init int tc_init(void)
+@@ -1725,6 +1829,11 @@ static __init int tc_init(void)
  #if defined(DYNAMIC_DRV_DIR) || defined(DYNAMIC_CRYPTO_DRV_DIR) || defined(DYNAMIC_SRV_DIR)
  	tz_load_dynamic_dir();
  #endif
@@ -167,7 +167,7 @@ index 4bfa2f5..e043714 100644
  
  class_device_destroy:
 diff --git a/tc_ns_client.h b/tc_ns_client.h
-index 07c635c..9560b7b 100644
+index 266d567..a1bc26b 100644
 --- a/tc_ns_client.h
 +++ b/tc_ns_client.h
 @@ -228,6 +228,15 @@ typedef struct {

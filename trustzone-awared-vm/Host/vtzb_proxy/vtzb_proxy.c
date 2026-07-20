@@ -1202,9 +1202,9 @@ END:
 
 int main() {
     int ret = 0;
-    if (daemonize() != 0) {
-        tloge("daemonize failed");
-        return -1;
+    if (acquire_singleton_lock() != 0) { 
+        tloge("acquire_singleton_lock failed"); 
+        return -1; 
     }
 
     if (register_signal_handlers() != 0) {

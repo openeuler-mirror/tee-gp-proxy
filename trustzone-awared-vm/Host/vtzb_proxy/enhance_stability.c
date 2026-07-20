@@ -1,47 +1,45 @@
+#include <sys/file.h>
 #include "enhance_stability.h"
 #include "config.h"
 
+#define VTZ_PROXY_LOCK_FILE "/var/run/vtz_proxy.lock"
+static int g_lock_fd = -1;
+
 extern ThreadPool g_pool;
 extern struct serial_port_file *g_serial_array[SERIAL_PORT_NUM_MAX];
-int daemonize(void) {
-    pid_t pid = fork();
-    if (pid < 0) {
-        perror("fork failed");
-        return -1;
-    }
-    if (pid > 0) {
-        exit(0);
-    }
 
-    if (setsid() < 0) {
-        perror("setsid failed");
+int acquire_singleton_lock(void) {
+    int lock_fd;
+
+    lock_fd = open(VTZ_PROXY_LOCK_FILE, O_CREAT | O_RDWR, 0644);
+    if (lock_fd == -1) {
+        perror("vtz_proxy: Failed to create lock file");
         return -1;
     }
 
-    pid = fork();
-    if (pid < 0) {
-        perror("fork failed");
+    if (flock(lock_fd, LOCK_EX | LOCK_NB) == -1) {
+        if (errno == EWOULDBLOCK) {
+            fprintf(stderr, "vtz_proxy: Another instance is already running\n");
+        } else {
+            perror("vtz_proxy: Failed to acquire lock");
+        }
+        close(lock_fd);
         return -1;
     }
-    if (pid > 0) {
-        exit(0);
-    }
 
-    if (chdir("/") != 0) {
-        perror("chdir failed");
-        return -1;
-    }
-    umask(0);
-    close(STDIN_FILENO);
-    close(STDOUT_FILENO);
-    close(STDERR_FILENO);
+    g_lock_fd = lock_fd;
 
-    open("/dev/null", O_RDONLY);
-    open("/dev/null", O_WRONLY);
-    open("/dev/null", O_WRONLY); 
-
-    tlogi("vtz_proxy: daemonize success");
     return 0;
+}
+
+void release_singleton_lock(void) {
+    if (g_lock_fd == -1)
+        return;
+
+    flock(g_lock_fd, LOCK_UN);
+    close(g_lock_fd);
+    unlink(VTZ_PROXY_LOCK_FILE);
+    g_lock_fd = -1;
 }
 
 static void cleanup_resources(void) {
@@ -53,6 +51,7 @@ static void cleanup_resources(void) {
         }
     }
     thread_pool_destroy(&g_pool);
+    release_singleton_lock();
 }
 
 static void signal_handler(int signum) {

@@ -1,4 +1,4 @@
-From f2f474022074982dba0b12b19812ac6bdd6d3474 Mon Sep 17 00:00:00 2001
+From a53b30fe8bad87a76062050c5392718a3c52147c Mon Sep 17 00:00:00 2001
 From: liuhao365 <liuhao365@h-partners.com>
 Date: Tue, 14 Jul 2026 20:26:23 +0800
 Subject: [PATCH 3/4] add map vcpu to pcpu for virtual
@@ -9,7 +9,7 @@ Subject: [PATCH 3/4] add map vcpu to pcpu for virtual
  2 files changed, 114 insertions(+)
 
 diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
-index e043714..ed1f931 100644
+index 8ca8219..afc2243 100644
 --- a/core/tc_client_driver.c
 +++ b/core/tc_client_driver.c
 @@ -61,6 +61,7 @@
@@ -124,7 +124,7 @@ index e043714..ed1f931 100644
  #endif /* CONFIG_VM_DEPLOY */
  
  int tc_ns_register_host_nsid_vmid(void)
-@@ -1219,6 +1317,9 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
+@@ -1276,6 +1374,9 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
  	case TC_NS_CLIENT_IOCTL_TRANSLATE_GPA:
  		ret = tc_ns_translate_gpa(file->private_data, argp, cmd);
  		break;
@@ -135,7 +135,7 @@ index e043714..ed1f931 100644
  	default:
  		ret = public_ioctl(file, cmd, arg, false);
 diff --git a/tc_ns_client.h b/tc_ns_client.h
-index 9560b7b..a3e8d4b 100644
+index a1bc26b..0441300 100644
 --- a/tc_ns_client.h
 +++ b/tc_ns_client.h
 @@ -26,6 +26,9 @@

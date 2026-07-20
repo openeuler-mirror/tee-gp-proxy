@@ -1,0 +1,16 @@
+[Unit]
+Description=vtz proxy Service
+Requires=teec.service
+After=teec.service
+
+[Service]
+Type=simple
+ExecStartPre=/sbin/modprobe vhost_vsock
+ExecStartPre=/sbin/modprobe tzdriver
+ExecStart=/usr/bin/vtz_proxy
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

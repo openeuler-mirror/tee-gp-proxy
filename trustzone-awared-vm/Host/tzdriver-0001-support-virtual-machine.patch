@@ -1,6 +1,6 @@
-From 6e0eb4fb32ce313c14a4f29ace88ac4b998d4980 Mon Sep 17 00:00:00 2001
-From: liuhao365 <liuhao365@h-partners.com>
-Date: Sat, 27 Jun 2026 09:43:19 +0800
+From 617c0050a23e11c29afb67a0e2c859bf427152f3 Mon Sep 17 00:00:00 2001
+From: liuhao365 <liuhao365@huawei.com>
+Date: Wed, 22 Jul 2026 16:12:33 +0800
 Subject: [PATCH 1/4] support virtual machine
 
 Signed-off-by: liuhao365 <liuhao365@h-partners.com>
@@ -111,7 +111,7 @@ index 82d950f..7f8a637 100644
  
  bool is_hidl_or_cadaemon(void);
 diff --git a/core/gp_ops.c b/core/gp_ops.c
-index 7938204..0f45993 100644
+index 8c851e3..801f19a 100644
 --- a/core/gp_ops.c
 +++ b/core/gp_ops.c
 @@ -231,6 +231,75 @@ int write_to_client(void __user *dest, size_t dest_size,
@@ -256,7 +256,7 @@ index 7938204..0f45993 100644
  		return -EINVAL;
  
  	op_params->mb_pack->operation.params[index].memref.buffer = 0;
-@@ -491,6 +571,142 @@ static int check_buffer_for_sharedmem(uint32_t *buffer_size,
+@@ -493,6 +573,142 @@ static int check_buffer_for_sharedmem(uint32_t *buffer_size,
  	return 0;
  }
  
@@ -399,7 +399,7 @@ index 7938204..0f45993 100644
  static int transfer_shared_mem(const struct tc_call_params *call_params,
  	struct tc_op_params *op_params, uint8_t kernel_params,
  	uint32_t param_type, unsigned int index)
-@@ -499,10 +715,11 @@ static int transfer_shared_mem(const struct tc_call_params *call_params,
+@@ -501,10 +717,11 @@ static int transfer_shared_mem(const struct tc_call_params *call_params,
  	void *start_vaddr = NULL;
  	union tc_ns_client_param *client_param = NULL;
  	uint32_t buffer_size;
@@ -412,7 +412,7 @@ index 7938204..0f45993 100644
  
  	if (index >= TEE_PARAM_NUM)
  		return -EINVAL;
-@@ -518,19 +735,61 @@ static int transfer_shared_mem(const struct tc_call_params *call_params,
+@@ -520,19 +737,61 @@ static int transfer_shared_mem(const struct tc_call_params *call_params,
  
  	buffer_addr = client_param->memref.buffer |
  		((uint64_t)client_param->memref.buffer_h_addr << ADDR_TRANS_NUM);
@@ -486,7 +486,7 @@ index 7938204..0f45993 100644
  	}
  
  	op_params->local_tmpbuf[index].temp_buffer = buff;
-@@ -707,13 +966,24 @@ static int update_tmp_mem(const struct tc_call_params *call_params,
+@@ -709,13 +968,24 @@ static int update_tmp_mem(const struct tc_call_params *call_params,
  	if (buffer_size == 0)
  		return 0;
  	/* Only update the buffer when the buffer size is valid in complete case */
@@ -518,7 +518,7 @@ index 7938204..0f45993 100644
  	}
  	return 0;
  }
-@@ -863,7 +1133,11 @@ static void free_operation_sharedmem_params(const struct tc_call_params *call_pa
+@@ -856,7 +1126,11 @@ static void free_operation_sharedmem_params(const struct tc_call_params *call_pa
  		}
  	}
  #endif
@@ -531,7 +531,7 @@ index 7938204..0f45993 100644
  	mailbox_free(temp_buf);
  }
  #endif
-@@ -1170,7 +1444,13 @@ int tc_client_call(const struct tc_call_params *call_params)
+@@ -1163,7 +1437,13 @@ int tc_client_call(const struct tc_call_params *call_params)
  		return -ENOMEM;
  
  	op_params.smc_cmd->err_origin = TEEC_ORIGIN_COMMS;
@@ -579,10 +579,10 @@ index bc2446e..451ade0 100644
  
  #endif
 diff --git a/core/session_manager.c b/core/session_manager.c
-index 4c0b32c..9bd5cfe 100644
+index 1cc2461..6f43e20 100644
 --- a/core/session_manager.c
 +++ b/core/session_manager.c
-@@ -804,10 +804,19 @@ static int32_t load_image_copy_file(struct load_img_params *params, uint32_t loa
+@@ -817,10 +817,19 @@ static int32_t load_image_copy_file(struct load_img_params *params, uint32_t loa
  		}
  		return 0;
  	}
@@ -606,7 +606,7 @@ index 4c0b32c..9bd5cfe 100644
  	}
  	return 0;
  }
-@@ -1165,9 +1174,39 @@ static int close_session(struct tc_ns_dev_file *dev,
+@@ -1178,9 +1187,39 @@ static int close_session(struct tc_ns_dev_file *dev,
  {
  	struct tc_ns_client_context context;
  	int ret;
@@ -649,7 +649,7 @@ index 4c0b32c..9bd5cfe 100644
  
  	if (uuid_len != UUID_LEN)
  		return -EINVAL;
-@@ -1180,6 +1219,7 @@ static int close_session(struct tc_ns_dev_file *dev,
+@@ -1193,6 +1232,7 @@ static int close_session(struct tc_ns_dev_file *dev,
  
  	context.session_id = session_id;
  	context.cmd_id = GLOBAL_CMD_ID_CLOSE_SESSION;
@@ -657,7 +657,7 @@ index 4c0b32c..9bd5cfe 100644
  	params.flags = TC_CALL_GLOBAL | TC_CALL_SYNC;
  	ret = tc_client_call(&params);
  	if (ret != 0)
-@@ -1191,6 +1231,7 @@ static int close_session(struct tc_ns_dev_file *dev,
+@@ -1204,6 +1244,7 @@ static int close_session(struct tc_ns_dev_file *dev,
  	kill_ion_by_uuid((struct tc_uuid *)context.uuid);
  	return ret;
  }
@@ -665,7 +665,7 @@ index 4c0b32c..9bd5cfe 100644
  
  static void close_session_in_service_list(struct tc_ns_dev_file *dev,
  	struct tc_ns_service *service)
-@@ -1203,8 +1244,13 @@ static void close_session_in_service_list(struct tc_ns_dev_file *dev,
+@@ -1216,8 +1257,13 @@ static void close_session_in_service_list(struct tc_ns_dev_file *dev,
  		&service->session_list, head) {
  		if (session->owner != dev)
  			continue;
@@ -679,7 +679,7 @@ index 4c0b32c..9bd5cfe 100644
  		if (ret != 0)
  			tloge("close session smc failed when close fd!\n");
  		mutex_lock(&service->session_lock);
-@@ -1328,8 +1374,13 @@ int tc_ns_close_session(struct tc_ns_dev_file *dev_file,
+@@ -1341,8 +1387,13 @@ int tc_ns_close_session(struct tc_ns_dev_file *dev_file,
  	if (session) {
  		int ret2;
  		mutex_lock(&session->ta_session_lock);
@@ -693,7 +693,7 @@ index 4c0b32c..9bd5cfe 100644
  		mutex_unlock(&session->ta_session_lock);
  		if (ret2 != 0)
  			tloge("close session smc failed!\n");
-@@ -1412,11 +1463,119 @@ find_session:
+@@ -1425,11 +1476,119 @@ find_session:
  	return ret;
  }
  
@@ -813,7 +813,7 @@ index 4c0b32c..9bd5cfe 100644
  	ret = tc_ns_send_cmd(dev_file, context);
  	if (ret != 0)
  		tloge("send cmd failed ret is %d\n", ret);
-@@ -1424,6 +1583,14 @@ static int ioctl_session_send_cmd(struct tc_ns_dev_file *dev_file,
+@@ -1437,6 +1596,14 @@ static int ioctl_session_send_cmd(struct tc_ns_dev_file *dev_file,
  		if (ret == 0)
  			ret = -EFAULT;
  	}
@@ -829,7 +829,7 @@ index 4c0b32c..9bd5cfe 100644
  }
  
 diff --git a/core/shared_mem.c b/core/shared_mem.c
-index 6b1d2fa..04e62fa 100644
+index 3d012c4..a2764c5 100644
 --- a/core/shared_mem.c
 +++ b/core/shared_mem.c
 @@ -127,6 +127,35 @@ void release_shared_mem_page(uint64_t buf, uint32_t buf_size)
@@ -880,7 +880,7 @@ index aece31e..b21cd11 100644
  
  #endif
 diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
-index 8382f6d..4bfa2f5 100644
+index 0331da6..d232b43 100644
 --- a/core/tc_client_driver.c
 +++ b/core/tc_client_driver.c
 @@ -416,10 +416,16 @@ static int client_login_prepare(uint8_t *cert_buffer,
@@ -904,7 +904,7 @@ index 8382f6d..4bfa2f5 100644
  	}
  
  	if (!dev_file)
-@@ -848,12 +854,60 @@ static int ioctl_check_is_ccos(void __user *argp)
+@@ -940,12 +946,60 @@ static int ioctl_check_is_ccos(void __user *argp)
  	return ret;
  }
  
@@ -965,7 +965,7 @@ index 8382f6d..4bfa2f5 100644
  	if (file == NULL || file->private_data == NULL) {
  		tloge("invalid params\n");
  		return -EINVAL;
-@@ -861,16 +915,40 @@ int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, b
+@@ -953,13 +1007,37 @@ int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, b
  	dev_file = file->private_data;
  	uint32_t nsid = dev_file->nsid;
  	uint32_t vmid = dev_file->vmid;
@@ -986,9 +986,7 @@ index 8382f6d..4bfa2f5 100644
  
  	switch (cmd) {
  	case TC_NS_CLIENT_IOCTL_WAIT_EVENT:
- 		if (ioctl_check_agent_owner(dev_file, (unsigned int)arg) != 0)
- 			return -EINVAL;
- 		ret = tc_ns_wait_event((unsigned int)arg, nsid, vmid);
+ 		ret = ioctl_wait_event(dev_file, (unsigned int)arg, is_from_client_node, nsid, vmid);
 +#ifdef CONFIG_VM_DEPLOY
 +		if (!ret && dev_file->is_vm_dev) {
 +			ret = copy_buf_to_VM(arg, nsid, buffer_addr, dev_file->vmid);
@@ -996,17 +994,16 @@ index 8382f6d..4bfa2f5 100644
 +#endif
  		break;
  	case TC_NS_CLIENT_IOCTL_SEND_EVENT_RESPONSE:
- 		if (ioctl_check_agent_owner(dev_file, (unsigned int)arg) != 0)
- 			return -EINVAL;
+ 		ret = ioctl_send_event_response(dev_file, (unsigned int)arg, is_from_client_node, nsid, vmid);
 +#ifdef CONFIG_VM_DEPLOY
 +		if (dev_file->is_vm_dev) {
 +			ret = copy_buf_from_VM(arg, nsid, buffer_addr, dev_file->vmid);
 +		}
 +#endif
- 		ret = tc_ns_send_event_response((unsigned int)arg, nsid, vmid);
  		break;
  	case TC_NS_CLIENT_IOCTL_REGISTER_AGENT:
-@@ -967,6 +1045,25 @@ static int tc_client_agent_ioctl(const struct file *file, unsigned int cmd,
+ 		ret = ioctl_register_agent(dev_file, arg, is_from_client_node);
+@@ -1024,6 +1102,25 @@ static int tc_client_agent_ioctl(const struct file *file, unsigned int cmd,
  	return ret;
  }
  
@@ -1032,7 +1029,7 @@ index 8382f6d..4bfa2f5 100644
  void handle_cmd_prepare(unsigned int cmd)
  {
  	if (cmd != TC_NS_CLIENT_IOCTL_WAIT_EVENT &&
-@@ -986,6 +1083,11 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
+@@ -1043,6 +1140,11 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
@@ -1044,7 +1041,7 @@ index 8382f6d..4bfa2f5 100644
  	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->vmid == 0)
  		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
  			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
-@@ -1029,6 +1131,11 @@ static long tc_client_ioctl(struct file *file, unsigned int cmd,
+@@ -1086,6 +1188,11 @@ static long tc_client_ioctl(struct file *file, unsigned int cmd,
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
@@ -1056,7 +1053,7 @@ index 8382f6d..4bfa2f5 100644
  	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->vmid == 0)
  		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
  			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
-@@ -1065,19 +1172,27 @@ static int tc_client_open(struct inode *inode, struct file *file)
+@@ -1122,19 +1229,27 @@ static int tc_client_open(struct inode *inode, struct file *file)
  	int ret;
  	struct tc_ns_dev_file *dev = NULL;
  	(void)inode;
@@ -1121,7 +1118,7 @@ index 52fe687..6c1929d 100644
  		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
  			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
 diff --git a/tc_ns_client.h b/tc_ns_client.h
-index 23aed72..07c635c 100644
+index 298ad8e..266d567 100644
 --- a/tc_ns_client.h
 +++ b/tc_ns_client.h
 @@ -90,6 +90,7 @@ struct tc_ns_client_context {
@@ -1154,10 +1151,10 @@ index 23aed72..07c635c 100644
  #else
  	return REE_CONTAINER;
 diff --git a/teek_ns_client.h b/teek_ns_client.h
-index 8413acd..8d383c6 100644
+index 9733d97..a4f0b5d 100644
 --- a/teek_ns_client.h
 +++ b/teek_ns_client.h
-@@ -132,10 +132,10 @@ struct tc_ns_dev_file {
+@@ -134,10 +134,10 @@ struct tc_ns_dev_file {
  #endif
  	MAX_PUBKEY_LEN];
  	int load_app_flag;

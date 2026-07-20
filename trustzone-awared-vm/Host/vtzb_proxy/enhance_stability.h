@@ -8,5 +8,5 @@
 #include "thread_pool.h"
 #include "agent.h"
 
-int daemonize(void);
+int acquire_singleton_lock(void);
 int register_signal_handlers(void);
