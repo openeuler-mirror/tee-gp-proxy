@@ -322,8 +322,6 @@ typedef struct {
 #endif
 #include <sched.h>
 
-#define MAX_VCPU_COUNT 256
-
 typedef struct {
     size_t id;
     size_t device_id;

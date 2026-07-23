@@ -28,10 +28,6 @@
 
 手动部署之前，请确保满足以下条件：
 
-### 必需文件准备
-
-将 `vtzb_proxy.conf` 放置在 `/var/vtzb/` 目录下
-
 ### 配置文件
 
 `vtzb_proxy.conf`为 `vtz_proxy` 的配置文件，可在其中定义了最大虚机数量等参数，详细信息如下：
@@ -39,6 +35,8 @@
 - `max_vm_count`：支持的最大虚机数量
 
 - `numa_bindings`：`vtz_proxy` 线程池绑核配置
+
+- `use_vcpuset`: 虚机TA绑核配置
 
 ### 端口
 
@@ -48,7 +46,7 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
 
 1. 安装依赖
     ```shell
-    yum install gcc patch make  kernel-devel-$(uname -r) ninja-build
+    yum install gcc patch make kernel-devel-$(uname -r) ninja-build rpm-build
     yum install glib2 glib2-devel pixman-devel
     yum install openssl-devel
     yum install libxml2-devel libvirt-devel
@@ -57,15 +55,12 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
 2. `vtzb_proxy`编译
     ```shell
     git clone https://gitcode.com/openeuler/tee-gp-proxy.git
-    git clone https://gitcode.com/openeuler/libboundscheck.git
-    cp -rf libboundscheck tee-gp-proxy/trustzone-awared-vm/Host/vtzb_proxy
     ```
    
     1. 编译
         ```shell
-        cd tee-gp-proxy/trustzone-awared-vm/Host/vtzb_proxy
-        make
-        sudo cp ./vtz_proxy /usr/bin/vtz_proxy
+        cd tee-gp-proxy/trustzone-awared-vm/Host/rpm
+        sh build_rpm.sh
         ```	
 3. `vhost_vsock`编译
     > 注：当系统内核使用4.19内核基线版本大于4.19.149时，vsock驱动代码需要根据基线做修改适配。具体可根据版本号参考https://elixir.bootlin.com/linux/v4.19.150/source/drivers/vhost/vsock对vsock对应版本驱动源码进行修改。
@@ -75,28 +70,30 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
 
     virtio_transport_recv_pkt(pkt);改为virtio_transport_recv_pkt(&vhost_transport, pkt);
     ```
-    1. 根据实际内核版本4.19、5.10、6.6，进入对应vsock源码目录，执行编译后，将`vhost_vsock.ko` 复制到指定目录。
+    1. 进入Host路径，执行`build_vsock.sh`脚本，编译并替换系统vhost_vsock驱动。
     ```shell
-    cd tee-gp-proxy/trustzone-awared-vm/Host/vsock-$(uname -r | awk -F. '{printf "%s.%s\n", $1, $2}')
-    make
-    mkdir -p "/lib/modules/$(uname -r)/kernel/drivers/trustzone/"
-    cp vhost_vsock.ko /lib/modules/$(uname -r)/kernel/drivers/trustzone
+    cd tee-gp-proxy/trustzone-awared-vm/Host/
+    sh build_vsock.sh
     ```
 4. `tzdriver`和`client`编译安装
     1. 进入`itrustee_tzdriver`的根目录，补丁文件路径按照实际路径修改。
     ``` 
     git am ../tee-gp-proxy/trustzone-awared-vm/Host/tzdriver-00*.patch
+    cd rpm
+    sh build_rpm.sh
+    rpm -ivh output/tzdriver-*.rpm
     ```
-    2. 进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改。
+    2. 进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改，编译守护进程并安装。
     ```shell 
-    git am ../tee-gp-proxy/trustzone-awared-vm/Host/client-0001-add-vm-uid-in-TC_NS_ClientContext.patch
+    git am ../tee-gp-proxy/trustzone-awared-vm/Host/client-00*.patch
+    cd rpm
+    sh build_rpm.sh
+    rpm -ivh output/tee_client-*.rpm
     ```
-    3. 920 机型请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/trustzone/fg/kunpengtrustzone_20_0019.html)。
-    4. 920 新型号请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/cca/devg/Kunpeng_ommercialcryptography_16_0015.html)
-    5. 在`tzdriver`编译后，将`tzdriver.ko` 复制到指定目录
-        ```shell 
-        cp tzdriver.ko /lib/modules/$(uname -r)/kernel/drivers/trustzone
-        ```
+5. `vtz_proxy`安装
+    ```
+    rpm -ivh tee-gp-proxy/trustzone-awared-vm/Host/rpm/output/vtz_proxy-*
+    ```
 ## qemu与虚机配置
 1.	获取`qemu v6.2.0`源码
     ```shell
@@ -136,59 +133,41 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
 ## VM环境搭建
 1. 安装依赖
     ```shell
-    yum install make kernel-devel-$(uname -r) git gcc openssl-devel 
+    yum install make kernel-devel-$(uname -r) git gcc openssl-devel rpm-build
     yum install compat-openssl11-libs  # 当内核版本大于等于6.6需安装
     ```
 2. 下载`tee-gp-proxy`仓库，其中包含`vtzdriver`与`virtio`(5.10内核)源码。
     ```
     git clone https://gitcode.com/openeuler/tee-gp-proxy.git
-    git clone https://gitcode.com/openeuler/libboundscheck.git
-    cp -rf libboundscheck tee-gp-proxy/trustzone-awared-vm/VM/vtzdriver
     ```
-3. `itrustee_client`编译安装
-    1. 进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改。
-        1. ``` git am ../tee-gp-proxy/trustzone-awared-vm/Host/client-00*.patch```
-    2. 920 机型请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/trustzone/fg/kunpengtrustzone_20_0019.html)。
-    3. 920 新型号请参考[官方文档](https://www.hikunpeng.com/document/detail/zh/kunpengcctrustzone/cca/devg/Kunpeng_ommercialcryptography_16_0015.html)
-4. 编译`vtzdriver`并加载`vtzfdriver.ko`
+3. 编译`vtzdriver`并加载`vtzdriver.ko`
     ```shell
-    cd tee-gp-proxy/trustzone-awared-vm/VM/vtzdriver
-    make
-    mkdir -p /lib/modules/$(uname -r)/kernel/drivers/trustzone
-    cp vtzfdriver.ko /lib/modules/$(uname -r)/kernel/drivers/trustzone
-    insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/vtzfdriver.ko
+    cd tee-gp-proxy/trustzone-awared-vm/VM/rpm
+    sh build_rpm.sh
+    rpm -ivh vtzdriver-*
     ```
     > 如果是麒麟系统，需要在Makefile中 删除 `-fstack-protector-strong`
     >
     > 若kernel路径不正确，请自行修改Makefile中的KERN_DIR
-
+4. `itrustee_client`编译安装
+   1. 进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改并编译。
+        ```shell 
+        git am ../tee-gp-proxy/trustzone-awared-vm/Host/client-00*.patch
+        cd rpm
+        sh build_rpm.sh
+        rpm -ivh output/tee_client-*.rpm
+        ```
 ## 开始运行
-首先要确认`Host`与`VM`中已搭建好`ccos`环境，然后每次重启后需执行以下命令：
-#### 在`Host`中需要按顺序执行以下命令，请确保vsock相关命令先执行，且需在虚机启动前执行
-```shell
-modprobe vmw_vsock_virtio_transport_common && modprobe vhost
-insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/vhost_vsock.ko
-insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/tzdriver.ko
-nohup /usr/bin/teecd &
-nohup /usr/bin/vtz_proxy &
-```
-#### 在`VM`中需要执行以下命令
-
-1. 加载`vtzfdriver.ko`和`teecd`
-```bash
-insmod /lib/modules/$(uname -r)/kernel/drivers/trustzone/vtzfdriver.ko
-nohup /usr/bin/teecd &
-```
+1. 确认`Host`环境已安装tzdriver, tee_client, vtz_proxy rpm包，`VM`环境安装好vtzdriver, tee_client rpm包，即可使用TEE环境运行CA。
 
 ## 故障恢复
 1. `vtz_proxy` 优雅退出：
     1. 需要再次拉起`vtz_proxy`，然后在所有`VM`内手动终止正在执行的`CA`进程，并进行如下操作：
     ```
-    kill -9 $(pgrep teecd)
-    rmmod vtzfdriver.ko 
-    insmod vtzfdriver.ko
-    nohup /usr/bin/teecd &
+    systemctl stop teec
+    rmmod vtzdriver
+    systemctl start teec
     ```
     2. 最后再重新拉起CA进程。
 2. `vtz_proxy` 强制退出：
-	1. 需要再次拉起`vtz_proxy` 进程，重启所有`VM`，并重新初始化环境。
+	1. 需要再次拉起systemctl start vtz_proxy 进程，重启所有`VM`，并重新初始化环境。

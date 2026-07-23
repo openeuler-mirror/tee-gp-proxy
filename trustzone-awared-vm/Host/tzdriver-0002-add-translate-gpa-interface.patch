@@ -1,15 +1,16 @@
-From b7166e3b17b03fb35cfe30faa44907c45d53c9d8 Mon Sep 17 00:00:00 2001
+From ad441effa7e9fe01f798b11027e52344a6b7155e Mon Sep 17 00:00:00 2001
 From: liuhao365 <liuhao365@h-partners.com>
-Date: Wed, 29 Apr 2026 11:17:47 +0800
-Subject: [PATCH 3/3] add translate cid and gpa interface
+Date: Wed, 15 Jul 2026 15:08:54 +0800
+Subject: [PATCH 2/4] add translate gpa interface
 
+Signed-off-by: liuhao365 <liuhao365@h-partners.com>
 ---
- core/tc_client_driver.c | 89 +++++++++++++++++++++++++++++++++++++++++
- tc_ns_client.h          |  8 ++++
- 2 files changed, 97 insertions(+)
+ core/tc_client_driver.c | 111 +++++++++++++++++++++++++++++++++++++++-
+ tc_ns_client.h          |   9 ++++
+ 2 files changed, 119 insertions(+), 1 deletion(-)
 
 diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
-index 10d1292..33d64ed 100644
+index d232b43..8ca8219 100644
 --- a/core/tc_client_driver.c
 +++ b/core/tc_client_driver.c
 @@ -52,6 +52,8 @@
@@ -21,24 +22,30 @@ index 10d1292..33d64ed 100644
  #if (KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE)
  #include <linux/sched/mm.h>
  #include <linux/sched/signal.h>
-@@ -112,6 +114,8 @@ struct tc_ns_dev_list g_tc_ns_dev_list;
+@@ -112,6 +114,10 @@ struct tc_ns_dev_list g_tc_ns_dev_list;
  
  static bool g_init_succ = false;
  
++#ifdef CONFIG_VM_DEPLOY
 +static bool g_vm_deploy_enable = true;
++#endif /* CONFIG_VM_DEPLOY */
 +
  struct class *get_driver_class(void)
  {
  	return g_driver_class;
-@@ -207,6 +211,81 @@ static int tc_ns_operate_vm_nsid_vmid(const struct tc_ns_dev_file *dev_file, con
+@@ -207,6 +213,99 @@ static int tc_ns_operate_vm_nsid_vmid(const struct tc_ns_dev_file *dev_file, con
  }
  #endif
  
++#ifdef CONFIG_VM_DEPLOY
 +typedef unsigned long (*kallsyms_lookup_name_t)(const char *name);
 +static kallsyms_lookup_name_t fn_kallsyms_lookup_name = NULL;
 +
 +typedef uint64_t (*vhost_vsock_translate_gpa_t)(uint32_t cid, uint64_t gpa, uint64_t size);
 +static vhost_vsock_translate_gpa_t vhost_vsock_translate_gpa_func = NULL;
++
++typedef uint64_t (*vhost_vsock_translate_addr_t)(uint32_t cid, uint64_t addr, uint64_t len, struct iovec iov[], int iov_size);
++static vhost_vsock_translate_addr_t vhost_vsock_translate_addr_func = NULL;
 +
 +static struct kprobe kp_sym_lookup = {
 +	.symbol_name = "kallsyms_lookup_name",
@@ -68,15 +75,28 @@ index 10d1292..33d64ed 100644
 +
 +	vhost_vsock_translate_gpa_func = (vhost_vsock_translate_gpa_t)
 +		fn_kallsyms_lookup_name("vhost_vsock_translate_gpa");
-+	if (!vhost_vsock_translate_gpa_func) {
-+		pr_warn("tz_driver: cannot get function vhost_vsock_translate_gpa\n");
-+		return -1;
++	if (vhost_vsock_translate_gpa_func) {
++		pr_info("tz_driver: lookup vhost_vsock_translate_gpa succ\n");
 +	}
++
++	vhost_vsock_translate_addr_func = (vhost_vsock_translate_addr_t)
++		fn_kallsyms_lookup_name("vhost_vsock_translate_addr");
++	if (vhost_vsock_translate_addr_func)
++		pr_info("tz_driver: lookup vhost_vsock_translate_addr_func succ\n");
++
 +	return 0;
 +}
 +
 +static uint64_t vhost_vsock_translate_gpa(uint32_t cid, uint64_t gpa, uint64_t size)
 +{
++	if (vhost_vsock_translate_addr_func) {
++		int ret;
++		struct iovec iov[1];
++
++		ret = vhost_vsock_translate_addr_func(cid, gpa, size, iov, 1);
++		if (ret >= 0)
++			return (uint64_t)iov[0].iov_base;
++	}
 +	if (vhost_vsock_translate_gpa_func)
 +		return vhost_vsock_translate_gpa_func(cid, gpa, size);
 +
@@ -108,49 +128,53 @@ index 10d1292..33d64ed 100644
 +
 +	return 0;
 +}
++#endif /* CONFIG_VM_DEPLOY */
 +
  int tc_ns_register_host_nsid_vmid(void)
  {
  	struct tc_ns_smc_cmd smc_cmd = {{0}, 0};
-@@ -1046,6 +1125,9 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
+@@ -1173,6 +1272,11 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
  	case TC_NS_CLIENT_IOCTL_UNREGISTER_VM_NSID_VMID:
  		ret = tc_ns_operate_vm_nsid_vmid(file->private_data, argp, cmd);
  		break;
++#ifdef CONFIG_VM_DEPLOY
 +	case TC_NS_CLIENT_IOCTL_TRANSLATE_GPA:
 +		ret = tc_ns_translate_gpa(file->private_data, argp, cmd);
 +		break;
++#endif /* CONFIG_VM_DEPLOY */
  	default:
  		ret = public_ioctl(file, cmd, arg, false);
  		break;
-@@ -1113,6 +1195,8 @@ static int tc_client_open(struct inode *inode, struct file *file)
- 			return -EACCES;
- 		}
- 	} else {
-+		if (!g_vm_deploy_enable)
-+			return -EPERM;
- 		vm = 1;
- 	}
+@@ -1232,7 +1336,7 @@ static int tc_client_open(struct inode *inode, struct file *file)
+ 	bool is_vm_dev = false;
  
-@@ -1601,6 +1685,11 @@ static __init int tc_init(void)
+ #ifdef CONFIG_VM_DEPLOY
+-	if (!check_proxy_auth()) {
++	if (g_vm_deploy_enable && !check_proxy_auth()) {
+ 		is_vm_dev = true;
+ 	}
+ #endif /* CONFIG_VM_DEPLOY */
+@@ -1725,6 +1829,11 @@ static __init int tc_init(void)
  #if defined(DYNAMIC_DRV_DIR) || defined(DYNAMIC_CRYPTO_DRV_DIR) || defined(DYNAMIC_SRV_DIR)
  	tz_load_dynamic_dir();
  #endif
-+
++#ifdef CONFIG_VM_DEPLOY
 +	ret = get_symbol_from_kernel();
 +	if (ret)
 +		g_vm_deploy_enable = false;
-+
++#endif /* CONFIG_VM_DEPLOY */
  	return 0;
  
  class_device_destroy:
 diff --git a/tc_ns_client.h b/tc_ns_client.h
-index 576dced..8a1d6ff 100644
+index 266d567..a1bc26b 100644
 --- a/tc_ns_client.h
 +++ b/tc_ns_client.h
-@@ -230,6 +230,14 @@ typedef struct {
+@@ -228,6 +228,15 @@ typedef struct {
  #define TC_NS_CLIENT_IOCTL_CHECK_CCOS \
  	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 32, unsigned int)
  
++#ifdef CONFIG_VM_DEPLOY
 +struct vm_gpa_info {
 +	uint32_t cid;
 +	uint64_t gpa;
@@ -158,11 +182,10 @@ index 576dced..8a1d6ff 100644
 +
 +#define TC_NS_CLIENT_IOCTL_TRANSLATE_GPA \
 +	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 34, struct vm_gpa_info)
-+
++#endif
  #ifdef CONFIG_CONFIDENTIAL_CONTAINER
  enum REE_LOAD_MODE {
  	REE_CONTAINER = 1,
 -- 
-2.33.0
-
+2.28.0.windows.1
 

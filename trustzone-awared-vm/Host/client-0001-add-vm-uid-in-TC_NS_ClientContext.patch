@@ -1,40 +1,46 @@
-From 970a4e5fe73cb127edc2bdb0b1ba6ba49ccce871 Mon Sep 17 00:00:00 2001
-From: ZhangQiang <gongchangsui@outlook.com>
-Date: Fri, 28 Nov 2025 11:29:28 +0800
-Subject: [PATCH] add vm uid in TC_NS_ClientContext
+From dc2339d8bd55d146e815b2ba8670527f4137e2f0 Mon Sep 17 00:00:00 2001
+From: root <root@localhost.localdomain>
+Date: Sat, 18 Jul 2026 16:29:16 +0800
+Subject: [PATCH 1/2] add vm uid in TC_NS_ClientContext
 
-Signed-off-by: ZhangQiang <gongchangsui@outlook.com>
+Signed-off-by: liuhao365 <liuhao365@h-partners.com>
 ---
- Makefile               | 1 +
+ Makefile               | 2 ++
  src/inc/tc_ns_client.h | 3 +++
- 2 files changed, 4 insertions(+)
+ 2 files changed, 5 insertions(+)
 
 diff --git a/Makefile b/Makefile
-index 9fd8baa..0c04451 100644
+index d0f39e0..18421b4 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -13,6 +13,7 @@ COMMON_CFLAGS :=
+@@ -9,11 +9,13 @@ TARGET_AGENTD := agentd
+ WITH_CONFIDENTIAL_CONTAINER ?= true
+ CROSS_DOMAIN_PERF := y
+ CONFIG_TA_GET_CA_CMDLINE := n
++CONFIG_VM_DEPLOY ?= y
+ 
+ COMMON_CFLAGS :=
  ifeq ($(WITH_CONFIDENTIAL_CONTAINER), true)
  	COMMON_CFLAGS += -DCONFIG_PATH_NAMED_SOCKET=\"/var/itrustee/teecd/teecd.sock\"
  endif
-+COMMON_CFLAGS += -DVM_DEPLOY
++COMMON_CFLAGS += -DCONFIG_VM_DEPLOY
  
  ifeq ($(TOOL_CHAIN),1)
  	CC := aarch64-linux-gnu-gcc
 diff --git a/src/inc/tc_ns_client.h b/src/inc/tc_ns_client.h
-index 9608482..7ec1828 100644
+index 9608482..761a618 100644
 --- a/src/inc/tc_ns_client.h
 +++ b/src/inc/tc_ns_client.h
 @@ -83,6 +83,9 @@ typedef struct {
              uint32_t file_h_addr;
          } memref;
      };
-+#ifdef VM_DEPLOY
++#ifdef CONFIG_VM_DEPLOY
 +    unsigned int vm_uid;
 +#endif
  } TC_NS_ClientContext;
  
  typedef struct {
 -- 
-2.27.0
+2.28.0.windows.1
 

@@ -1,0 +1,170 @@
+From a53b30fe8bad87a76062050c5392718a3c52147c Mon Sep 17 00:00:00 2001
+From: liuhao365 <liuhao365@h-partners.com>
+Date: Tue, 14 Jul 2026 20:26:23 +0800
+Subject: [PATCH 3/4] add map vcpu to pcpu for virtual
+
+---
+ core/tc_client_driver.c | 101 ++++++++++++++++++++++++++++++++++++++++
+ tc_ns_client.h          |  13 ++++++
+ 2 files changed, 114 insertions(+)
+
+diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
+index 8ca8219..afc2243 100644
+--- a/core/tc_client_driver.c
++++ b/core/tc_client_driver.c
+@@ -61,6 +61,7 @@
+ #endif
+ #include <linux/acpi.h>
+ #include <linux/completion.h>
++#include <linux/cpumask.h>
+ #include <securec.h>
+ #include "smc_smp.h"
+ #include "teek_client_constants.h"
+@@ -304,6 +305,103 @@ static int tc_ns_translate_gpa(const struct tc_ns_dev_file *dev_file, const void
+ 
+ 	return 0;
+ }
++
++static int map_vcpu_to_pcpu(uint64_t vmpid, cpumask_t* vcpu_set, cpumask_t* pcpu_set)
++{
++	struct task_struct *task;
++	struct task_struct *thread;
++	cpumask_t range_cpu;
++	int vcpu_id;
++	int idx;
++	int ret = 0;
++
++	memset((void *)&range_cpu, 0, sizeof(cpumask_t));
++	for(idx = 0; idx < MAX_TEE_CPU_COUNT && idx < num_online_cpus(); idx++)
++		cpumask_set_cpu(idx, &range_cpu);
++
++	rcu_read_lock();
++	task = pid_task(find_vpid(vmpid), PIDTYPE_PID);
++	if (!task) {
++		tloge("Process with PID %llu not found.\n", vmpid);
++		ret = -ESRCH;
++		goto out;
++	}
++
++	list_for_each_entry_rcu(thread, &task->group_leader->thread_group, thread_group)
++	{
++		if (strncmp(thread->comm, VCPU_TID_PREFIX, VCPU_TID_OFFSET))
++			continue;
++
++		if (sscanf(thread->comm + VCPU_TID_OFFSET, "%d", &vcpu_id) != 1)
++			continue;
++
++		if (!cpumask_test_cpu(vcpu_id, vcpu_set))
++			continue;
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
++		cpumask_or(pcpu_set, pcpu_set, &thread->cpus_mask);
++#else
++		cpumask_or(pcpu_set, pcpu_set, &thread->cpus_allowed);
++#endif
++	}
++
++	cpumask_and(pcpu_set, pcpu_set, &range_cpu);
++
++out:
++	rcu_read_unlock();
++	return ret;
++}
++
++static int tc_ns_map_vcpu(const struct tc_ns_dev_file *dev_file, const void *argp)
++{
++	struct map_vcpu_info info = {0};
++	cpumask_t vcpu_set;
++	cpumask_t pcpu_set;
++	int ret = 0;
++
++	if (!argp) {
++		tloge("error input parameter\n");
++		return -EINVAL;
++	}
++
++	if (copy_from_user(&info, argp, sizeof(info))) {
++		tloge("copy_from_user failed for map_vcpu_info\n");
++		return -ENOMEM;
++	}
++
++	if (info.cpu_set_addr == 0 || info.cpu_set_size <= 0 || info.vmpid <= 0) {
++		tloge("invalid param: cpu_set_addr=%llu, cpu_set_size=%llu, vmpid=%u\n",
++			info.cpu_set_addr, info.cpu_set_size, info.vmpid);
++		 return -EINVAL;
++	}
++
++	memset((void *)&vcpu_set, 0, sizeof(cpumask_t));
++	memset((void *)&pcpu_set, 0, sizeof(cpumask_t));
++
++	ret = read_from_vm_client(&vcpu_set, info.cpu_set_size,
++							(void __user *)info.cpu_set_addr,
++							info.cpu_set_size, info.vmpid);
++	if (ret != 0) {
++		tloge("read_from_vm_client failed for vcpu set: vmpid=%u\n", info.vmpid);
++		return ret;
++	}
++
++	ret = map_vcpu_to_pcpu(info.vmpid, &vcpu_set, &pcpu_set);
++	if (ret != 0) {
++		tloge("map vcpu to pcpu failed, ret = %u\n", ret);
++		return ret;
++	}
++
++	ret = write_to_vm_client((void __user *)info.cpu_set_addr, info.cpu_set_size,
++							&pcpu_set, info.cpu_set_size, (pid_t)info.vmpid);
++	if (ret != 0) {
++		tloge("write to VM client failed\n");
++		return ret;
++	}
++
++	tlogi("successfully map vcpus of vmpid %u to pcpus\n", info.vmpid);
++	return ret;
++}
++
+ #endif /* CONFIG_VM_DEPLOY */
+ 
+ int tc_ns_register_host_nsid_vmid(void)
+@@ -1276,6 +1374,9 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
+ 	case TC_NS_CLIENT_IOCTL_TRANSLATE_GPA:
+ 		ret = tc_ns_translate_gpa(file->private_data, argp, cmd);
+ 		break;
++	case TC_NS_CLIENT_IOCTL_MAP_VCPU:
++		ret = tc_ns_map_vcpu(file->private_data, argp);
++		break;
+ #endif /* CONFIG_VM_DEPLOY */
+ 	default:
+ 		ret = public_ioctl(file, cmd, arg, false);
+diff --git a/tc_ns_client.h b/tc_ns_client.h
+index a1bc26b..0441300 100644
+--- a/tc_ns_client.h
++++ b/tc_ns_client.h
+@@ -26,6 +26,9 @@
+ #define UUID_LEN                16
+ #define PARAM_NUM               4
+ #define ADDR_TRANS_NUM          32
++#define VCPU_TID_OFFSET         4
++#define MAX_TEE_CPU_COUNT       256
++#define VCPU_TID_PREFIX         "CPU "
+ 
+ #define teec_param_types(param0_type, param1_type, param2_type, param3_type) \
+ 	((param3_type) << 12 | (param2_type) << 8 | \
+@@ -229,6 +232,16 @@ typedef struct {
+ 	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 32, unsigned int)
+ 
+ #ifdef CONFIG_VM_DEPLOY
++
++struct map_vcpu_info {
++	uint64_t cpu_set_addr;
++	uint64_t cpu_set_size;
++	pid_t vmpid;
++};
++
++#define TC_NS_CLIENT_IOCTL_MAP_VCPU \
++	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 33, struct map_vcpu_info)
++
+ struct vm_gpa_info {
+ 	uint32_t cid;
+ 	uint64_t gpa;
+-- 
+2.28.0.windows.1
+

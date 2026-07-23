@@ -987,193 +987,21 @@ END:
     return;
 }
 
-static int str_to_int(char *str, int *num)
+static int do_vcpu_mapping(uint64_t worker_attr_hva, struct vm_file *vm_file)
 {
-    char *endptr = NULL;
-    long num_l = strtol(str, &endptr, BASE);
-    if (*endptr != '\0' || num_l <= 0 || num_l > INT_MAX) {
-        tloge("parse number failed\n");
-        return 1;
-    }
-    *num = (int)num_l;
-    return 0;
-}
+    struct map_vcpu_info args;
+    args.cpu_set_addr = worker_attr_hva + CPU_SET_OFFSET;
+    args.cpu_set_size = sizeof(cpu_set_t);
+    args.vmpid = vm_file->vmpid;
+    int ret = 0;
 
-static int find_vcpu_threads(pid_t vmpid, pid_t *vcpu_tids, int max_vcpus)
-{
-    char task_path[PROC_PATH_LEN];
-    DIR *dir = NULL;
-    struct dirent *entry = NULL;
-    int count = 0;
-
-    if (vmpid == 0 || vcpu_tids == NULL || max_vcpus <= 0) {
-        tloge("invalid params\n");
-        return -1;
-    }
-
-    (void)snprintf_s(task_path, sizeof(task_path), sizeof(task_path) - 1, "/proc/%d/task", vmpid);
-    dir = opendir(task_path);
-    if (dir == NULL) {
-        tloge("opendir %s failed, %s\n", task_path, strerror(errno));
-        return -1;
-    }
-
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_name[0] == '.') {
-            continue;
-        }
-        char comm_path[COMM_PATH_LEN] = {0};
-        char comm[BUFFER_LEN] = {0};
-        int vcpu_idx = -1;
-        int tid = 0;
-        if (str_to_int(entry->d_name, &tid)) {
-            continue;
-        }
-
-        (void)snprintf_s(comm_path, sizeof(comm_path), sizeof(comm_path) - 1, "/proc/%d/task/%d/comm", vmpid, tid);
-        FILE *fp = fopen(comm_path, "r");
-        if (fp == NULL) {
-            continue;;
-        }
-
-        if (fgets(comm, sizeof(comm), fp) != NULL) {
-            if (sscanf(comm, "CPU %d", &vcpu_idx) == 1 && vcpu_idx >= 0 && vcpu_idx < max_vcpus) {
-                vcpu_tids[vcpu_idx] = tid;
-                count++;
-            }
-        }
-        (void)fclose(fp);
-    }
-
-    (void)closedir(dir);
-    return count;
-}
-
-static int get_thread_affinity(pid_t tid, cpu_set_t *affinity)
-{
-    if (sched_getaffinity(tid, sizeof(cpu_set_t), affinity) != 0) {
-        tloge("sched_getaffinity failed for tid %d, %s\n", tid, strerror(errno));
-        return -1;
-    }
-    return 0;
-}
-
-static void set_pcpu_set(cpu_set_t *pcpu_set, cpu_set_t *thread_affinity)
-{
-    for (int i = 0; i < CPU_SETSIZE; i++) {
-        if (CPU_ISSET(i, thread_affinity)) {
-            CPU_SET(i, pcpu_set);
-        }
-    }
-}
-
-static int map_vcpu_set_to_pcpu_set(uint32_t vmpid, const cpu_set_t *vcpu_set, cpu_set_t *pcpu_set)
-{
-    pid_t vcpu_tids[MAX_VCPU_COUNT];
-    cpu_set_t thread_affinity;
-    int vcpu_count;
-    int i;
-
-    if (vmpid == 0) {
-        tloge("vmpid is 0, not resolved yet\n");
-        return -1;
-    }
-
-    (void)memset_s(vcpu_tids, sizeof(vcpu_tids), 0, sizeof(vcpu_tids));
-    vcpu_count = find_vcpu_threads((pid_t)vmpid, vcpu_tids, MAX_VCPU_COUNT);
-    if (vcpu_count <= 0) {
-        tlogw("no vcpu threads found for vmpid %u\n", vmpid);
-        return -1;
-    }
-
-    CPU_ZERO(pcpu_set);
-    for (i = 0; i < MAX_VCPU_COUNT; i++) {
-        if (CPU_ISSET(i, vcpu_set)) {
-            if (vcpu_tids[i] == 0) {
-                tlogw("vcpu %d thread not found\n", i);
-                continue;
-            }
-            if (get_thread_affinity(vcpu_tids[i], &thread_affinity) == 0) {
-                set_pcpu_set(pcpu_set, &thread_affinity);
-            }
-        }
-    }
-
-    if (CPU_COUNT(pcpu_set) == 0) {
-        tlogw("no physical cpus found after mapping\n");
-        return -1;
-    }
-    return 0;
-}
-
-static int get_ta_cpuset_from_kernel(cpu_set_t *ta_cpu_set, int *ta_cpu_set_enabled,
-                                     struct rd_info *info, worker_attr_t *attr_buf)
-{
-    int ret = ioctl(g_private_dev_fd, TC_NS_CLIENT_IOCTL_TRANSFER_DATA, info);
+    ret = ioctl(g_private_dev_fd, TC_NS_CLIENT_IOCTL_MAP_VCPU, &args);
     if (ret != 0) {
-        tloge("ioctl TRANSFER_DATA read failed, ret=%d\n", ret);
-        return -1;
+        tloge("ioctl map vcpu failed, ret=%d\n", ret);
+        return ret;
     }
-    
-    *ta_cpu_set_enabled = attr_buf->ta_cpu_set_enabled;
-    (void)memcpy_s(ta_cpu_set, sizeof(cpu_set_t), &attr_buf->ta_cpu_set, sizeof(cpu_set_t));
-    return 0;
-}
-
-static int set_ta_cpuset_to_kernel(cpu_set_t *pcpu_set, struct rd_info *info, worker_attr_t *attr_buf)
-{
-    (void)memcpy_s(&attr_buf->ta_cpu_set, sizeof(cpu_set_t), pcpu_set, sizeof(cpu_set_t));
-    int ret = ioctl(g_private_dev_fd, TC_NS_CLIENT_IOCTL_TRANSFER_DATA, info);
-    if (ret != 0) {
-        tloge("ioctl TRANSFER_DATA write failed, ret=%d\n", ret);
-        return -1;
-    }
-    return 0;
-}
-
-static void do_vcpu_mapping(uint64_t worker_attr_hva, struct vm_file *vm_file)
-{
-    cpu_set_t ta_cpu_set;
-    int ta_cpu_set_enabled = 0;
-    cpu_set_t pcpu_set;
-    worker_attr_t attr_buf;
-    struct rd_info info = {0};
-
-    info.src_addr = worker_attr_hva;
-    info.src_size = sizeof(worker_attr_t);
-    info.dst_addr = (uint64_t)(uintptr_t)&attr_buf;
-    info.dst_size = sizeof(worker_attr_t);
-    info.write_back = 0;
-    info.vmpid = vm_file->vmpid;
-
-    if (worker_attr_hva == 0 || vm_file == NULL) {
-        tloge("invalid param\n");
-        return;
-    }
-
-    if (get_ta_cpuset_from_kernel(&ta_cpu_set, &ta_cpu_set_enabled, &info, &attr_buf) != 0) {
-        tloge("failed to read ta_cpuset from kernel for vmpid %u\n", vm_file->vmpid);
-        return;
-    }
-
-    if (!ta_cpu_set_enabled || CPU_COUNT(&ta_cpu_set) == 0) {
-        tloge("ta_cpu_set not enabled or empty\n");
-        return;
-    }
-
-    CPU_ZERO(&pcpu_set);
-    if (map_vcpu_set_to_pcpu_set(vm_file->vmpid, &ta_cpu_set, &pcpu_set) != 0) {
-        tloge("failed to map vcpu set to pcpu set for vmpid %u\n", vm_file->vmpid);
-        return;
-    }
-    info.write_back = 1;
-    if (set_ta_cpuset_to_kernel(&pcpu_set, &info, &attr_buf) != 0) {
-        tloge("failed to write ta_cpuset back for vmpid %u\n", vm_file->vmpid);
-        return;
-    }
-
-    tlogi("updated ta_cpu_set for vmpid %u\n", vm_file->vmpid);
-    print_cpuset(&pcpu_set);
+    tlogi("map vcpu success, ret is %d\n", ret);
+    return ret;
 }
 
 static void translate_vm_addr(char *rd_buf, struct vm_file *vm_file)
@@ -1374,9 +1202,9 @@ END:
 
 int main() {
     int ret = 0;
-    if (daemonize() != 0) {
-        tloge("daemonize failed");
-        return -1;
+    if (acquire_singleton_lock() != 0) { 
+        tloge("acquire_singleton_lock failed"); 
+        return -1; 
     }
 
     if (register_signal_handlers() != 0) {

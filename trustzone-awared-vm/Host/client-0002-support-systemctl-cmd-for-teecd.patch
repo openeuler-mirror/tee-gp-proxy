@@ -1,0 +1,172 @@
+From 73375c03340a6ef4731f148717e14313180094d5 Mon Sep 17 00:00:00 2001
+From: liuhao365 <liuhao365@h-partners.com>
+Date: Sat, 18 Jul 2026 16:32:48 +0800
+Subject: [PATCH] support systemctl cmd for teecd
+
+Signed-off-by: liuhao365 <liuhao365@h-partners.com>
+---
+ rpm/SOURCES/teec.service  | 12 ++++++++
+ rpm/SOURCES/teec.sh       | 20 +++++++++++++
+ rpm/SPECS/tee_client.spec | 60 +++++++++++++++++++++++++++++++++++++++
+ rpm/build_rpm.sh          | 32 +++++++++++++++++++++
+ 4 files changed, 124 insertions(+)
+ create mode 100644 rpm/SOURCES/teec.service
+ create mode 100644 rpm/SOURCES/teec.sh
+ create mode 100644 rpm/SPECS/tee_client.spec
+ create mode 100644 rpm/build_rpm.sh
+
+diff --git a/rpm/SOURCES/teec.service b/rpm/SOURCES/teec.service
+new file mode 100644
+index 0000000..f26c5cb
+--- /dev/null
++++ b/rpm/SOURCES/teec.service
+@@ -0,0 +1,12 @@
++[Unit]
++Description=itrustee client Service
++
++[Service]
++Type=simple
++ExecStart=/usr/bin/teec.sh
++Restart=always
++RestartSec=3
++User=root
++
++[Install]
++WantedBy=multi-user.target
+\ No newline at end of file
+diff --git a/rpm/SOURCES/teec.sh b/rpm/SOURCES/teec.sh
+new file mode 100644
+index 0000000..d77c09b
+--- /dev/null
++++ b/rpm/SOURCES/teec.sh
+@@ -0,0 +1,20 @@
++#!/bin/bash
++# Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
++# build rpms for itrustee client
++set -eu
++
++
++if [ $(systemd-detect-virt) = "none" ]; then
++    driver="tzdriver"
++else
++    driver="vtzdriver"
++fi
++
++/sbin/modprobe vhost_vsock || true
++
++if ! /sbin/modprobe "$driver" 2>/dev/null; then
++    echo "failed to load $driver"
++    exit 1
++fi
++
++exec /usr/bin/teecd
+\ No newline at end of file
+diff --git a/rpm/SPECS/tee_client.spec b/rpm/SPECS/tee_client.spec
+new file mode 100644
+index 0000000..ea725c7
+--- /dev/null
++++ b/rpm/SPECS/tee_client.spec
+@@ -0,0 +1,60 @@
++Name:           tee_client
++Version:        1.0.0
++Release:        1%{?dist}
++Group:          System Environment/Daemons
++Summary:        itrustee daemon and libraries
++License:        GPLv3
++
++Provides: libboundscheck.so()(64bit)
++Provides: libteec.so()(64bit)
++
++%{?systemd_requires}
++BuildRequires: systemd
++
++%description
++teecd is daemon process for tee
++
++%pre
++
++%install
++rm -rf $RPM_BUILD_ROOT
++mkdir -p %{buildroot}%{_bindir}
++mkdir -p %{buildroot}%{_libdir}
++mkdir -p %{buildroot}%{_unitdir}
++install -m 0755 %{_sourcedir}/{teecd,tee_teleport,agentd,tlogcat,teec.sh} %{buildroot}%{_bindir}/
++install -m 0644 %{_sourcedir}/{libboundscheck.so,libteec.so} %{buildroot}%{_libdir}/
++install -m 0644 %{_sourcedir}/teec.service %{buildroot}%{_unitdir}/
++
++%post
++/sbin/ldconfig
++systemctl daemon-reload || :
++systemctl enable teec.service || :
++systemctl start teec.service || :
++
++%preun
++if [ $1 -eq 0 ]; then
++    systemctl disable teec.service || :
++    systemctl stop teec.service || :
++fi
++
++%postun
++if [ $1 -eq 0 ]; then
++    systemctl daemon-reload || :
++fi
++
++%files
++%defattr(-,root,root,-)
++%{_bindir}/teecd
++%{_bindir}/tee_teleport
++%{_bindir}/agentd
++%{_bindir}/tlogcat
++%{_bindir}/teec.sh
++
++%{_libdir}/libboundscheck.so
++%{_libdir}/libteec.so
++
++%{_unitdir}/teec.service
++
++%changelog
++* Mon Jul 20 2026 liuhao<liuhao365@h-partners.com>-1.0.0-1
++- package init
+\ No newline at end of file
+diff --git a/rpm/build_rpm.sh b/rpm/build_rpm.sh
+new file mode 100644
+index 0000000..c6c3257
+--- /dev/null
++++ b/rpm/build_rpm.sh
+@@ -0,0 +1,32 @@
++#!/bin/bash
++# Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
++# build rpms for itrustee client
++set -eu
++
++RPM_CURDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
++RPMBUILD_PATH=${RPM_CURDIR}/rpmbuild
++SPECS_DIR=${RPM_CURDIR}/SPECS
++LIB_CODE_NAME=libboundscheck
++
++
++#step1: enter itrustee client source code and compile
++echo ${RPM_CURDIR}
++cd ${RPM_CURDIR}/..
++if [ ! -d "$LIB_CODE_NAME" ];then
++    git clone https://gitcode.com/openeuler/libboundscheck.git
++fi
++make clean
++make -j
++
++#step2: build_rpm
++mkdir -p ${RPMBUILD_PATH}/SOURCES
++cp -a ${RPM_CURDIR}/../dist/* ${RPMBUILD_PATH}/SOURCES/
++cp -a ${RPM_CURDIR}/SOURCES/* ${RPMBUILD_PATH}/SOURCES/
++rpmbuild --define "_topdir ${RPMBUILD_PATH}" -bb ${SPECS_DIR}/tee_client.spec
++
++#step3: clean_dir
++mkdir -p ${RPM_CURDIR}/output
++cp -a ${RPM_CURDIR}/rpmbuild/RPMS/aarch64/* ${RPM_CURDIR}/output
++[ -d "${RPM_CURDIR}/rpmbuild" ] && rm -rf ${RPM_CURDIR}/rpmbuild
++cd ${RPM_CURDIR}/..
++make clean
+\ No newline at end of file
+-- 
+2.28.0.windows.1
+

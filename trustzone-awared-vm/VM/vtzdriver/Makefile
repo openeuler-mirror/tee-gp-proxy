@@ -1,18 +1,18 @@
 #Makefile
-obj-m   := vtzfdriver.o
+obj-m   := vtzdriver.o
 
-vtzfdriver-objs := vtzf.o
+vtzdriver-objs := vtzf.o
 
 RESULT := $(shell cat /proc/kallsyms | grep vsnprintf_s)
 
 STATUS := $(findstring vsnprintf_s, $(RESULT))
 
 # ifneq ($(STATUS), vsnprintf_s)
-vtzfdriver-objs += libboundscheck/src/memcpy_s.o libboundscheck/src/memset_s.o libboundscheck/src/strcpy_s.o libboundscheck/src/strncpy_s.o \
+vtzdriver-objs += libboundscheck/src/memcpy_s.o libboundscheck/src/memset_s.o libboundscheck/src/strcpy_s.o libboundscheck/src/strncpy_s.o \
 libboundscheck/src/memmove_s.o libboundscheck/src/strcat_s.o libboundscheck/src/strncat_s.o libboundscheck/src/strtok_s.o \
 libboundscheck/src/securecutil.o libboundscheck/src/secureprintoutput_a.o libboundscheck/src/snprintf_s.o libboundscheck/src/vsnprintf_s.o
 # endif
-vtzfdriver-objs += tlogger.o serialport.o tee_info.o reserved_shm.o process_data.o block_pages.o reg_mem_ht.o
+vtzdriver-objs += tlogger.o serialport.o tee_info.o reserved_shm.o process_data.o block_pages.o reg_mem_ht.o
 
 KERN_VER = $(shell uname -r)
 KERN_DIR = /lib/modules/$(KERN_VER)/build

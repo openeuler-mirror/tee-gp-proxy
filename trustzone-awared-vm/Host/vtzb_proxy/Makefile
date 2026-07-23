@@ -5,6 +5,13 @@ TARGET_LIBSEC := libboundscheck.so
 all: $(TARGET_LIBSEC) $(TARGET_APP)
 	@cd $(LIBC_SEC) && $(MAKE) clean
 
+install: 
+	mkdir -p /var/vtzb/
+	cp -f ../../utils/tee-monitor/vtzb_proxy.conf /var/vtzb/
+	[ -d "/usr/bin" ] && cp -f $(TARGET_APP) /usr/bin
+	[ -d "/usr/lib/systemd/system/" ] && cp -f $(TARGET_APP).service /usr/lib/systemd/system
+	systemctl daemon-reload || true
+
 $(TARGET_LIBSEC):
 	@echo "compile libboundscheck ..."
 	@$(MAKE) -C $(LIBC_SEC)
