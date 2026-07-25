@@ -28,5 +28,5 @@ rpmbuild --define "_topdir ${RPMBUILD_PATH}" -bb ${SPECS_DIR}/vtz_proxy.spec
 mkdir -p ${RPM_CURDIR}/output
 cp -a ${RPM_CURDIR}/rpmbuild/RPMS/aarch64/* ${RPM_CURDIR}/output
 [ -d "${RPM_CURDIR}/rpmbuild" ] && rm -rf ${RPM_CURDIR}/rpmbuild
-cd ${RPM_CURDIR}/..
+cd ${RPM_CURDIR}/../vtzb_proxy
 make clean
