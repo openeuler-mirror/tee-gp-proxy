@@ -1,32 +1,138 @@
-From 73375c03340a6ef4731f148717e14313180094d5 Mon Sep 17 00:00:00 2001
+From 1f6d965b4039acfe3fbe1a532f8deabb5dc528d5 Mon Sep 17 00:00:00 2001
 From: liuhao365 <liuhao365@h-partners.com>
 Date: Sat, 18 Jul 2026 16:32:48 +0800
 Subject: [PATCH] support systemctl cmd for teecd
 
 Signed-off-by: liuhao365 <liuhao365@h-partners.com>
 ---
- rpm/SOURCES/teec.service  | 12 ++++++++
- rpm/SOURCES/teec.sh       | 20 +++++++++++++
- rpm/SPECS/tee_client.spec | 60 +++++++++++++++++++++++++++++++++++++++
- rpm/build_rpm.sh          | 32 +++++++++++++++++++++
- 4 files changed, 124 insertions(+)
- create mode 100644 rpm/SOURCES/teec.service
- create mode 100644 rpm/SOURCES/teec.sh
+ Makefile                  | 27 ++++--------------
+ rpm/SOURCES/teecd.service | 12 ++++++++
+ rpm/SOURCES/teecd.sh      | 20 ++++++++++++++
+ rpm/SPECS/tee_client.spec | 58 +++++++++++++++++++++++++++++++++++++++
+ rpm/build_rpm.sh          | 51 ++++++++++++++++++++++++++++++++++
+ 5 files changed, 146 insertions(+), 22 deletions(-)
+ create mode 100644 rpm/SOURCES/teecd.service
+ create mode 100644 rpm/SOURCES/teecd.sh
  create mode 100644 rpm/SPECS/tee_client.spec
  create mode 100644 rpm/build_rpm.sh
 
-diff --git a/rpm/SOURCES/teec.service b/rpm/SOURCES/teec.service
+diff --git a/Makefile b/Makefile
+index 18421b4..67b8775 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,7 +1,6 @@
+ TARGET_LIB := libteec.so
+ TARGET_APP := teecd
+ TARGET_DIR := dist
+-LIBC_SEC   := libboundscheck
+ TARGET_LOG := tlogcat
+ TARGET_LIBSEC := libboundscheck.so
+ TARGET_TEE_TELEPORT := tee_teleport
+@@ -26,8 +25,7 @@ endif
+ export CC
+ export LD
+ 
+-all: $(TARGET_LIBSEC) $(TARGET_LIB) $(TARGET_APP) $(TARGET_LOG) $(TARGET_TEE_TELEPORT) $(TARGET_AGENTD)
+-	@cd $(LIBC_SEC) && $(MAKE) clean
++all: $(TARGET_LIB) $(TARGET_APP) $(TARGET_LOG) $(TARGET_TEE_TELEPORT) $(TARGET_AGENTD)
+ 
+ install:
+ 	[ -d "/usr/bin" ] && cp -f $(TARGET_DIR)/$(TARGET_APP) /usr/bin
+@@ -36,7 +34,6 @@ install:
+ 	[ ! -d "/usr/lib64" ] && mkdir -p /usr/lib64 || true
+ 	cp -f $(TARGET_DIR)/$(TARGET_LIB) /usr/lib64  # only for secgear
+ 	[ -d "/lib64" ] && cp -f $(TARGET_DIR)/$(TARGET_LIB) /lib64
+-	[ -d "/lib64" ] && cp -f $(TARGET_DIR)/$(TARGET_LIBSEC) /lib64
+ 
+ install-container:
+ 	[ -d "/usr/bin" ] && cp -f $(TARGET_DIR)/$(TARGET_LOG) /usr/bin
+@@ -46,10 +43,8 @@ install-container:
+ 	cp -f $(TARGET_DIR)/$(TARGET_LIB) /usr/lib64 # only for secgear
+ 	if [ -d "/lib/aarch64-linux-gnu" ]; then \
+ 		cp -f $(TARGET_DIR)/$(TARGET_LIB) /lib/aarch64-linux-gnu; \
+-		cp -f $(TARGET_DIR)/$(TARGET_LIBSEC) /lib/aarch64-linux-gnu; \
+ 	elif [ -d "/usr/local/lib" ]; then \
+ 		cp -f $(TARGET_DIR)/$(TARGET_LIB) /usr/local/lib; \
+-		cp -f $(TARGET_DIR)/$(TARGET_LIBSEC) /usr/local/lib; \
+ 	else \
+ 		echo "Not found ld library path"; \
+ 	fi
+@@ -72,18 +67,11 @@ endif
+ 
+ LIB_OBJECTS := $(LIB_SOURCES:.c=.o)
+ 
+-$(TARGET_LIBSEC):
+-	@echo "compile libboundscheck"
+-	@$(MAKE) -C $(LIBC_SEC)
+-	@echo "after compile libboundscheck"
+-
+-
+-$(TARGET_LIB):$(TARGET_LIBSEC) $(LIB_SOURCES)
++$(TARGET_LIB): $(LIB_SOURCES)
+ 	@echo "compile libteec.so"
+ 	@$(CC) $(LIB_CFLAGS) -o $@ $(LIB_SOURCES) $(LIB_LDFLAGS)
+ 	@mkdir -p $(TARGET_DIR)
+ 	@mv libteec.so $(TARGET_DIR)
+-	@cp $(LIBC_SEC)/lib/libboundscheck.so $(TARGET_DIR)
+ 	@echo "after compile libteec.so"
+ 
+ APP_CFLAGS := $(COMMON_CFLAGS) -DSEC_STORAGE_DATA_KUNPENG_PATH -D_GNU_SOURCE
+@@ -120,7 +108,7 @@ APP_SOURCES := src/teecd/teecd.c \
+ 
+ APP_OBJECTS := $(APP_SOURCES:.c=.o)
+ 
+-$(TARGET_APP): $(TARGET_LIBSEC) $(APP_SOURCES)
++$(TARGET_APP): $(APP_SOURCES)
+ 	@echo "compile teed"
+ 	@$(CC) $(APP_CFLAGS) -o $@ $(APP_SOURCES) $(APP_LDFLAGS)
+ 	@mkdir -p $(TARGET_DIR)
+@@ -202,7 +190,7 @@ LOG_CFLAGS += -Werror -Wall -Wextra -fstack-protector-all -Wl,-z,relro,-z,now,-z
+ LOG_CFLAGS += -Iinclude -Iinclude/cloud -Iext_include -Ilibboundscheck/include -Iinclude -Isrc/inc -Isrc/tlogcat/ -Isrc/common
+ LOG_LDFLAGS += -lboundscheck -Llibboundscheck/lib -lz
+ LOG_OBJECTS := $(LOG_SOURCES:.c=.o)
+-$(TARGET_LOG): $(TARGET_LIBSEC) $(LOG_SOURCES)
++$(TARGET_LOG): $(LOG_SOURCES)
+ 	@echo "compile tlogcat"
+ 	@echo "TEE_LOG_PATH_BASE is $(TEE_LOG_PATH_BASE)"
+ 	@$(CC) $(LOG_CFLAGS) -o $@ $(LOG_SOURCES) $(LOG_LDFLAGS)
+@@ -210,10 +198,6 @@ $(TARGET_LOG): $(TARGET_LIBSEC) $(LOG_SOURCES)
+ 	@mv tlogcat $(TARGET_DIR)
+ 	@echo "after compile tlogcat"
+ 
+-clean:
+-	@cd $(LIBC_SEC) && $(MAKE) clean
+-	@rm -rf $(TARGET_DIR)
+-
+ #############################
+ ## tee_teleport
+ #############################
+@@ -229,7 +213,7 @@ TEE_TELEPORT_CFLAGS += -Iinclude -Iinclude/cloud -Isrc/libteec_vendor -Iext_incl
+ TEE_TELEPORT_CFLAGS += -Ilibboundscheck/include -Iinclude -Isrc/inc -Isrc/tee_teleport -Isrc/common -Isrc/authentication
+ TEE_TELEPORT_CFLAGS += -DCONFIG_KUNPENG_PLATFORM -DCONFIG_TEE_TELEPORT_SUPPORT
+ TEE_TELEPORT_LDFLAGS += $(LD_CFLAGS) -Llibboundscheck/lib -L$(TARGET_DIR) -lboundscheck -lteec -lpthread
+-$(TARGET_TEE_TELEPORT): $(TARGET_LIBSEC) $(TARGET_LIB)
++$(TARGET_TEE_TELEPORT): $(TARGET_LIB)
+ 	@echo "compile tee_teleport"
+ 	@$(CC) $(TEE_TELEPORT_CFLAGS) -o $@ $(TEE_TELEPORT_SOURCES) $(TEE_TELEPORT_LDFLAGS)
+ 	@mkdir -p $(TARGET_DIR)
+@@ -237,5 +221,4 @@ $(TARGET_TEE_TELEPORT): $(TARGET_LIBSEC) $(TARGET_LIB)
+ 	@echo "after compile tee_teleport"
+ 
+ clean:
+-	@cd $(LIBC_SEC) && $(MAKE) clean
+ 	@rm -rf $(TARGET_DIR)
+diff --git a/rpm/SOURCES/teecd.service b/rpm/SOURCES/teecd.service
 new file mode 100644
-index 0000000..f26c5cb
+index 0000000..c11a687
 --- /dev/null
-+++ b/rpm/SOURCES/teec.service
++++ b/rpm/SOURCES/teecd.service
 @@ -0,0 +1,12 @@
 +[Unit]
 +Description=itrustee client Service
 +
 +[Service]
 +Type=simple
-+ExecStart=/usr/bin/teec.sh
++ExecStart=/usr/bin/teecd.sh
 +Restart=always
 +RestartSec=3
 +User=root
@@ -34,11 +140,11 @@ index 0000000..f26c5cb
 +[Install]
 +WantedBy=multi-user.target
 \ No newline at end of file
-diff --git a/rpm/SOURCES/teec.sh b/rpm/SOURCES/teec.sh
+diff --git a/rpm/SOURCES/teecd.sh b/rpm/SOURCES/teecd.sh
 new file mode 100644
 index 0000000..d77c09b
 --- /dev/null
-+++ b/rpm/SOURCES/teec.sh
++++ b/rpm/SOURCES/teecd.sh
 @@ -0,0 +1,20 @@
 +#!/bin/bash
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
@@ -63,10 +169,10 @@ index 0000000..d77c09b
 \ No newline at end of file
 diff --git a/rpm/SPECS/tee_client.spec b/rpm/SPECS/tee_client.spec
 new file mode 100644
-index 0000000..ea725c7
+index 0000000..59a9759
 --- /dev/null
 +++ b/rpm/SPECS/tee_client.spec
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,58 @@
 +Name:           tee_client
 +Version:        1.0.0
 +Release:        1%{?dist}
@@ -74,7 +180,6 @@ index 0000000..ea725c7
 +Summary:        itrustee daemon and libraries
 +License:        GPLv3
 +
-+Provides: libboundscheck.so()(64bit)
 +Provides: libteec.so()(64bit)
 +
 +%{?systemd_requires}
@@ -90,20 +195,20 @@ index 0000000..ea725c7
 +mkdir -p %{buildroot}%{_bindir}
 +mkdir -p %{buildroot}%{_libdir}
 +mkdir -p %{buildroot}%{_unitdir}
-+install -m 0755 %{_sourcedir}/{teecd,tee_teleport,agentd,tlogcat,teec.sh} %{buildroot}%{_bindir}/
-+install -m 0644 %{_sourcedir}/{libboundscheck.so,libteec.so} %{buildroot}%{_libdir}/
-+install -m 0644 %{_sourcedir}/teec.service %{buildroot}%{_unitdir}/
++install -m 0755 %{_sourcedir}/{teecd,tee_teleport,agentd,tlogcat,teecd.sh} %{buildroot}%{_bindir}/
++install -m 0644 %{_sourcedir}/libteec.so %{buildroot}%{_libdir}/
++install -m 0644 %{_sourcedir}/teecd.service %{buildroot}%{_unitdir}/
 +
 +%post
 +/sbin/ldconfig
 +systemctl daemon-reload || :
-+systemctl enable teec.service || :
-+systemctl start teec.service || :
++systemctl enable teecd.service || :
++systemctl start teecd.service || :
 +
 +%preun
 +if [ $1 -eq 0 ]; then
-+    systemctl disable teec.service || :
-+    systemctl stop teec.service || :
++    systemctl disable teecd.service || :
++    systemctl stop teecd.service || :
 +fi
 +
 +%postun
@@ -117,12 +222,11 @@ index 0000000..ea725c7
 +%{_bindir}/tee_teleport
 +%{_bindir}/agentd
 +%{_bindir}/tlogcat
-+%{_bindir}/teec.sh
++%{_bindir}/teecd.sh
 +
-+%{_libdir}/libboundscheck.so
 +%{_libdir}/libteec.so
 +
-+%{_unitdir}/teec.service
++%{_unitdir}/teecd.service
 +
 +%changelog
 +* Mon Jul 20 2026 liuhao<liuhao365@h-partners.com>-1.0.0-1
@@ -130,10 +234,10 @@ index 0000000..ea725c7
 \ No newline at end of file
 diff --git a/rpm/build_rpm.sh b/rpm/build_rpm.sh
 new file mode 100644
-index 0000000..c6c3257
+index 0000000..afc3c8f
 --- /dev/null
 +++ b/rpm/build_rpm.sh
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,51 @@
 +#!/bin/bash
 +# Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
 +# build rpms for itrustee client
@@ -144,13 +248,32 @@ index 0000000..c6c3257
 +SPECS_DIR=${RPM_CURDIR}/SPECS
 +LIB_CODE_NAME=libboundscheck
 +
++function build_and_install_lib()
++{
++    local lib_code_name=$1
++    cd $RPM_CURDIR/../..
++    if [ ! -d "$lib_code_name" ];then
++        git clone https://gitcode.com/src-openeuler/$lib_code_name.git
++    fi
++    lib_path=$RPM_CURDIR/../../$lib_code_name
++    cd $lib_path
++    lib_rpmbuild_path=$lib_path/rpmbuild
++    mkdir -p ${lib_rpmbuild_path}/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
++
++    cp *.spec ${lib_rpmbuild_path}/SPECS/
++    cp *.tar.gz ${lib_rpmbuild_path}/SOURCES/
++    rpmbuild --define "_topdir ${lib_rpmbuild_path}" -bb *.spec
++    rpm -Uvh $lib_rpmbuild_path/RPMS/aarch64/*.rpm
++    echo "$lib_code_name is installed."
++}
 +
 +#step1: enter itrustee client source code and compile
 +echo ${RPM_CURDIR}
-+cd ${RPM_CURDIR}/..
-+if [ ! -d "$LIB_CODE_NAME" ];then
-+    git clone https://gitcode.com/openeuler/libboundscheck.git
++if ! rpm -q $LIB_CODE_NAME &>/dev/null; then
++    build_and_install_lib $LIB_CODE_NAME
 +fi
++
++cd ${RPM_CURDIR}/..
 +make clean
 +make -j
 +

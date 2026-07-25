@@ -164,9 +164,9 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
 1. `vtz_proxy` 优雅退出：
     1. 需要再次拉起`vtz_proxy`，然后在所有`VM`内手动终止正在执行的`CA`进程，并进行如下操作：
     ```
-    systemctl stop teec
+    systemctl stop teecd
     rmmod vtzdriver
-    systemctl start teec
+    systemctl start teecd
     ```
     2. 最后再重新拉起CA进程。
 2. `vtz_proxy` 强制退出：
