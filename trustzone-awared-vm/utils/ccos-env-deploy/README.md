@@ -46,7 +46,6 @@ TEE_GP_PROXY_BRANCH="master"
 |------|------|------|--------|
 | `--work_dir` | `-w` | 部署路径 | `/opt/ccos-deploy/` |
 | `--vm_scalability` | `-v` | 虚机扩展功能（true/false） | `true` |
-| `--machine_model` | `-m` | 服务器型号（920v100/920v200） | `920v200` |
 | `--need_sdf_utils_rpm` | `-n` | 是否部署鲲鹏密码模块（true/false） | `true` |
 | `--lenient` | `-l` | 宽松模式，部署路径下存在相应组件代码时，将不再git clone获取，适合离线部署 | `false` |
 
@@ -56,12 +55,6 @@ TEE_GP_PROXY_BRANCH="master"
 # 在指定目录下进行安装和构建
 ./deploy.sh -w /opt/ccos-deploy
 
-# 为特定服务器型号安装部署
-./deploy.sh -m 920v200
-
-# 为920v200服务器安装部署，且不涉及虚机场景
-./deploy.sh -m 920v200 -v false
-
 # 不需要部署鲲鹏密码模块
 ./deploy.sh -n false
 
@@ -69,7 +62,7 @@ TEE_GP_PROXY_BRANCH="master"
 ./deploy -l true
 
 # 组合使用多个参数
-./deploy.sh -w /your/path -m 920v200 -v false -n true -l true
+./deploy.sh -w /your/path -v false -n true -l true
 ```
 
 ## 功能特性

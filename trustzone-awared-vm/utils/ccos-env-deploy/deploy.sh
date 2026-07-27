@@ -21,9 +21,6 @@ WORK_DIR=${WORK_DIR:-"/opt/ccos-deploy"}
 # Enable this option if VM deployment is needed in the future
 VM_SCALABILITY=${VM_SCALABILITY:-"true"}
 
-# Machine model: 920v100, 920v200 (different models may have different build steps)
-MACHINE_MODEL=${MACHINE_MODEL:-"920v200"}
-
 # Whether to install huawei's sdf utils rpm package
 NEED_SDF_UTILS_RPM=${NEED_SDF_UTILS_RPM:-"true"}
 
@@ -34,7 +31,6 @@ LENIENT_MODE=${LENIENT_MODE:-"false"}
 
 # ======================== 内部变量 ==========================
 TEE_GP_PROXY_REPO="https://gitcode.com/openeuler/tee-gp-proxy.git"
-LIBBOUNDSCHECK_REPO="https://gitcode.com/openeuler/libboundscheck.git"
 ITRUSTEE_TZDRIVER_REPO="https://gitcode.com/openeuler/itrustee_tzdriver.git"
 ITRUSTEE_CLIENT_REPO="https://gitcode.com/openeuler/itrustee_client.git"
 
@@ -42,8 +38,7 @@ TEE_GP_PROXY_DIR="${WORK_DIR}/tee-gp-proxy"
 LIBBOUNDSCHECK_DIR="${WORK_DIR}/libboundscheck"
 ITRUSTEE_TZDRIVER_DIR="${WORK_DIR}/itrustee_tzdriver"
 ITRUSTEE_CLIENT_DIR="${WORK_DIR}/itrustee_client"
-TRUSTZONE_INSTALL_DIR="/lib/modules/$(uname -r)/kernel/drivers/trustzone"
-VTZ_PROXY_DIR="${WORK_DIR}/tee-gp-proxy/trustzone-awared-vm/Host/vtzb_proxy"
+VTZ_PROXY_RPM_DIR="${WORK_DIR}/tee-gp-proxy/trustzone-awared-vm/Host/rpm"
 VTZDRIVER_DIR="${TEE_GP_PROXY_DIR}/trustzone-awared-vm/VM/vtzdriver"
 KUNPENG_SEC_DRV_DIR="/var/itrustee/tee_dynamic_drv/crypto"
 
@@ -86,10 +81,9 @@ log_step() {
 # -----------------------------------------------------------------------------
 update_env_variable() {
     TEE_GP_PROXY_DIR="${WORK_DIR}/tee-gp-proxy"
-    LIBBOUNDSCHECK_DIR="${WORK_DIR}/libboundscheck"
     ITRUSTEE_TZDRIVER_DIR="${WORK_DIR}/itrustee_tzdriver"
     ITRUSTEE_CLIENT_DIR="${WORK_DIR}/itrustee_client"
-    VTZ_PROXY_DIR="${WORK_DIR}/tee-gp-proxy/trustzone-awared-vm/Host/vtzb_proxy"
+    VTZ_PROXY_RPM_DIR="${WORK_DIR}/tee-gp-proxy/trustzone-awared-vm/Host/rpm"
     VTZDRIVER_DIR="${TEE_GP_PROXY_DIR}/trustzone-awared-vm/VM/vtzdriver"
 }
 
@@ -103,7 +97,6 @@ print_config() {
     echo "  DEPLOY_MODE           : ${DEPLOY_MODE}"
     echo ""
     echo "System Configuration:"
-    echo "  MACHINE_MODEL         : ${MACHINE_MODEL}"
     echo "  OS_TYPE               : ${OS_TYPE}"
     echo "  KERNEL_VERSION        : $(uname -r)"
     echo ""
@@ -206,11 +199,6 @@ check_params() {
 
     if [[ "${VM_SCALABILITY}" != "true" ]] && [[ "${VM_SCALABILITY}" != "false" ]]; then
         log_error "Invalid param: VM_SCALABILITY"
-        return 1
-    fi
-
-    if [[ "${MACHINE_MODEL}" != "920v100" ]] && [[ "${MACHINE_MODEL}" != "920v200" ]]; then
-        log_error "Invalid param: MACHINE_MODEL"
         return 1
     fi
 
@@ -326,8 +314,6 @@ show_help() {
     echo "                              默认: /opt/ccos-deploy/"
     echo "  -v, --vm_scalability         虚机扩展，若后续有虚机场景，则设置为 true；仅涉及 host 场景，则可设置为 false"
     echo "                              默认: true"
-    echo "  -m, --machine_model         服务器型号：920v100,920v200"
-    echo "                              默认: 920v200"
     echo "  -n, --need_sdf_utils_rpm    是否需要部署鲲鹏密码模块，可配置 true 或 false"
     echo "                              默认: true"
     echo "  -l, --lenient               宽松模式，跳过 clone 时删除已存在目录的步骤"
@@ -337,8 +323,6 @@ show_help() {
     echo "  $0                          # 按照默认配置部署"
     echo "  $0 -w /opt/ccos-deploy      # 在 /opt/ccos-deploy 目录下进行安装和构建"
     echo "  $0 -w ./my-deploy           # 使用相对路径进行部署"
-    echo "  $0 -m 920v200               # 为920v200服务器安装部署"
-    echo "  $0 -m 920v200 -v false      # 为920v200服务器安装部署，且不涉及虚机场景"
     echo "  $0 -n false                 # 不需要部署鲲鹏密码模块"
     echo "  $0 -l                       # 使用宽松模式，保留已存在的目录"
 }
@@ -355,10 +339,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         -v|--vm_scalability)
             VM_SCALABILITY="$2"
-            shift 2
-            ;;
-        -m|--machine_model)
-            MACHINE_MODEL="$2"
             shift 2
             ;;
         -n|--need_sdf_utils_rpm)
