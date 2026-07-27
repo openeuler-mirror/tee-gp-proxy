@@ -6,10 +6,14 @@ set -eu
 RPM_CURDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 RPMBUILD_PATH=${RPM_CURDIR}/rpmbuild
 SPECS_DIR=${RPM_CURDIR}/SPECS
+LIB_CODE_NAME=libboundscheck
 
 #step1: enter vtzdriver source code and compile
 echo ${RPM_CURDIR}
 cd ${RPM_CURDIR}/../vtzdriver
+if [ ! -d "$LIB_CODE_NAME" ];then
+    git clone https://gitcode.com/openeuler/libboundscheck.git
+fi
 make clean
 make -j
 
