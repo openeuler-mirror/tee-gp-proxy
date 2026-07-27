@@ -1,0 +1,25 @@
+From 199a84779bd7df7c8f606cc1f109e6d4a7e48cc9 Mon Sep 17 00:00:00 2001
+From: liuhao365 <liuhao365@huawei.com>
+Date: Mon, 27 Jul 2026 17:19:58 +0800
+Subject: [PATCH] revert teeos verison for tzdriver
+
+---
+ core/tee_compat_check.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/core/tee_compat_check.h b/core/tee_compat_check.h
+index 37514c3..49d1398 100644
+--- a/core/tee_compat_check.h
++++ b/core/tee_compat_check.h
+@@ -34,7 +34,7 @@ struct os_version {
+  * this version number MAJOR.MINOR is used
+  * to identify the compatibility of tzdriver and teeos
+  */
+-#define TEEOS_COMPAT_LEVEL_MAJOR 7
++#define TEEOS_COMPAT_LEVEL_MAJOR 6
+ #define TEEOS_COMPAT_LEVEL_MINOR 0
+ 
+ #define TZDRIVER_LEVEL_MAJOR_SELF 3
+-- 
+2.28.0.windows.1
+
