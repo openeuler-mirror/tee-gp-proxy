@@ -1,7 +1,7 @@
 [Unit]
 Description=vtz proxy Service
-Requires=teec.service
-After=teec.service
+Requires=teecd.service
+After=teecd.service
 
 [Service]
 Type=simple
