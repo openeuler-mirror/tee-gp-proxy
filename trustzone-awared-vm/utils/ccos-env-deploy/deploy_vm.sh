@@ -32,21 +32,6 @@ log_step() {
 pre_deployment_check() {
     log_info "Performing pre-deployment ..."
 
-    # Check 1: teecd process - if running, kill it
-    log_info "Checking teecd process..."
-    if pgrep -x "teecd" > /dev/null; then
-        log_warn "teecd process is running, stopping it..."
-        pkill -x "teecd" || true
-        sleep 1
-        if pgrep -x "teecd" > /dev/null; then
-            log_error "Failed to stop teecd process"
-            return 1
-        fi
-        log_info "teecd process stopped successfully"
-    else
-        log_info "teecd process is not running"
-    fi
-
     # Check 2: sdf-utils RPM package must exist
     if [ ${NEED_SDF_UTILS_RPM} == "true" ]; then
         log_info "Checking sdf-utils RPM package..."
@@ -58,15 +43,16 @@ pre_deployment_check() {
         log_info "Found sdf-utils RPM package: ${SDF_UTILS_RPM}"
     fi
 
-    # Check 3: vtzfdriver.ko must not be loaded (this check must be last)
-    log_info "Checking vtzfdriver.ko module..."
-    if lsmod | grep -q "^vtzfdriver"; then
-        log_error "vtzfdriver.ko module is already loaded!"
+    # Check 3: vtzdriver.ko must not be loaded (this check must be last)
+    log_info "Checking vtzdriver.ko module..."
+    if lsmod | grep -q "^vtzdriver"; then
+        rpm -e vtzdriver 2>/dev/null || true
+        log_error "vtzdriver.ko module is already loaded!"
         log_error "Please reboot the machine and run this script again."
         log_info "After reboot, run: $0"
         exit 1
     fi
-    log_info "vtzfdriver.ko module is not loaded"
+    log_info "vtzdriver.ko module is not loaded"
 
     log_info "All pre-deployment checks passed for VM"
     return 0
@@ -78,7 +64,7 @@ pre_deployment_check() {
 install_dependencies() {
     log_step "[Step 0] Installing dependencies..."
 
-    yum install -y git make gcc openssl-devel kernel-devel-"$(uname -r)" || {
+    yum install -y git make gcc openssl-devel kernel-devel-"$(uname -r)" rpm-build || {
         log_error "Failed to install dependencies"
         return 1
     }
@@ -95,35 +81,6 @@ install_dependencies() {
         }
     fi
     log_info "Dependencies installed successfully"
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# Step 1: Clone libboundscheck
-# -----------------------------------------------------------------------------
-clone_libboundscheck() {
-    log_step "[Step 1] Cloning libboundscheck repository..."
-
-    if [[ -d "${LIBBOUNDSCHECK_DIR}" ]]; then
-        if [[ "${LENIENT_MODE}" == "true" ]]; then
-            log_info "libboundscheck directory already exists, lenient mode enabled, skipping clone"
-            return 0
-        else
-            log_warn "libboundscheck directory already exists, delete it before clone"
-            rm -rf ${LIBBOUNDSCHECK_DIR} || {
-                log_error "Failed to delete libboundscheck directory"
-                return 1
-            }
-            log_info "Delete libboundscheck directory successfully"
-        fi
-    fi
-
-    git clone "${LIBBOUNDSCHECK_REPO}" || {
-        log_error "Failed to clone libboundscheck"
-        return 1
-    }
-
-    log_info "libboundscheck cloned successfully"
     return 0
 }
 
@@ -186,30 +143,6 @@ clone_itrustee_client() {
 }
 
 # -----------------------------------------------------------------------------
-# Step 4: Copy libboundscheck
-# -----------------------------------------------------------------------------
-copy_libboundscheck() {
-    log_step "[Step 4] Copying libboundscheck to itrustee_client and vtzdriver..."
-
-    cp -rf "${LIBBOUNDSCHECK_DIR}" "${ITRUSTEE_CLIENT_DIR}/" || {
-        log_error "Failed to copy libboundscheck to itrustee_client"
-        return 1
-    }
-    cp -rf "${LIBBOUNDSCHECK_DIR}" "${VTZDRIVER_DIR}/" || {
-        log_error "Failed to copy libboundscheck to vtzdriver"
-        return 1
-    }
-
-    if [[ ! -d "${ITRUSTEE_CLIENT_DIR}/libboundscheck" ]] || [[ ! -d "${VTZDRIVER_DIR}/libboundscheck" ]]; then
-        log_error "copy libboundscheck failed"
-        return 1
-    fi
-
-    log_info "libboundscheck copied successfully"
-    return 0
-}
-
-# -----------------------------------------------------------------------------
 # Step 5: Patch client
 # -----------------------------------------------------------------------------
 patch_client() {
@@ -238,15 +171,16 @@ patch_client() {
 build_itrustee_client() {
     log_step "[Step 6] Building and installing itrustee_client..."
 
-    pushd "${ITRUSTEE_CLIENT_DIR}" > /dev/null || return 1
+    pushd "${ITRUSTEE_CLIENT_DIR}/rpm" > /dev/null || return 1
 
-    make || {
+    sh build_rpm.sh || {
         log_error "Failed to build itrustee_client"
         popd > /dev/null
         return 1
     }
 
-    make install || {
+    rpm -e tee_client
+    rpm -ivh output/tee_client-*.rpm || {
         log_error "Failed to install itrustee_client"
         popd > /dev/null
         return 1
@@ -257,10 +191,10 @@ build_itrustee_client() {
 }
 
 # -----------------------------------------------------------------------------
-# Step 7: Build and copy vtzfdriver
+# Step 7: Build and install vtzdriver
 # -----------------------------------------------------------------------------
-build_and_copy_vtzfdriver() {
-    log_step "[Step 7] Build and copy vtzfdriver..."
+build_and_install_vtzdriver() {
+    log_step "[Step 7] Build and copy vtzdriver..."
     pushd "${VTZDRIVER_DIR}" > /dev/null || return 1
 
     if [[ "$OS_TYPE" == "Kylin" ]] || [[ "$OS_TYPE" == "UOS" ]]; then
@@ -268,28 +202,28 @@ build_and_copy_vtzfdriver() {
         sed -i 's/-fstack-protector-strong//g' Makefile
     fi
 
-    log_info "Building vtzfdriver..."
-    make || {
-        log_error "Failed to build vtzfdriver"
+    log_info "Building vtzdriver..."
+    pushd "../rpm" > /dev/null || return 1
+    sh build_rpm.sh || {
+        log_error "Failed to build vtzdriver"
+        popd > /dev/null
         popd > /dev/null
         return 1
     }
 
-    log_info "vtzfdriver built successfully"
+    log_info "vtzdriver built successfully"
 
-    if [[ ! -d "${TRUSTZONE_INSTALL_DIR}" ]]; then
-        log_warn "trustzone install directory does not exist, make directory first"
-        mkdir -p "${TRUSTZONE_INSTALL_DIR}"
-    fi
-
-    log_info "copying vtzfdriver.ko to trustzone install directory..."
-    cp vtzfdriver.ko "${TRUSTZONE_INSTALL_DIR}/" || {
-        log_error "Failed to copy vtzfdriver.ko"
+    log_info "installing vtzdriver.ko ..."
+    rpm -e vtzdriver 2>/dev/null || true
+    rpm -ivh output/vtzdriver-*.rpm || {
+        log_error "Failed to installed vtzdriver.ko"
+        popd > /dev/null
         popd > /dev/null
         return 1
     }
 
-    log_info "vtzfdriver.ko copyed to ${TRUSTZONE_INSTALL_DIR}"
+    log_info "vtzdriver.ko installed"
+    popd > /dev/null
     popd > /dev/null
     return 0
 }
@@ -405,13 +339,11 @@ deploy_vm() {
     # Execute all steps
     pre_deployment_check || { log_error "pre deployment check failed"; return 1; }
     install_dependencies || { log_error "Step 0 failed"; return 1; }
-    clone_libboundscheck || { log_error "Step 1 failed"; return 1; }
     clone_tee_gp_proxy || { log_error "Step 2 failed"; return 1; }
     clone_itrustee_client || { log_error "Step 3 failed"; return 1; }
-    copy_libboundscheck || { log_error "Step 4 failed";  return 1; }
     patch_client || { log_error "Step 5 failed"; return 1; }
     build_itrustee_client || { log_error "Step 6 failed"; return 1; }
-    build_and_copy_vtzfdriver || { log_error "Step 7 failed"; return 1; }
+    build_and_install_vtzdriver || { log_error "Step 7 failed"; return 1; }
     if [[ "$NEED_SDF_UTILS_RPM" = "true" ]]; then
         install_sdf_utils_rpm || { log_error "Step 7.1 failed"; return 1; }
     fi
@@ -428,12 +360,6 @@ main() {
     DEPLOYMENT_SUCCESS=true
     echo ""
     log_info "VM deployment completed successfully!"
-    echo ""
-    log_info "Please run the following commands to start services in order:"
-    log_info "  insmod /lib/modules/\$(uname -r)/kernel/drivers/trustzone/vtzfdriver.ko"
-    log_info "  nohup /usr/bin/teecd &"
-    log_info "NOTICE! Every time the system reboots, the commands above also need to be run."
-    echo ""
 }
 
 main

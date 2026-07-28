@@ -43,7 +43,8 @@
 Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部署环境请保证Host 30000端口未被使用。
 
 ## Host 环境搭建
-
+> 注：如环境按历史版本说明部署过环境，需先删除如下目录及文件。
+> rm -rf /lib/modules/$(uname -r)/kernel/drivers/trustzone
 1. 安装依赖
     ```shell
     yum install gcc patch make kernel-devel-$(uname -r) ninja-build rpm-build
@@ -75,6 +76,7 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
     cd tee-gp-proxy/trustzone-awared-vm/Host/
     sh build_vsock.sh
     ```
+    > 如更新内核，需重新执行脚本`sh build_vsock.ko`更新vhost_vsock.ko驱动。
 4. `tzdriver`和`client`编译安装
     1. 进入`itrustee_tzdriver`的根目录，补丁文件路径按照实际路径修改。
     ``` 
