@@ -67,7 +67,6 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
     cd tee-gp-proxy/trustzone-awared-vm/Host/
     sh build_vsock.sh
     ```
-    > 如更新内核，需重新执行脚本`sh build_vsock.sh`更新vhost_vsock.ko驱动。
 3. `tzdriver`和`client`编译安装
     1. 进入`itrustee_tzdriver`的根目录，补丁文件路径按照实际路径修改。
     ``` 
@@ -169,3 +168,17 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
     2. 最后再重新拉起CA进程。
 2. `vtz_proxy` 强制退出：
 	1. 需要再次拉起systemctl start vtz_proxy 进程，重启所有`VM`，并重新初始化环境。
+
+## 更新相同主线内核版本下不同补丁版本内核
+1. 当更新相同主线版本下不同补丁版本内核后，需做如下操作：
+   1. 需重新执行2.1节脚本`sh build_vsock.sh`更新vhost_vsock.ko驱动。
+   2. 如OS为麒麟系统，还需手动对Host的tzdriver、VM的vtzdriver驱动进行软链接到新内核下。
+   > 示例：6.6.0-32.7.v2505.ky11内核版本，6.6.0是内核主线版本，32.7是内核的补丁版本。
+   ```
+   # Host DRIVER=tzdriver.ko
+   # VM DRIVER=vtzdriver.ko
+   ln -s /lib/modules/${OLD_KERNEL}/extra/$DRIVER \
+         /lib/modules/${NEW_KERNEL}/extra/$DRIVER
+   depmod -a
+   ```
+
