@@ -53,17 +53,7 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
     yum install libxml2-devel libvirt-devel
     yum install compat-openssl11-libs # 当内核版本大于等于6.6需安装
     ```
-2. `vtzb_proxy`编译
-    ```shell
-    git clone https://gitcode.com/openeuler/tee-gp-proxy.git
-    ```
-   
-    1. 编译
-        ```shell
-        cd tee-gp-proxy/trustzone-awared-vm/Host/rpm
-        sh build_rpm.sh
-        ```	
-3. `vhost_vsock`编译
+2. `vhost_vsock`编译
     > 注：当系统内核使用4.19内核基线版本大于4.19.149时，vsock驱动代码需要根据基线做修改适配。具体可根据版本号参考https://elixir.bootlin.com/linux/v4.19.150/source/drivers/vhost/vsock对vsock对应版本驱动源码进行修改。
     > 示例修改：在vhost_vsock_handle_tx_kick函数前声明如下vhost_transport结构，同时修改virtio_transport_recv_pkt接口传参，增加&vhost_transport参数。
     ```
@@ -71,13 +61,14 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
 
     virtio_transport_recv_pkt(pkt);改为virtio_transport_recv_pkt(&vhost_transport, pkt);
     ```
-    1. 进入Host路径，执行`build_vsock.sh`脚本，编译并替换系统vhost_vsock驱动。
+    1. 下载代码仓，进入Host路径，执行`build_vsock.sh`脚本，编译并替换系统vhost_vsock.ko驱动。
     ```shell
+    git clone https://gitcode.com/openeuler/tee-gp-proxy.git
     cd tee-gp-proxy/trustzone-awared-vm/Host/
     sh build_vsock.sh
     ```
-    > 如更新内核，需重新执行脚本`sh build_vsock.ko`更新vhost_vsock.ko驱动。
-4. `tzdriver`和`client`编译安装
+    > 如更新内核，需重新执行脚本`sh build_vsock.sh`更新vhost_vsock.ko驱动。
+3. `tzdriver`和`client`编译安装
     1. 进入`itrustee_tzdriver`的根目录，补丁文件路径按照实际路径修改。
     ``` 
     git am ../tee-gp-proxy/trustzone-awared-vm/Host/tzdriver-00*.patch
@@ -85,6 +76,9 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
     sh build_rpm.sh
     rpm -ivh output/tzdriver-*.rpm
     ```
+    > 如果是麒麟系统，需要在Makefile中 删除 `-fstack-protector-strong`
+    >
+    > 若kernel路径不正确，请自行修改Makefile中的KERN_DIR
     2. 进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改，编译守护进程并安装。
     ```shell 
     git am ../tee-gp-proxy/trustzone-awared-vm/Host/client-00*.patch
@@ -92,9 +86,11 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
     sh build_rpm.sh
     rpm -ivh output/tee_client-*.rpm
     ```
-5. `vtz_proxy`安装
+4. `vtz_proxy`编译安装
     ```
-    rpm -ivh tee-gp-proxy/trustzone-awared-vm/Host/rpm/output/vtz_proxy-*
+    cd tee-gp-proxy/trustzone-awared-vm/Host/rpm/
+    sh build_rpm.sh
+    rpm -ivh output/vtz_proxy-*
     ```
 ## qemu与虚机配置
 1.	获取`qemu v6.2.0`源码
