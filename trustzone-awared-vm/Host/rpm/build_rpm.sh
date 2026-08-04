@@ -21,7 +21,7 @@ make -j
 #step2: build_rpm
 mkdir -p ${RPMBUILD_PATH}/SOURCES
 cp -a ${RPM_CURDIR}/../vtzb_proxy/vtz_proxy ${RPMBUILD_PATH}/SOURCES/
-cp -a ${RPM_CURDIR}/SOURCES/vtz_proxy.service ${RPMBUILD_PATH}/SOURCES/
+cp -a ${RPM_CURDIR}/SOURCES/* ${RPMBUILD_PATH}/SOURCES/
 rpmbuild --define "_topdir ${RPMBUILD_PATH}" -bb ${SPECS_DIR}/vtz_proxy.spec
 
 #step3: clean_dir
