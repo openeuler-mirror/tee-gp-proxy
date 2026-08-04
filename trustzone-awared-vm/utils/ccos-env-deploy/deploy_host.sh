@@ -61,8 +61,6 @@ pre_deployment_check() {
         exit 1
     fi
     log_info "tzdriver.ko module is not loaded"
-
-    log_info "All pre-deployment checks passed for 920v200 model"
     return 0
 }
 # -----------------------------------------------------------------------------

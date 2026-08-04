@@ -141,7 +141,7 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
     ```shell
     cd tee-gp-proxy/trustzone-awared-vm/VM/rpm
     sh build_rpm.sh
-    rpm -ivh vtzdriver-*
+    rpm -ivh output/vtzdriver-*
     ```
     > 如果是麒麟系统，需要在Makefile中 删除 `-fstack-protector-strong`
     >
