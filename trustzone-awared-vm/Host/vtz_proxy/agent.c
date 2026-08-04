@@ -15,7 +15,7 @@
 #include "tee_sys_log.h"
 #include "debug.h"
 #include "thread_pool.h"
-#include "vtzb_proxy.h"
+#include "vtz_proxy.h"
 #include "vm.h"
 
 extern ThreadPool g_pool;

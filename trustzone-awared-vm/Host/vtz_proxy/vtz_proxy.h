@@ -10,8 +10,8 @@
  * See the Mulan PSL v2 for more details.
  */
 
-#ifndef __VTZB_PROXY_H__
-#define __VTZB_PROXY_H__
+#ifndef __VTZ_PROXY_H__
+#define __VTZ_PROXY_H__
 
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -24,7 +24,7 @@
 #define TC_LOGGER_DEV_NAME       "/dev/teelog"
 #define H_OFFSET                 32
 
-#define VTZB_RSP_UNKOWN          0xfffffffe
+#define VTZ_RSP_UNKOWN          0xfffffffe
 #define CPU_SET_OFFSET           24
 
 #define TEEC_PARAM_TYPE_GET(paramTypes, index) \
@@ -81,4 +81,4 @@ typedef union {
 
 void *thread_entry(void *args);
 
-#endif /* __VTZB_PROXY_H__ */
+#endif /* __VTZ_PROXY_H__ */

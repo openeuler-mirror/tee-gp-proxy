@@ -43,7 +43,7 @@ static void pollfd_init()
 
 int serial_port_list_init()
 {
-    VtzbConfig *cfg = get_global_config();
+    VtzConfig *cfg = get_global_config();
     int serial_port_num = cfg->max_vm_count;
     gettimeofday(&g_last_time, NULL);
     gettimeofday(&g_cur_time, NULL);
@@ -247,7 +247,7 @@ static int clean_dirty_data()
     struct timeval start, end;
     void *tmp_buf;
     (void)ret;
-    VtzbConfig *cfg = get_global_config();
+    VtzConfig *cfg = get_global_config();
     int serial_port_num = cfg->max_vm_count;
     tmp_buf = malloc(BUF_LEN_MAX_RD);
     if (!tmp_buf)

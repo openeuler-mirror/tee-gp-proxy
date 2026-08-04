@@ -19,7 +19,7 @@
 #include <stdbool.h>
 #include <sched.h>
 
-#define CONFIG_PATH "/var/vtzb/vtzb_proxy.conf"
+#define CONFIG_PATH "/var/vtz/vtz_proxy.conf"
 #define MAX_LINE_LEN 256
 #define MAX_PATH_LEN 108
 #define MAX_URI_LEN 128
@@ -32,13 +32,13 @@ typedef struct {
     int max_vm_count;                       /* Maximum number of VMs supported */
     cpu_set_t cpuset;
     bool use_vcpuset;                       /* Whether to enable vcpu mapping */
-} VtzbConfig;
+} VtzConfig;
 
 void print_cpuset(cpu_set_t *cpuset);
 /* Initialize configuration from file, returns 0 on success */
 void config_init(void);
 
 /* Get global config pointer */
-VtzbConfig *get_global_config(void);
+VtzConfig *get_global_config(void);
 
 #endif /* __CONFIG_H__ */

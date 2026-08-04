@@ -1,5 +1,5 @@
 #define _GNU_SOURCE
-#include "vtzb_proxy.h"
+#include "vtz_proxy.h"
 #include <errno.h>
 #include <error.h>
 #include <fcntl.h>
@@ -1215,7 +1215,7 @@ int main() {
     test_system_release();
     /* Initialize configuration (must be before thread_pool_init) */
     config_init();
-    VtzbConfig *cfg = get_global_config();
+    VtzConfig *cfg = get_global_config();
     int serial_port_num = cfg->max_vm_count;
 
     serial_port_list_init();
