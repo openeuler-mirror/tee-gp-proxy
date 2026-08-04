@@ -21,7 +21,7 @@
 #include "tee_sys_log.h"
 #include "securec.h"
 
-VtzbConfig g_config = {
+VtzConfig g_config = {
     .max_vm_count = DEFAULT_MAX_VM_COUNT,
     .cpuset = {{0}},
     .use_vcpuset = DEFAULT_USE_VCPUSET
@@ -328,7 +328,7 @@ print_config:
     tlogi("Config: use_vcpuset = %s\n", g_config.use_vcpuset ? "true" : "false");
 }
 
-VtzbConfig *get_global_config(void)
+VtzConfig *get_global_config(void)
 {
     return &g_config;
 }

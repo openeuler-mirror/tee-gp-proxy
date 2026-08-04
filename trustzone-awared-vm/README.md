@@ -30,7 +30,7 @@
 
 ### 配置文件
 
-`vtzb_proxy.conf`为 `vtz_proxy` 的配置文件，可在其中定义了最大虚机数量等参数，详细信息如下：
+`vtz_proxy.conf`为 `vtz_proxy` 的配置文件，可在其中定义了最大虚机数量等参数，详细信息如下：
 
 - `max_vm_count`：支持的最大虚机数量
 

@@ -17,8 +17,10 @@ vtz_proxy is daemon process for tee virtual machine
 rm -rf $RPM_BUILD_ROOT
 mkdir -p %{buildroot}%{_bindir}
 mkdir -p %{buildroot}%{_unitdir}
+mkdir -p %{buildroot}/var/vtz
 install -m 0755 %{_sourcedir}/vtz_proxy %{buildroot}%{_bindir}/
 install -m 0644 %{_sourcedir}/vtz_proxy.service %{buildroot}%{_unitdir}/
+install -m 0644 %{_sourcedir}/vtz_proxy.conf %{buildroot}/var/vtz/
 
 %post
 systemctl daemon-reload || :
@@ -40,6 +42,7 @@ fi
 %defattr(-,root,root,-)
 %{_bindir}/vtz_proxy
 %{_unitdir}/vtz_proxy.service
+%config /var/vtz/vtz_proxy.conf
 
 %changelog
 * Mon Jul 20 2026 liuhao<liuhao365@h-partners.com>-1.0.0-1

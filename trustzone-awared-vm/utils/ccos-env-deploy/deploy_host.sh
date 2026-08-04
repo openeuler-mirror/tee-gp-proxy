@@ -130,31 +130,31 @@ clone_tee_gp_proxy() {
 }
 
 # -----------------------------------------------------------------------------
-# Step 9: build and install_vtzb_proxy
+# Step 9: build and install_vtz_proxy
 # -----------------------------------------------------------------------------
-build_and_install_vtzb_proxy() {
-    log_step "[Step 9] Building vtzb-proxy..."
+build_and_install_vtz_proxy() {
+    log_step "[Step 9] Building vtz-proxy..."
 
-    # Build vtzb_proxy
-    log_info "Building vtzb_proxy..."
+    # Build vtz_proxy
+    log_info "Building vtz_proxy..."
     pushd "${VTZ_PROXY_RPM_DIR}/" > /dev/null || return 1
 
     sh build_rpm.sh || {
-        log_error "Failed to build vtzb_proxy"
+        log_error "Failed to build vtz_proxy"
         popd > /dev/null
         return 1
     }
 
-    log_info "Installing vtzb_proxy..."
+    log_info "Installing vtz_proxy..."
     rpm -e vtz_proxy 2>/dev/null || true
     rpm -ivh output/*.rpm || {
-        log_error "Failed to install vtzb_proxy"
+        log_error "Failed to install vtz_proxy"
         popd > /dev/null
         return 1
     }
 
     popd > /dev/null
-    log_info "vtzb-proxy built and installed successfully"
+    log_info "vtz-proxy built and installed successfully"
     return 0
 }
 
@@ -469,7 +469,7 @@ deploy_host() {
     clone_itrustee_client || { log_error "Step 7 failed"; return 1; }
     build_itrustee_client || { log_error "Step 8 failed"; return 1; }
     if [[ "$VM_SCALABILITY" = "true" ]]; then
-        build_and_install_vtzb_proxy || { log_error "Step 9 failed"; return 1; }
+        build_and_install_vtz_proxy || { log_error "Step 9 failed"; return 1; }
     fi
     if [[ "$NEED_SDF_UTILS_RPM" = "true" ]]; then
         install_sdf_utils_rpm || { log_error "Step 10 failed"; return 1; }

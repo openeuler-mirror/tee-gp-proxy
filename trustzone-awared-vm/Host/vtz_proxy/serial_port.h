@@ -19,7 +19,7 @@
 #include "tee_client_list.h"
 #include "vm.h"
 
-#define VTZB_CHAR_DEV            "/tmp/vm_vtzb_sock"
+#define VTZ_CHAR_DEV            "/tmp/vm_vtz_sock"
 #define SERIAL_PORT_NUM_MAX      64
 #define BUF_LEN_MAX_RD           1024 *512
 #define PATH_MAX_LEN             128

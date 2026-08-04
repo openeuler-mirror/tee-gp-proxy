@@ -13,7 +13,7 @@
 #include "thread_pool.h"
 #include "serial_port.h"
 #include "process_data.h"
-#include "vtzb_proxy.h"
+#include "vtz_proxy.h"
 #include "debug.h"
 #include "vm.h"
 #include "config.h"
@@ -76,7 +76,7 @@ int thread_pool_init(ThreadPool *pool)
     memset(pool->task_queue, 0, sizeof(Task) * TASK_QUEUE_SIZE);
     memset(pool->kill_flag, 0, sizeof(bool) * THREAD_POOL_SIZE);
     memset(pool->session_ids, 0, sizeof(unsigned int) * THREAD_POOL_SIZE);
-    VtzbConfig *cfg = get_global_config();
+    VtzConfig *cfg = get_global_config();
     set_cpuset(&cfg->cpuset);
     CPU_SET_AFFINITY();
     pthread_create(&pool->admin_tid, NULL, admin_thread, pool);

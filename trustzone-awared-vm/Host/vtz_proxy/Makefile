@@ -6,8 +6,8 @@ all: $(TARGET_LIBSEC) $(TARGET_APP)
 	@cd $(LIBC_SEC) && $(MAKE) clean
 
 install: 
-	mkdir -p /var/vtzb/
-	cp -f ../../utils/tee-monitor/vtzb_proxy.conf /var/vtzb/
+	mkdir -p /var/vtz/
+	cp -f ../../utils/tee-monitor/vtz_proxy.conf /var/vtz/
 	[ -d "/usr/bin" ] && cp -f $(TARGET_APP) /usr/bin
 	[ -d "/usr/lib/systemd/system/" ] && cp -f $(TARGET_APP).service /usr/lib/systemd/system
 	systemctl daemon-reload || true
@@ -30,7 +30,7 @@ APP_CFLAGS += -Iinclude -Iinclude/cloud
 APP_CFLAGS += -Werror -Wall -Wextra -fstack-protector-all -Wl,-z,relro,-z,now,-z,noexecstack -s -fPIE -pie -D_FORTIFY_SOURCE=2 -O2
 APP_LDFLAGS += -lboundscheck -Llibboundscheck/lib -lpthread -lxml2 -lvirt
 
-APP_SOURCES := ./vtzb_proxy.c \
+APP_SOURCES := ./vtz_proxy.c \
 				./thread_pool.c \
 				./virt.c \
 				./serial_port.c \

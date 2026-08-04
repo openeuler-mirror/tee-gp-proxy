@@ -43,7 +43,7 @@ void release_singleton_lock(void) {
 }
 
 static void cleanup_resources(void) {
-    VtzbConfig *cfg = get_global_config();
+    VtzConfig *cfg = get_global_config();
     int serial_port_num = cfg->max_vm_count;
     for (int i = 0; i < serial_port_num; i++) {
         if (g_serial_array[i] && g_serial_array[i]->vm_file) {
