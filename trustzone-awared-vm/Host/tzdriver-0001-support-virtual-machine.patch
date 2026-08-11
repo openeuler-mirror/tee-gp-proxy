@@ -1,7 +1,7 @@
-From e860a6aa4237cb89fa84207db4082f619bb6871a Mon Sep 17 00:00:00 2001
+From a8be5bf3629742faead3b9f3cff9aa67abc7b934 Mon Sep 17 00:00:00 2001
 From: liuhao365 <liuhao365@huawei.com>
 Date: Wed, 22 Jul 2026 16:12:33 +0800
-Subject: [PATCH 1/4] support virtual machine
+Subject: [PATCH] support virtual machine
 
 Signed-off-by: liuhao365 <liuhao365@h-partners.com>
 ---
@@ -13,13 +13,13 @@ Signed-off-by: liuhao365 <liuhao365@h-partners.com>
  core/session_manager.c  | 181 ++++++++++++++++++++-
  core/shared_mem.c       |  29 ++++
  core/shared_mem.h       |   1 +
- core/tc_client_driver.c | 133 ++++++++++++++-
+ core/tc_client_driver.c | 131 ++++++++++++++-
  core/tc_client_driver.h |   3 +
  core/tc_cvm_driver.c    |   7 +
  tc_ns_client.h          |   8 +-
  teek_ns_client.h        |   4 +-
  tlogger/tlogger.c       |  53 +++++-
- 14 files changed, 764 insertions(+), 56 deletions(-)
+ 14 files changed, 762 insertions(+), 56 deletions(-)
 
 diff --git a/Makefile b/Makefile
 index c57e4c0..1cd5ba1 100644
@@ -885,7 +885,7 @@ index aece31e..b21cd11 100644
  
  #endif
 diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
-index 0331da6..833c7ca 100644
+index 0331da6..08810e7 100644
 --- a/core/tc_client_driver.c
 +++ b/core/tc_client_driver.c
 @@ -416,10 +416,16 @@ static int client_login_prepare(uint8_t *cert_buffer,
@@ -970,7 +970,7 @@ index 0331da6..833c7ca 100644
  	if (file == NULL || file->private_data == NULL) {
  		tloge("invalid params\n");
  		return -EINVAL;
-@@ -953,12 +1007,38 @@ int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, b
+@@ -953,12 +1007,36 @@ int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, b
  	dev_file = file->private_data;
  	uint32_t nsid = dev_file->nsid;
  	uint32_t vmid = dev_file->vmid;
@@ -999,8 +999,6 @@ index 0331da6..833c7ca 100644
 +#endif
  		break;
  	case TC_NS_CLIENT_IOCTL_SEND_EVENT_RESPONSE:
-+		if (ioctl_check_agent_owner(dev_file, (unsigned int)arg != 0))
-+			return -EINVAL;
 +#ifdef CONFIG_VM_DEPLOY
 +		if (dev_file->is_vm_dev) {
 +			ret = copy_buf_from_VM(arg, nsid, buffer_addr, dev_file->vmid);
@@ -1009,7 +1007,7 @@ index 0331da6..833c7ca 100644
  		ret = ioctl_send_event_response(dev_file, (unsigned int)arg, is_from_client_node, nsid, vmid);
  		break;
  	case TC_NS_CLIENT_IOCTL_REGISTER_AGENT:
-@@ -1024,6 +1104,25 @@ static int tc_client_agent_ioctl(const struct file *file, unsigned int cmd,
+@@ -1024,6 +1102,25 @@ static int tc_client_agent_ioctl(const struct file *file, unsigned int cmd,
  	return ret;
  }
  
@@ -1035,7 +1033,7 @@ index 0331da6..833c7ca 100644
  void handle_cmd_prepare(unsigned int cmd)
  {
  	if (cmd != TC_NS_CLIENT_IOCTL_WAIT_EVENT &&
-@@ -1043,6 +1142,11 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
+@@ -1043,6 +1140,11 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
@@ -1047,7 +1045,7 @@ index 0331da6..833c7ca 100644
  	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->vmid == 0)
  		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
  			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
-@@ -1086,6 +1190,11 @@ static long tc_client_ioctl(struct file *file, unsigned int cmd,
+@@ -1086,6 +1188,11 @@ static long tc_client_ioctl(struct file *file, unsigned int cmd,
  {
  	int ret = -EFAULT;
  	void *argp = (void __user *)(uintptr_t)arg;
@@ -1059,7 +1057,7 @@ index 0331da6..833c7ca 100644
  	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->vmid == 0)
  		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
  			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
-@@ -1122,19 +1231,27 @@ static int tc_client_open(struct inode *inode, struct file *file)
+@@ -1122,19 +1229,27 @@ static int tc_client_open(struct inode *inode, struct file *file)
  	int ret;
  	struct tc_ns_dev_file *dev = NULL;
  	(void)inode;
