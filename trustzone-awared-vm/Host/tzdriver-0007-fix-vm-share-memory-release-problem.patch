@@ -1,0 +1,69 @@
+From 839dfc96883288997ecce57cc1eeb6943fac9185 Mon Sep 17 00:00:00 2001
+From: liuhao365 <liuhao365@huawei.com>
+Date: Sun, 23 Aug 2026 17:09:23 +0800
+Subject: [PATCH] fix vm share memory release problem
+
+---
+ core/session_manager.c | 16 ++++++++++------
+ 1 file changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/core/session_manager.c b/core/session_manager.c
+index 6f43e20..96c3de4 100644
+--- a/core/session_manager.c
++++ b/core/session_manager.c
+@@ -101,10 +101,14 @@ void init_srvc_list(void)
+ }
+ 
+ #ifdef CONFIG_REGISTER_SHAREDMEM
+-static void release_session_register_sharedmem(struct tc_ns_session *session)
++static void release_session_register_sharedmem(struct tc_ns_session *session, bool is_vm)
+ {
+ 	if (session->register_sharedmem.buf_size != 0) {
+-		release_shared_mem_page(session->register_sharedmem.buf, session->register_sharedmem.buf_size);
++		if (is_vm)
++			release_vm_shared_mem_page(session->register_sharedmem.buf, session->register_sharedmem.buf_size, PAGE_SIZE);
++		else
++			release_shared_mem_page(session->register_sharedmem.buf, session->register_sharedmem.buf_size);
++
+ 		mailbox_free(session->register_sharedmem.buf);
+ 		session->register_sharedmem.buf = 0;
+ 		session->register_sharedmem.buf_size = 0;
+@@ -126,7 +130,7 @@ void put_session_struct(struct tc_ns_session *session)
+ 		return;
+ 
+ #ifdef CONFIG_REGISTER_SHAREDMEM
+-	release_session_register_sharedmem(session);
++	release_session_register_sharedmem(session, session->owner->is_vm_dev);
+ #endif
+ 	if (memset_s(session, sizeof(*session), 0, sizeof(*session)) != 0)
+ 		tloge("Caution, memset failed!\n");
+@@ -1145,7 +1149,7 @@ err_free_rsrc:
+ 	mutex_unlock(&dev_file->service_lock);
+ 
+ #ifdef CONFIG_REGISTER_SHAREDMEM
+-	release_session_register_sharedmem(session);
++	release_session_register_sharedmem(session, dev_file->is_vm_dev);
+ #endif
+ 	kfree(session);
+ err_clear_param:
+@@ -1206,7 +1210,7 @@ static int close_session(struct tc_ns_dev_file *dev,
+ 		tloge("close session failed, ret=0x%x\n", ret);
+ 
+ #ifdef CONFIG_REGISTER_SHAREDMEM
+-	release_session_register_sharedmem(session);
++	release_session_register_sharedmem(session, false);
+ #endif
+ 	kill_ion_by_uuid((struct tc_uuid *)context.uuid);
+ 	return ret;
+@@ -1239,7 +1243,7 @@ static int vm_close_session(struct tc_ns_dev_file *dev,
+ 		tloge("close session failed, ret=0x%x\n", ret);
+ 
+ #ifdef CONFIG_REGISTER_SHAREDMEM
+-	release_session_register_sharedmem(session);
++	release_session_register_sharedmem(session, dev->is_vm_dev);
+ #endif
+ 	kill_ion_by_uuid((struct tc_uuid *)context.uuid);
+ 	return ret;
+-- 
+2.28.0.windows.1
+
