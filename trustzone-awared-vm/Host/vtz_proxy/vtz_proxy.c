@@ -34,13 +34,14 @@
 #include "tlogcat.h"
 #include "enhance_stability.h"
 #include "config.h"
-#include <sys/utsname.h>
 
 ThreadPool g_pool = {0};
 pthread_mutex_t g_private_fd_lock;
 int g_private_dev_fd;
 extern struct pollfd g_pollfd[SERIAL_PORT_NUM_MAX];
 extern struct serial_port_file *g_serial_array[SERIAL_PORT_NUM_MAX];
+extern bool is_euler;
+extern char g_pid_of_cmd_buffer[BUFFER_LEN];
 
 static void open_tzdriver(struct_packet_cmd_open_tzd *packet_cmd,
     struct serial_port_file *serial_port)
@@ -824,25 +825,6 @@ void free_hash_table(hash_table* ht)
 
 static char cmdline_buffer[CMD_BUFFER_LEN];
 static hash_table pid_hash_table = {0};
-static bool is_euler = false;
-#define PID_OF_QEMU_CMD1  "pidof qemu-system-aarch64"
-#define PID_OF_QEMU_CMD2  "pidof qemu-kvm"
-
-static void test_system_release(void)
-{
-    struct utsname system_info;
-    char *euler = "euleros";
-
-    if (uname(&system_info) == -1) {
-        tloge("Error calling uname\n");
-        return;
-    }
-
-    tlogi("system_info:%s\n", system_info.release);
-    if (strstr(system_info.release, euler)) {
-        is_euler = true;
-    }
-}
 
 static int get_guest_cid(pid_t pid)
 {
@@ -889,12 +871,8 @@ static int translate_cid_to_pid(uint32_t cid)
     int tmp_cid;
     char buffer[PID_BUFFER_LEN];
     FILE* fp;
-    const char* command = PID_OF_QEMU_CMD1;
 
-    if (is_euler)
-        command = PID_OF_QEMU_CMD2;
-
-    fp = popen(command, "r");
+    fp = popen(g_pid_of_cmd_buffer, "r");
     if (fp == NULL) {
         perror("Failed to run command");
         return 1;
@@ -1212,7 +1190,6 @@ int main() {
         return -1;
     }
 
-    test_system_release();
     /* Initialize configuration (must be before thread_pool_init) */
     config_init();
     VtzConfig *cfg = get_global_config();

@@ -17,14 +17,23 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <limits.h>
+#include <sys/utsname.h>
 #include "config.h"
 #include "tee_sys_log.h"
 #include "securec.h"
+#include "comm_structs.h"
+
+bool is_euler = false;
+#define PID_OF_QEMU_CMD1  "pidof qemu-system-aarch64"
+#define PID_OF_QEMU_CMD2  "pidof qemu-kvm"
+
+char g_pid_of_cmd_buffer[BUFFER_LEN];
 
 VtzConfig g_config = {
     .max_vm_count = DEFAULT_MAX_VM_COUNT,
     .cpuset = {{0}},
-    .use_vcpuset = DEFAULT_USE_VCPUSET
+    .use_vcpuset = DEFAULT_USE_VCPUSET,
+    .qemu_binary = {0}
 };
 
 static char *trim(char *str)
@@ -80,6 +89,68 @@ static int set_use_vcpuset(const char *value)
 
     tlogi("set_use_vcpuset: successfully set use_vcpuset to %s\n",
           g_config.use_vcpuset ? "true" : "false");
+    return 0;
+}
+
+static void test_system_release(void)
+{
+    struct utsname system_info;
+    char *euler = "euleros";
+
+    if (uname(&system_info) == -1) {
+        tloge("Error calling uname\n");
+        return;
+    }
+
+    tlogi("system_info:%s\n", system_info.release);
+    if (strstr(system_info.release, euler)) {
+        is_euler = true;
+    }
+}
+
+static int set_qemu_binary(const char *value)
+{
+    errno_t err;
+
+    err = memset_s(g_config.qemu_binary, sizeof(g_config.qemu_binary), 0, sizeof(g_config.qemu_binary));
+    if (err != 0) {
+        tloge("set_qemu_binary: memset_s failed, error %d\n", err);
+        return -1;
+    }
+
+    err = strcpy_s(g_config.qemu_binary, sizeof(g_config.qemu_binary), value);
+    if (err != 0) {
+        tloge("set_qemu_binary: strcpy_s failed, error %d\n", err);
+        return -1;
+    }
+
+    tlogi("set_qemu_binary: successfully set qemu binary to '%s'\n", value);
+    return 0;
+}
+
+static int build_pidof_cmd()
+{
+    errno_t err;
+
+    if (g_config.qemu_binary[0] != '\0') {
+        tlogi("build_pidof_cmd: qemu binary is inited, value = %s\n", g_config.qemu_binary);
+        err = snprintf_s(g_pid_of_cmd_buffer, BUFFER_LEN,
+            BUFFER_LEN - 1, "pidof %s", g_config.qemu_binary);
+        if (err != 0) {
+            tloge("build_pidof_cmd: strcpy_s failed, error %d\n", err);
+            return -1;
+        }
+    } else {
+        tlogi("build_pidof_cmd: qemu binary is NULL\n");
+        const char *command = is_euler ? PID_OF_QEMU_CMD2 : PID_OF_QEMU_CMD1;
+        err = strcpy_s(g_pid_of_cmd_buffer, BUFFER_LEN, command);
+        if (err != 0) {
+            tloge("build_pidof_cmd: strcpy_s failed, error %d\n", err);
+            return -1;
+        }
+    }
+
+    tlogi("build_pidof_cmd: successfully build pid of cmd to '%s'\n", g_pid_of_cmd_buffer);
     return 0;
 }
 
@@ -251,6 +322,8 @@ static int set_g_config(const char *key, const char *value)
         return set_numa_bindings(value);
     } else if (strcmp(key, "use_vcpuset") == 0) {
         return set_use_vcpuset(value);
+    } else if (strcmp(key, "qemu_binary") == 0) {
+        return set_qemu_binary(value);
     } else {
         tloge("set_g_config: undefined configuration: %s\n", key);
         return -1;
@@ -310,6 +383,9 @@ void config_init()
 {
     FILE *fp;
     char line[MAX_LINE_LEN];
+
+    test_system_release();
+
     fp = fopen(CONFIG_PATH, "r");
     if (fp == NULL) {
         tlogw("Config file %s not found, using defaults\n", CONFIG_PATH);
@@ -326,6 +402,9 @@ void config_init()
 print_config:
     tlogi("Config: max_vm_count = %d\n", g_config.max_vm_count);
     tlogi("Config: use_vcpuset = %s\n", g_config.use_vcpuset ? "true" : "false");
+    tlogi("Config: qemu_binary = %s\n", g_config.qemu_binary);
+
+    build_pidof_cmd();
 }
 
 VtzConfig *get_global_config(void)
