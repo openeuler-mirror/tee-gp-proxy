@@ -21,17 +21,18 @@
 
 #define CONFIG_PATH "/var/vtz/vtz_proxy.conf"
 #define MAX_LINE_LEN 256
-#define MAX_PATH_LEN 108
-#define MAX_URI_LEN 128
+#define MAX_QEMU_LEN 128
 
 /* Default values */
 #define DEFAULT_MAX_VM_COUNT 64
 #define DEFAULT_USE_VCPUSET true
+#define DEFAULT_QEMU_BINARY "qemu-system-aarch64"
 
 typedef struct {
     int max_vm_count;                       /* Maximum number of VMs supported */
     cpu_set_t cpuset;
     bool use_vcpuset;                       /* Whether to enable vcpu mapping */
+    char qemu_binary[MAX_QEMU_LEN];         /* qemu binary of VM */
 } VtzConfig;
 
 void print_cpuset(cpu_set_t *cpuset);
