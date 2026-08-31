@@ -1,0 +1,69 @@
+From ba35dc4fecebe8e1459fb0535ae0056a656e2446 Mon Sep 17 00:00:00 2001
+From: liuhao365 <liuhao365@huawei.com>
+Date: Mon, 31 Aug 2026 20:01:21 +0800
+Subject: [PATCH] support set ree load mode for modprobe tzdriver
+
+---
+ core/tc_client_driver.c | 18 ++++++++++++++++++
+ tc_ns_client.h          |  9 +--------
+ 2 files changed, 19 insertions(+), 8 deletions(-)
+
+diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
+index 788f8ea..b3d12d1 100644
+--- a/core/tc_client_driver.c
++++ b/core/tc_client_driver.c
+@@ -119,6 +119,21 @@ static bool g_init_succ = false;
+ static bool g_vm_deploy_enable = true;
+ #endif /* CONFIG_VM_DEPLOY */
+ 
++#ifdef CONFIG_CONFIDENTIAL_CONTAINER
++static int load_mode = REE_VIRTUAL;
++module_param(load_mode, int, 0660);
++MODULE_PARM_DESC(load_mode, "Load mode for tzdriver: 1=contrainer, 2=virtual.");
++#endif
++
++int get_ree_load_mode(void)
++{
++#ifdef CONFIG_VM_DEPLOY
++	return load_mode;
++#else
++	return REE_CONTAINER;
++#endif
++}
++
+ struct class *get_driver_class(void)
+ {
+ 	return g_driver_class;
+@@ -1925,6 +1940,9 @@ static __init int tc_init(void)
+ 		tloge("enable dev nodes failed\n");
+ 		goto class_device_destroy;
+ 	}
++#ifdef CONFIG_CONFIDENTIAL_CONTAINER
++	tlogi("set load mode success, mode = %d\n", load_mode);
++#endif
+ 
+ 	set_tz_init_flag();
+ #if defined(DYNAMIC_DRV_DIR) || defined(DYNAMIC_CRYPTO_DRV_DIR) || defined(DYNAMIC_SRV_DIR)
+diff --git a/tc_ns_client.h b/tc_ns_client.h
+index 0441300..33f44fc 100644
+--- a/tc_ns_client.h
++++ b/tc_ns_client.h
+@@ -256,14 +256,7 @@ enum REE_LOAD_MODE {
+ 	REE_VIRTUAL = 2,
+ };
+ 
+-static inline int get_ree_load_mode(void)
+-{
+-#ifdef CONFIG_VM_DEPLOY
+-	return REE_VIRTUAL;
+-#else
+-	return REE_CONTAINER;
+-#endif
+-}
++int get_ree_load_mode(void);
+ 
+ static inline bool is_same_group(unsigned int dst_nsid, unsigned int dst_vmid, unsigned int nsid, unsigned int vmid)
+ {
+-- 
+2.28.0.windows.1
+
