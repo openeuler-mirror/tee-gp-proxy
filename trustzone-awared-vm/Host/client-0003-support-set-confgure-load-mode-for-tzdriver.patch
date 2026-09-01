@@ -1,0 +1,91 @@
+From bcb8cd9afd6b0835424b613d9e808ed97275ab75 Mon Sep 17 00:00:00 2001
+From: liuhao365 <liuhao365@huawei.com>
+Date: Tue, 1 Sep 2026 11:23:52 +0800
+Subject: [PATCH] support set confgure load mode for tzdriver
+
+---
+ rpm/SOURCES/teec.conf     |  7 +++++++
+ rpm/SOURCES/teecd.sh      | 19 +++++++++++++++----
+ rpm/SPECS/tee_client.spec |  4 ++++
+ 3 files changed, 26 insertions(+), 4 deletions(-)
+ create mode 100644 rpm/SOURCES/teec.conf
+
+diff --git a/rpm/SOURCES/teec.conf b/rpm/SOURCES/teec.conf
+new file mode 100644
+index 0000000..b9ffb8e
+--- /dev/null
++++ b/rpm/SOURCES/teec.conf
+@@ -0,0 +1,7 @@
++# teec.conf - TEE Client Configuration
++#
++# load mod configuration for TEE client
++#    1 = Container
++#    2 = Virtual Machine (default)
++
++load_mode = 2
+\ No newline at end of file
+diff --git a/rpm/SOURCES/teecd.sh b/rpm/SOURCES/teecd.sh
+index d77c09b..e4db840 100644
+--- a/rpm/SOURCES/teecd.sh
++++ b/rpm/SOURCES/teecd.sh
+@@ -4,16 +4,27 @@
+ set -eu
+ 
+ 
++# Parse load_mode from teec.conf
++CONFIG_FILE="/etc/teec.conf"
++load_mode=2 # default value
++
++if [ -f "$CONFIG_FILE" ]; then
++    parsed_mode=$(grep -E '^\s*load_mode\s*=' "$CONFIG_FILE" | sed 's/.*=\s*//' | tr -d '[:space:]' )
++    if [ -n "$parsed_mode" ] && { [ "$parsed_mode" = "1" ] || [ "$parsed_mode" = "2" ]; }; then
++        load_mode=$parsed_mode
++    fi
++fi
++
+ if [ $(systemd-detect-virt) = "none" ]; then
+-    driver="tzdriver"
++    driver_args=(tzdriver load_mode=$load_mode)
+ else
+-    driver="vtzdriver"
++    driver_args=(vtzdriver)
+ fi
+ 
+ /sbin/modprobe vhost_vsock || true
+ 
+-if ! /sbin/modprobe "$driver" 2>/dev/null; then
+-    echo "failed to load $driver"
++if ! /sbin/modprobe "${driver_args[@]}" 2>/dev/null; then
++    echo "failed to load ${driver_args[0]}"
+     exit 1
+ fi
+ 
+diff --git a/rpm/SPECS/tee_client.spec b/rpm/SPECS/tee_client.spec
+index 59a9759..d75f5cd 100644
+--- a/rpm/SPECS/tee_client.spec
++++ b/rpm/SPECS/tee_client.spec
+@@ -20,9 +20,11 @@ rm -rf $RPM_BUILD_ROOT
+ mkdir -p %{buildroot}%{_bindir}
+ mkdir -p %{buildroot}%{_libdir}
+ mkdir -p %{buildroot}%{_unitdir}
++mkdir -p %{buildroot}%{_sysconfdir}
+ install -m 0755 %{_sourcedir}/{teecd,tee_teleport,agentd,tlogcat,teecd.sh} %{buildroot}%{_bindir}/
+ install -m 0644 %{_sourcedir}/libteec.so %{buildroot}%{_libdir}/
+ install -m 0644 %{_sourcedir}/teecd.service %{buildroot}%{_unitdir}/
++install -m 0644 %{_sourcedir}/teec.conf %{buildroot}%{_sysconfdir}/teec.conf
+ 
+ %post
+ /sbin/ldconfig
+@@ -53,6 +55,8 @@ fi
+ 
+ %{_unitdir}/teecd.service
+ 
++%config(noreplace) %{_sysconfdir}/teec.conf
++
+ %changelog
+ * Mon Jul 20 2026 liuhao<liuhao365@h-partners.com>-1.0.0-1
+ - package init
+\ No newline at end of file
+-- 
+2.28.0.windows.1
+
