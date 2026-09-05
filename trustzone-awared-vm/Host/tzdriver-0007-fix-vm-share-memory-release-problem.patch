@@ -1,12 +1,39 @@
-From 839dfc96883288997ecce57cc1eeb6943fac9185 Mon Sep 17 00:00:00 2001
+From f9c1ef98551d74a6820d3a026fc8aa662f4ddd51 Mon Sep 17 00:00:00 2001
 From: liuhao365 <liuhao365@huawei.com>
 Date: Sun, 23 Aug 2026 17:09:23 +0800
 Subject: [PATCH] fix vm share memory release problem
 
 ---
+ core/gp_ops.c          |  8 ++++----
  core/session_manager.c | 16 ++++++++++------
- 1 file changed, 10 insertions(+), 6 deletions(-)
+ core/shared_mem.c      |  8 ++------
+ 3 files changed, 16 insertions(+), 16 deletions(-)
 
+diff --git a/core/gp_ops.c b/core/gp_ops.c
+index 1d8b889..05b0e09 100644
+--- a/core/gp_ops.c
++++ b/core/gp_ops.c
+@@ -586,16 +586,16 @@ static int pin_user_pages_remote_wrapper(struct mm_struct *mm,
+ 
+ #if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
+ 	ret = get_user_pages_remote(mm, start_addr, nr_pages,
+-				    FOLL_FORCE, pages, NULL);
++				    FOLL_GET, pages, NULL);
+ #elif (KERNEL_VERSION(5, 9, 0) <= LINUX_VERSION_CODE)
+ 	ret = get_user_pages_remote(mm, start_addr, nr_pages,
+-				    FOLL_FORCE, pages, NULL, NULL);
++				    FOLL_GET, pages, NULL, NULL);
+ #elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
+ 	ret = get_user_pages_remote(NULL, mm, start_addr, nr_pages,
+-				    FOLL_FORCE, pages, NULL, NULL);
++				    FOLL_GET, pages, NULL, NULL);
+ #elif (KERNEL_VERSION(4, 9, 0) <= LINUX_VERSION_CODE)
+ 	ret = get_user_pages_remote(NULL, mm, start_addr, nr_pages,
+-				    FOLL_FORCE, pages, NULL);
++				    FOLL_GET, pages, NULL);
+ #else
+ 	ret = get_user_pages_remote(NULL, mm, start_addr, nr_pages,
+ 				    1, 1, pages, NULL);
 diff --git a/core/session_manager.c b/core/session_manager.c
 index 6f43e20..96c3de4 100644
 --- a/core/session_manager.c
@@ -64,6 +91,32 @@ index 6f43e20..96c3de4 100644
  #endif
  	kill_ion_by_uuid((struct tc_uuid *)context.uuid);
  	return ret;
+diff --git a/core/shared_mem.c b/core/shared_mem.c
+index a2764c5..6be67ed 100644
+--- a/core/shared_mem.c
++++ b/core/shared_mem.c
+@@ -134,7 +134,6 @@ void release_vm_shared_mem_page(uint64_t buf, uint32_t buf_size, uint32_t vm_pag
+ 	uint64_t *phys_addr = NULL;
+ 	struct pagelist_info *page_info = NULL;
+ 	struct page *page = NULL;
+-	struct page *last_page = NULL;
+ 
+ 	page_info = (struct pagelist_info *)(uintptr_t)buf;
+ 	phys_addr = (uint64_t *)(uintptr_t)buf + (sizeof(*page_info) / sizeof(uint64_t));
+@@ -148,11 +147,8 @@ void release_vm_shared_mem_page(uint64_t buf, uint32_t buf_size, uint32_t vm_pag
+ 		page = (struct page *)(uintptr_t)phys_to_page(phys_addr[i]);
+ 		if (page == NULL)
+ 			continue;
+-		if (last_page != page) {
+-			set_bit(PG_dirty, &page->flags);
+-			put_page(page);
+-		}
+-		last_page = page;
++		set_page_dirty_lock(page);
++		put_page(page);
+ 	}
+ }
+ 
 -- 
 2.28.0.windows.1
 
