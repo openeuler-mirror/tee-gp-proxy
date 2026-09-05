@@ -1,0 +1,194 @@
+From 542f523dd5637187e3dec69b0b18f70acb9ab8e0 Mon Sep 17 00:00:00 2001
+From: liuhao365 <liuhao365@h-partners.com>
+Date: Sat, 18 Jul 2026 16:16:32 +0800
+Subject: [PATCH 2/3] support rpm build
+
+---
+ README.en.md                     | 13 ++++----
+ README.md                        | 11 ++++---
+ rpm/SPECS/tzdriver.spec          | 53 ++++++++++++++++++++++++++++++++
+ rpm/build_rpm.sh                 | 31 +++++++++++++++++++
+ rpm/conf/tzdriver-blacklist.conf |  3 ++
+ 5 files changed, 99 insertions(+), 12 deletions(-)
+ create mode 100644 rpm/SPECS/tzdriver.spec
+ create mode 100644 rpm/build_rpm.sh
+ create mode 100644 rpm/conf/tzdriver-blacklist.conf
+
+diff --git a/README.en.md b/README.en.md
+index f3fd5d1..8457471 100644
+--- a/README.en.md
++++ b/README.en.md
+@@ -12,6 +12,7 @@ like this:
+ tzdriver
+     |--Makefile
+     |--core
++    |--rpm
+     |--......
+     |--libboundscheck
+         |--src
+@@ -20,15 +21,13 @@ tzdriver
+ 
+ 2) cd tzdriver
+ 3) make -C libboundscheck
+-4) make
+-   For 920 new models use this command instead：`make CPU_BINDING=y`
+-then you will see tzdriver.ko under the folder "tzdriver"
+-   If you want to use tee as a non-root user inside a container, 
+-use this command instead：`make CONFIG_CONTAINER_TEE_CAPABLE=true`
++4) build tzdriver rpm package
++    cd rpm && sh build_rpm.sh
++    rpm -ivh output/tzdriver-*
+ 4.Run
+ 1) make sure that TEEOS is running
+-2) # insmod tzdriver.ko
+-3) # /usr/bin/teecd &
++2) modprobe tzdriver
++3) systemctl start teec
+ 4) run any CA
+ 
+ 5.License
+diff --git a/README.md b/README.md
+index ef47e46..bdbf8cb 100644
+--- a/README.md
++++ b/README.md
+@@ -17,6 +17,7 @@ iTrustee OS 非安全侧driver，支持与iTrustee OS通信。
+ itrustee_tzdriver
+ |--Makefile
+ |--core
++|--rpm
+ |--......
+ |--libboundscheck
+     |--src
+@@ -28,16 +29,16 @@ itrustee_tzdriver
+ 
+ 5）make -C libboundscheck。
+ 
+-6）make 编译出tzdriver.ko文件。
+-   鲲鹏920新型号使用命令：`make CPU_BINDING=y`
+-   使用容器内非root用户提供tee能力命令：`make CONFIG_CONTAINER_TEE_CAPABLE=true`
++6）构建rpm包
++   cd rpm && sh build_rpm.sh
++   rpm -ivh output/tzdriver-*
+ #### 使用说明
+ 
+ 1）确保ARM 服务器已经运行iTrustee OS。
+ 
+-2）使用root用户，执行insmod tzdriver.ko
++2）使用root用户，执行modprobe tzdriver
+ 
+-3）使用root用户，执行nohup /usr/bin/teecd &
++3）使用root用户，执行systemctl start teec
+ 
+ 4）运行测试CA 和TA。
+ 
+diff --git a/rpm/SPECS/tzdriver.spec b/rpm/SPECS/tzdriver.spec
+new file mode 100644
+index 0000000..8656fdc
+--- /dev/null
++++ b/rpm/SPECS/tzdriver.spec
+@@ -0,0 +1,53 @@
++#Parameter
++%{!?KVERSION: %define KVERSION %(uname -r)}
++%define __strip /bin/true
++
++Name:           tzdriver
++Version:        1.0.0
++Release:        1%{?dist}
++Group:          System Environment/Kernel
++Summary:        itrustee driver
++License:        GPLv3
++
++%{?systemd_requires}
++BuildRequires: systemd
++
++%define kmodinstdir_prefix  /lib/modules/
++%{!?kernel:  %{expand: %%define kernel %%(uname -r)}}
++%description
++tzdriver is driver for tee
++
++%pre
++
++%install
++rm -rf $RPM_BUILD_ROOT
++mkdir -p %{buildroot}/%{_sysconfdir}/modprobe.d
++mkdir -p %{buildroot}%{kmodinstdir_prefix}%{kernel}/extra
++install -m 0640 %{_sourcedir}/%{name}-blacklist.conf %{buildroot}/%{_sysconfdir}/modprobe.d
++install -m 0550 %{_sourcedir}/%{name}.ko %{buildroot}%{kmodinstdir_prefix}%{kernel}/extra
++find $RPM_BUILD_ROOT -name '*.la' -exec rm -f {} ';'
++find %{buildroot} -type f -name \*.ko -exec %{__chmod} u+x \{\} \;
++
++%post
++if [[ %{KVERSION} != $(uname -r) ]]; then
++    if [ ! -d "/lib/modules/$(uname -r)/extra" ];then
++        mkdir -p /lib/modules/$(uname -r)/extra
++    fi
++
++    ln -sf /lib/modules/%{KVERSION}/extra/%{name}.ko /lib/modules/$(uname -r)/extra/%{name}.ko
++fi
++/sbin/depmod -a > /dev/null 2>&1
++
++%postun
++if [[ %{KVERSION} != $(uname -r) ]]; then
++    rm -rf /lib/modules/$(uname -r)/extra/%{name}.ko > /dev/null 2>&1
++fi
++/sbin/depmod -a > /dev/null 2>&1
++
++%files
++%{_sysconfdir}/modprobe.d/%{name}-blacklist.conf
++%{kmodinstdir_prefix}%{kernel}/extra/%{name}.ko
++
++%changelog
++* Mon Jul 20 2026 liuhao<liuhao365@h-partners.com>-1.0.0-1
++- package init
+\ No newline at end of file
+diff --git a/rpm/build_rpm.sh b/rpm/build_rpm.sh
+new file mode 100644
+index 0000000..d5dbfc0
+--- /dev/null
++++ b/rpm/build_rpm.sh
+@@ -0,0 +1,31 @@
++#!/bin/bash
++# Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
++# build rpms for tzdriver
++set -eu
++
++RPM_CURDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
++RPMBUILD_PATH=${RPM_CURDIR}/rpmbuild
++SPECS_DIR=${RPM_CURDIR}/SPECS
++LIB_CODE_NAME=libboundscheck
++
++#step1: enter tzdriver source code and compile
++echo ${RPM_CURDIR}
++cd ${RPM_CURDIR}/..
++if [ ! -d "$LIB_CODE_NAME" ];then
++    git clone https://gitcode.com/openeuler/libboundscheck.git
++fi
++make clean
++make CPU_BINDING=y -j
++
++#step2: build_rpm
++mkdir -p ${RPMBUILD_PATH}/SOURCES
++cp -a ${RPM_CURDIR}/../tzdriver.ko ${RPMBUILD_PATH}/SOURCES/
++cp -a ${RPM_CURDIR}/conf/tzdriver-blacklist.conf ${RPMBUILD_PATH}/SOURCES/
++rpmbuild --define "_topdir ${RPMBUILD_PATH}" -bb ${SPECS_DIR}/tzdriver.spec
++
++#step3: clean_dir
++mkdir -p ${RPM_CURDIR}/output
++cp -a ${RPM_CURDIR}/rpmbuild/RPMS/aarch64/* ${RPM_CURDIR}/output
++[ -d "${RPM_CURDIR}/rpmbuild" ] && rm -rf ${RPM_CURDIR}/rpmbuild
++cd ${RPM_CURDIR}/..
++make clean
+\ No newline at end of file
+diff --git a/rpm/conf/tzdriver-blacklist.conf b/rpm/conf/tzdriver-blacklist.conf
+new file mode 100644
+index 0000000..df7750d
+--- /dev/null
++++ b/rpm/conf/tzdriver-blacklist.conf
+@@ -0,0 +1,3 @@
++# This kernel module can be automatically loaded by user when TEE function need to be use.
++# Remove the blacklist by adding a comment # at the start of the line.
++blacklist tzdriver
+\ No newline at end of file
+-- 
+2.28.0.windows.1
+

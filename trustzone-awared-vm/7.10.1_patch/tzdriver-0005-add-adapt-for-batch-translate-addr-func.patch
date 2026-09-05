@@ -1,0 +1,72 @@
+From 597731ba0051dca26aa812b7b0b2f3862e5d45a0 Mon Sep 17 00:00:00 2001
+From: root <root@localhost.localdomain>
+Date: Tue, 2 Jun 2026 19:47:53 +0800
+Subject: [PATCH] add adapt for batch translate addr func
+
+---
+ Makefile                |  2 +-
+ core/tc_client_driver.c | 22 +++++++++++++++++++---
+ 2 files changed, 20 insertions(+), 4 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 13dd419..6ffd413 100644
+--- a/Makefile
++++ b/Makefile
+@@ -59,7 +59,7 @@ EXTRA_CFLAGS += -DCONFIG_AUTH_SUPPORT_UNAME -DCONFIG_AUTH_HASH -std=gnu99
+ EXTRA_CFLAGS += -DCONFIG_TEE_UPGRADE -DCONFIG_TEE_REBOOT -DCONFIG_CONFIDENTIAL_TEE
+ EXTRA_CFLAGS += -I$(PWD)/tzdriver_internal/tee_reboot
+ EXTRA_CFLAGS += -DMAILBOX_POOL_COUNT=32 -DLATE_KILL_WHEN_TA_LOAD
+-EXTRA_CFLAGS += -DCONFIG_DISABLE_SHOW_AGENT_STATUS
++#EXTRA_CFLAGS += -DCONFIG_DISABLE_SHOW_AGENT_STATUS
+ EXTRA_CFLAGS += -DVM_DEPLOY
+ ifeq ($(CPU_BINDING), y)
+ EXTRA_CFLAGS += -DCONFIG_CPU_BINDING -DCONFIG_NUM_TEE_DIE=4 -DCONFIG_NUM_TEE_PHY_CORE_PER_DIE=32
+diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
+index eebc286..6452582 100644
+--- a/core/tc_client_driver.c
++++ b/core/tc_client_driver.c
+@@ -217,6 +217,9 @@ static kallsyms_lookup_name_t fn_kallsyms_lookup_name = NULL;
+ typedef uint64_t (*vhost_vsock_translate_gpa_t)(uint32_t cid, uint64_t gpa, uint64_t size);
+ static vhost_vsock_translate_gpa_t vhost_vsock_translate_gpa_func = NULL;
+ 
++typedef uint64_t (*vhost_vsock_translate_addr_t)(uint32_t cid, uint64_t addr, uint64_t len, struct iovec iov[], int iov_size);
++static vhost_vsock_translate_addr_t vhost_vsock_translate_addr_func = NULL;
++
+ static struct kprobe kp_sym_lookup = {
+ 	.symbol_name = "kallsyms_lookup_name",
+ };
+@@ -245,15 +248,28 @@ static int get_symbol_from_kernel(void)
+ 
+ 	vhost_vsock_translate_gpa_func = (vhost_vsock_translate_gpa_t)
+ 		fn_kallsyms_lookup_name("vhost_vsock_translate_gpa");
+-	if (!vhost_vsock_translate_gpa_func) {
+-		pr_warn("tz_driver: cannot get function vhost_vsock_translate_gpa\n");
+-		return -1;
++	if (vhost_vsock_translate_gpa_func) {
++		pr_info("tz_driver: lookup vhost_vsock_translate_gpa succ\n");
+ 	}
++
++	vhost_vsock_translate_addr_func = (vhost_vsock_translate_addr_t)
++		fn_kallsyms_lookup_name("vhost_vsock_translate_addr");
++	if (vhost_vsock_translate_addr_func)
++		pr_info("tz_driver: lookup vhost_vsock_translate_addr_func succ\n");
++	
+ 	return 0;
+ }
+ 
+ static uint64_t vhost_vsock_translate_gpa(uint32_t cid, uint64_t gpa, uint64_t size)
+ {
++	if (vhost_vsock_translate_addr_func) {
++		int ret;
++		struct iovec iov[1];
++
++		ret = vhost_vsock_translate_addr_func(cid, gpa, size, iov, 1);
++		if (ret >= 0)
++			return (uint64_t)iov[0].iov_base;
++	}
+ 	if (vhost_vsock_translate_gpa_func)
+ 		return vhost_vsock_translate_gpa_func(cid, gpa, size);
+ 
+-- 
+2.53.0
+
