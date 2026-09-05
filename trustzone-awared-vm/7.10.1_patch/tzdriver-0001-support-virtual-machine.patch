@@ -1,0 +1,1077 @@
+From e3b6dd1b1f2c1d7b5ae37ac402b40431ae2dfb11 Mon Sep 17 00:00:00 2001
+From: gongchangsui <gongchangsui@outlook.com>
+Date: Wed, 4 Feb 2026 14:34:03 +0800
+Subject: [PATCH] support vm
+
+---
+ Makefile                |   1 +
+ auth/auth_base_impl.c   |  17 ++
+ auth/auth_base_impl.h   |   6 +
+ core/gp_ops.c           | 340 ++++++++++++++++++++++++++++++++++++----
+ core/gp_ops.h           |   4 +
+ core/session_manager.c  | 121 +++++++++++++-
+ core/shared_mem.c       |  29 ++++
+ core/shared_mem.h       |   2 +-
+ core/tc_client_driver.c | 118 ++++++++++++--
+ core/tc_client_driver.h |   1 +
+ core/tc_cvm_driver.c    |   6 +
+ tc_ns_client.h          |   3 +
+ teek_ns_client.h        |   2 +
+ tlogger/tlogger.c       |  53 ++++++-
+ 14 files changed, 652 insertions(+), 51 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index ac40f80..1a07db1 100644
+--- a/Makefile
++++ b/Makefile
+@@ -50,6 +50,7 @@ EXTRA_CFLAGS += -DCONFIG_CPU_AFF_NR=0 -DCONFIG_BIG_SESSION=200 -DCONFIG_NOTIFY_P
+ EXTRA_CFLAGS += -DCONFIG_TEE_LOG_ACHIVE_PATH=\"/var/log/tee/last_teemsg\"
+ EXTRA_CFLAGS += -DNOT_TRIGGER_AP_RESET -DLAST_TEE_MSG_ROOT_GID -DCONFIG_NOCOPY_SHAREDMEM -DCONFIG_REGISTER_SHAREDMEM -DCONFIG_TA_AFFINITY=y -DCONFIG_TA_AFFINITY_CPU_NUMS=128
+ EXTRA_CFLAGS += -DTEECD_PATH_UID_AUTH_CTX=\"/usr/bin/teecd:0\"
++EXTRA_CFLAGS += -DPROXY_PATH_UID_AUTH_CTX=\"/usr/bin/vtz_proxy:0\"
+ EXTRA_CFLAGS += -DCONFIG_AUTH_SUPPORT_UNAME -DCONFIG_AUTH_HASH -std=gnu99
+ EXTRA_CFLAGS += -DCONFIG_TEE_UPGRADE -DCONFIG_TEE_REBOOT -DCONFIG_CONFIDENTIAL_TEE
+ EXTRA_CFLAGS += -I$(PWD)/tzdriver_internal/tee_reboot
+diff --git a/auth/auth_base_impl.c b/auth/auth_base_impl.c
+index fdc15f3..56ee47f 100644
+--- a/auth/auth_base_impl.c
++++ b/auth/auth_base_impl.c
+@@ -336,11 +336,28 @@ int check_teecd_auth(void)
+ 
+ 	return CHECK_ACCESS_SUCC;
+ }
++
++int check_proxy_auth(void)
++{
++	int ret = check_proc_uid_path(PROXY_PATH_UID_AUTH_CTX);
++	if (ret != 0) {
++		return ret;
++	}
++
++	return CHECK_ACCESS_SUCC;
++}
++
+ #else
+ int check_teecd_auth(void)
+ {
+ 	return 0;
+ }
++
++int check_proxy_auth(void)
++{
++	return 0;
++}
++
+ #endif
+ 
+ bool is_hidl_or_cadaemon(void)
+diff --git a/auth/auth_base_impl.h b/auth/auth_base_impl.h
+index 82d950f..e06c4eb 100644
+--- a/auth/auth_base_impl.h
++++ b/auth/auth_base_impl.h
+@@ -84,6 +84,7 @@ void mutex_crypto_hash_lock(void);
+ void mutex_crypto_hash_unlock(void);
+ int check_hidl_auth(void);
+ int check_teecd_auth(void);
++int check_proxy_auth(void);
+ #else
+ 
+ static inline void free_shash_handle(void)
+@@ -101,6 +102,11 @@ int check_teecd_auth(void)
+ 	return 0;
+ }
+ 
++int check_proxy_auth(void)
++{
++	return 0;
++}
++
+ #endif /* CLIENT_AUTH || TEECD_AUTH */
+ 
+ bool is_hidl_or_cadaemon(void);
+diff --git a/core/gp_ops.c b/core/gp_ops.c
+index 7938204..b9f6ab1 100644
+--- a/core/gp_ops.c
++++ b/core/gp_ops.c
+@@ -231,6 +231,84 @@ int write_to_client(void __user *dest, size_t dest_size,
+ 	return 0;
+ }
+ 
++int read_from_VMclient(void *dest, size_t dest_size,
++	const void __user *src, size_t size, pid_t vm_pid)
++{
++	struct task_struct *vmp_task;
++    int i_rdlen;
++	int i_index;
++	int ret;
++
++	if (!dest || !src) {
++		tloge("src or dest is NULL input buffer\n");
++		return -EINVAL;
++	}
++
++	if (size > dest_size) {
++		tloge("size is larger than dest_size or size is 0\n");
++		return -EINVAL;
++	}
++	if (!size)
++		return 0;
++
++	tlogv("django verbose, execute access_process_vm");
++	vmp_task = get_pid_task(find_get_pid(vm_pid), PIDTYPE_PID);
++	if (vmp_task == NULL) {
++		tloge("no task for pid %d \n", vm_pid);
++		return  -EFAULT;
++	}
++	tlogv("django verbose, task_struct * for pid %d is 0x%px", vm_pid, vmp_task);
++
++	i_rdlen = access_process_vm(vmp_task,  (unsigned long)(src), dest, size, FOLL_FORCE);
++	if (i_rdlen != size) {
++		tloge("only read %d of %ld bytes by access_process_vm \n", i_rdlen, size);
++		return  -EFAULT;
++	}
++	tlogv("django verbose, read %d byes by access_process_vm succeed", 
++			i_rdlen);
++	for (i_index = 0; i_index < 32 && i_index < size; i_index ++) {
++         tlogv("django verbose, *(dest +  i_index) + %d) = %2.2x", 
++               i_index, *((char*)dest +  i_index));
++    }
++	return 0;
++}
++
++int write_to_VMclient(void __user *dest, size_t dest_size,
++	const void *src, size_t size, pid_t vm_pid)
++{
++	struct task_struct *vmp_task;
++    int i_wtlen;
++	int i_index;
++	int ret;
++
++	if (!dest || !src) {
++		tloge("src or dest is NULL input buffer\n");
++		return -EINVAL;
++	}
++
++	if (size > dest_size) {
++		tloge("size is larger than dest_size or size is 0\n");
++		return -EINVAL;
++	}
++	if (!size)
++		return 0;
++
++	vmp_task = get_pid_task(find_get_pid(vm_pid), PIDTYPE_PID);
++	if (vmp_task == NULL) {
++		tloge("no task for pid %d \n", vm_pid);
++		return  -EFAULT;
++	}
++
++	i_wtlen = access_process_vm(vmp_task,  (unsigned long)(dest), src, size, FOLL_FORCE | FOLL_WRITE);
++	if (i_wtlen != size) {
++		tloge("only write %d of %ld bytes by access_process_vm \n", i_wtlen, size);
++		return  -EFAULT;
++	}
++	tlogv("django verbose, write %d byes by access_process_vm succeed", 
++			i_wtlen);
++	return 0;
++}
++
+ static bool is_input_tempmem(unsigned int param_type)
+ {
+ 	if (param_type == TEEC_MEMREF_TEMP_INPUT ||
+@@ -240,7 +318,8 @@ static bool is_input_tempmem(unsigned int param_type)
+ 	return false;
+ }
+ 
+-static int update_input_data(const union tc_ns_client_param *client_param,
++static int update_input_data(const struct tc_call_params *call_params,
++	const union tc_ns_client_param *client_param,
+ 	uint32_t buffer_size, void *temp_buf,
+ 	unsigned int param_type, uint8_t kernel_params)
+ {
+@@ -250,11 +329,22 @@ static int update_input_data(const union tc_ns_client_param *client_param,
+ 
+ 	buffer_addr = client_param->memref.buffer |
+ 		((uint64_t)client_param->memref.buffer_h_addr << ADDR_TRANS_NUM);
+-	if (read_from_client(temp_buf, buffer_size,
+-		(void *)(uintptr_t)buffer_addr,
+-		buffer_size, kernel_params) != 0) {
+-		tloge("copy memref buffer failed\n");
+-		return -EFAULT;
++	if (call_params->dev->isVM && !kernel_params) {
++		tlogd("is VM\n");
++		if (read_from_VMclient(temp_buf, buffer_size,
++			(void *)(uintptr_t)buffer_addr,
++			buffer_size, call_params->dev->vmid) != 0) {
++			tloge("copy memref buffer failed\n");
++			return -EFAULT;
++		}
++	} else {
++		tlogd("is not VM\n");
++		if (read_from_client(temp_buf, buffer_size,
++			(void *)(uintptr_t)buffer_addr,
++			buffer_size, kernel_params) != 0) {
++			tloge("copy memref buffer failed\n");
++			return -EFAULT;
++		}
+ 	}
+ 	return 0;
+ }
+@@ -312,7 +402,7 @@ static int alloc_for_tmp_mem(const struct tc_call_params *call_params,
+ 	op_params->local_tmpbuf[index].temp_buffer = temp_buf;
+ 	op_params->local_tmpbuf[index].size = buffer_size;
+ 
+-	if (update_input_data(client_param, buffer_size, temp_buf,
++	if (update_input_data(call_params, client_param, buffer_size, temp_buf,
+ 		param_type, kernel_params) != 0)
+ 		return -EFAULT;
+ 
+@@ -324,8 +414,9 @@ static int alloc_for_tmp_mem(const struct tc_call_params *call_params,
+ 	return 0;
+ }
+ 
+-static int check_buffer_for_ref(uint32_t *buffer_size,
+-	const union tc_ns_client_param *client_param, uint8_t kernel_params)
++static int check_buffer_for_ref(const struct tc_call_params *call_params,
++	uint32_t *buffer_size, const union tc_ns_client_param *client_param,
++	uint8_t kernel_params)
+ {
+ 	uint64_t size_addr = client_param->memref.size_addr |
+ 		((uint64_t)client_param->memref.size_h_addr << ADDR_TRANS_NUM);
+@@ -416,7 +507,7 @@ static int alloc_for_ref_mem(const struct tc_call_params *call_params,
+ 		return -EINVAL;
+ 
+ 	client_param = &(call_params->context->params[index]);
+-	if (check_buffer_for_ref(&buffer_size, client_param, kernel_params) != 0)
++	if (check_buffer_for_ref(call_params, &buffer_size, client_param, kernel_params) != 0)
+ 		return -EINVAL;
+ 
+ 	op_params->mb_pack->operation.params[index].memref.buffer = 0;
+@@ -491,6 +582,139 @@ static int check_buffer_for_sharedmem(uint32_t *buffer_size,
+ 	return 0;
+ }
+ 
++typedef union {
++    struct{
++        uint64_t user_addr;
++        uint64_t page_num;
++    }block;
++    struct{
++        uint64_t vm_page_size;
++        uint64_t shared_mem_size;        
++    }share;
++}struct_page_block;
++
++int fill_vm_shared_mem_info_block(uint64_t block_buf, uint32_t block_nums,
++	uint32_t offset, uint32_t buffer_size, uint64_t info_addr, uint32_t vm_page_size,pid_t vm_pid)
++{
++	struct pagelist_info *page_info = NULL;
++	struct page **host_pages = NULL;
++	uint64_t *phys_addr = NULL;
++	int host_page_num;
++	uint32_t i;
++	uint32_t j;
++	uint32_t k;
++	uint32_t block_page_total_no = 0;
++	struct task_struct *vmp_task;
++	uint32_t vm_pages_no = 0;
++	uint32_t host_pages_no = 0;
++	uint32_t host_offset = 0;
++	uint64_t vm_start_vaddr;
++	void *host_start_vaddr;
++	uint32_t page_total_no = 0;
++	uint32_t vm_pages_total_size = 0;
++	vmp_task = get_pid_task(find_get_pid(vm_pid), PIDTYPE_PID);
++	if (vmp_task == NULL) {
++		tloge("no task for pid %d", vm_pid);
++		return  -EFAULT;
++	}
++	uint32_t expect_page_num = PAGE_ALIGN(buffer_size + (offset & (~PAGE_MASK))) / PAGE_SIZE;
++	struct_page_block *page_block = (struct_page_block *)(uintptr_t)block_buf;
++	for (i = 0; i < block_nums; i++){
++		vm_start_vaddr = page_block[i].block.user_addr;
++		vm_pages_no = page_block[i].block.page_num;
++
++		if (i==0 && vm_page_size > PAGE_SIZE) {
++			vm_start_vaddr += (offset & PAGE_MASK);
++			vm_pages_total_size = vm_pages_no * vm_page_size - (offset & PAGE_MASK);
++		} else {
++			vm_pages_total_size = vm_pages_no * vm_page_size;
++		}
++		
++		host_offset = ((uint32_t)(uintptr_t)vm_start_vaddr) & (~PAGE_MASK);
++		host_start_vaddr = (void *)(((uint64_t)vm_start_vaddr) & PAGE_MASK);
++		host_pages_no = PAGE_ALIGN(host_offset + vm_pages_total_size) / PAGE_SIZE;
++		if (i== block_nums -1 && vm_page_size > PAGE_SIZE)
++			host_pages_no = expect_page_num - page_total_no;
++
++		host_pages = (struct page **)vmalloc(host_pages_no * sizeof(uint64_t));
++		if (host_pages == NULL)
++			return -EFAULT;	
++		tlogd("page_block[%u].block.user_addr = %llx, page_block[%u].block.page_num = %llx\n", i, vm_start_vaddr, i, vm_pages_no);
++
++		#if (KERNEL_VERSION(6, 5, 0) <= LINUX_VERSION_CODE)
++			host_page_num = get_user_pages_remote(vmp_task->mm, host_start_vaddr,
++						(unsigned long)host_pages_no,
++						FOLL_FORCE, host_pages, NULL);
++		#elif (KERNEL_VERSION(5, 9, 0) <= LINUX_VERSION_CODE)
++			host_page_num = get_user_pages_remote(vmp_task->mm, host_start_vaddr,
++						(unsigned long)host_pages_no,
++						FOLL_FORCE, host_pages,
++						NULL, NULL);
++		#elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
++			host_page_num = get_user_pages_remote(vmp_task, vmp_task->mm, 
++						host_start_vaddr, (unsigned long)host_pages_no, FOLL_FORCE,
++						host_pages, NULL, NULL);
++		#elif (KERNEL_VERSION(4, 9, 0) <= LINUX_VERSION_CODE)
++			host_page_num = get_user_pages_remote(vmp_task, vmp_task->mm,
++						host_start_vaddr, (unsigned long)host_pages_no,
++						FOLL_FORCE, host_pages, NULL);
++		#else 
++			host_page_num = get_user_pages_remote(vmp_task, vmp_task->mm,
++						host_start_vaddr, (unsigned long)host_pages_no,
++						1, 1, host_pages, NULL);
++		#endif
++		if (host_page_num <= 0) {
++			tloge("get_user_pages_remote failed, ret is %d\n", host_page_num);
++			vfree(host_pages);
++			return host_page_num == 0 ? -EFAULT : host_page_num;
++		}
++		if (host_page_num != host_pages_no) {
++			tloge("get pages failed, page_num = %d, expect %u\n", host_page_num, host_pages_no);
++			if (host_page_num > 0) {
++				release_pages(host_pages, host_page_num);
++			}
++			vfree(host_pages);
++			return -EFAULT;
++		}
++
++		phys_addr = (uint64_t *)(uintptr_t)info_addr + (sizeof(*page_info) / sizeof(uint64_t));
++		phys_addr = (uint64_t *)((char *)phys_addr +  page_total_no * sizeof(uint64_t));
++		block_page_total_no = 0;
++		for (j = 0; j < host_pages_no; j++) {
++			struct page *page = NULL;
++			page = host_pages[j];
++			if (page == NULL) {
++				release_pages(host_pages, host_page_num);
++				vfree(host_pages);
++				tloge("page == NULL \n");
++				return -EFAULT;
++			}
++			void *host_page_phy = (uintptr_t)page_to_phys(page);
++			if (vm_page_size <  PAGE_SIZE) {
++				if (j !=0)
++					host_offset = 0;
++				uint32_t litil_page_num = (PAGE_SIZE - host_offset) / vm_page_size;
++				uint64_t host_page_start_addr = (uint64_t)host_page_phy + host_offset;
++				for (k = 0; k < litil_page_num && block_page_total_no < vm_pages_no;k++) {
++					phys_addr[block_page_total_no++] = host_page_start_addr + k * vm_page_size;
++				}
++			} else if (vm_page_size >=  PAGE_SIZE){
++				phys_addr[j] = (uintptr_t)page_to_phys(page);
++			}
++		}
++		page_total_no += (vm_page_size >= PAGE_SIZE ? host_pages_no : vm_pages_no);
++		vfree(host_pages);
++	}
++
++	page_info = (struct pagelist_info *)(uintptr_t)info_addr;
++	page_info->page_num = page_total_no;
++	page_info->page_size = (vm_page_size > PAGE_SIZE ? PAGE_SIZE : vm_page_size);
++	page_info->sharedmem_offset = offset & (~PAGE_MASK);
++	page_info->sharedmem_size = buffer_size;
++
++	return 0;
++}
++
+ static int transfer_shared_mem(const struct tc_call_params *call_params,
+ 	struct tc_op_params *op_params, uint8_t kernel_params,
+ 	uint32_t param_type, unsigned int index)
+@@ -499,10 +723,11 @@ static int transfer_shared_mem(const struct tc_call_params *call_params,
+ 	void *start_vaddr = NULL;
+ 	union tc_ns_client_param *client_param = NULL;
+ 	uint32_t buffer_size;
+-	uint32_t pages_no;
++	uint32_t pages_no = 0;
+ 	uint32_t offset;
+ 	uint32_t buff_len;
+ 	uint64_t buffer_addr;
++	uint32_t i;
+ 
+ 	if (index >= TEE_PARAM_NUM)
+ 		return -EINVAL;
+@@ -518,19 +743,57 @@ static int transfer_shared_mem(const struct tc_call_params *call_params,
+ 
+ 	buffer_addr = client_param->memref.buffer |
+ 		((uint64_t)client_param->memref.buffer_h_addr << ADDR_TRANS_NUM);
+-	buff = (void *)(uint64_t)(buffer_addr + client_param->memref.offset);
+-	start_vaddr = (void *)(((uint64_t)buff) & PAGE_MASK);
+-	offset = ((uint32_t)(uintptr_t)buff) & (~PAGE_MASK);
+-	pages_no = PAGE_ALIGN(offset + buffer_size) / PAGE_SIZE;
+-
+-	buff_len = sizeof(struct pagelist_info) + (sizeof(uint64_t) * pages_no);
+-	buff = mailbox_alloc(buff_len, MB_FLAG_ZERO);
+-	if (buff == NULL)
+-		return -EFAULT;
+ 
+-	if (fill_shared_mem_info((uint64_t)start_vaddr, pages_no, offset, buffer_size, (uint64_t)buff)) {
+-		mailbox_free(buff);
+-		return -EFAULT;
++	if (call_params->dev->isVM) {
++		uint32_t block_buf_size = buffer_size - sizeof(struct_page_block);
++		void *tmp_buf = kzalloc(buffer_size, GFP_KERNEL);
++		if (read_from_client(tmp_buf, buffer_size, buffer_addr, buffer_size, 0)) {
++			tloge("copy blocks failed\n");
++			return -EFAULT;
++		}
++		struct_page_block *block_buf = (struct_page_block *)((char *)tmp_buf + sizeof(struct_page_block));
++		uint32_t block_nums = block_buf_size / sizeof(struct_page_block);
++		uint32_t share_mem_size = ((struct_page_block *)tmp_buf)->share.shared_mem_size;
++		uint32_t vm_page_size = ((struct_page_block *)tmp_buf)->share.vm_page_size;
++
++		call_params->dev->vm_page_size = vm_page_size;
++		offset = (uint64_t)(client_param->memref.h_offset + client_param->memref.offset);
++		for(i = 0;i < block_nums; i++){
++			pages_no += block_buf[i].block.page_num;			
++		}
++		if (vm_page_size > PAGE_SIZE){
++			buff = (void *)(uint64_t)(client_param->memref.h_offset + client_param->memref.offset);	
++			pages_no = PAGE_ALIGN((((uint32_t)(uintptr_t)buff) & (~PAGE_MASK)) + share_mem_size) / PAGE_SIZE;
++			tlogd("page_no = %u \n", pages_no);
++		}
++
++		buff_len = sizeof(struct pagelist_info) + (sizeof(uint64_t) * pages_no);
++		buff = mailbox_alloc(buff_len, MB_FLAG_ZERO);
++		if (buff == NULL) {
++			kfree(tmp_buf);
++			return -EFAULT;
++		}
++		if (fill_vm_shared_mem_info_block((uint64_t)block_buf, block_nums, offset,
++			share_mem_size, (uint64_t)buff, vm_page_size, call_params->dev->vmid)) {
++			kfree(tmp_buf);
++			mailbox_free(buff);
++			return -EFAULT;
++		}
++		kfree(tmp_buf);
++	} else {
++		buff = (void *)(uint64_t)(buffer_addr + client_param->memref.offset);
++		start_vaddr = (void *)(((uint64_t)buff) & PAGE_MASK);
++		offset = ((uint32_t)(uintptr_t)buff) & (~PAGE_MASK);
++		pages_no = PAGE_ALIGN(offset + buffer_size) / PAGE_SIZE;
++
++		buff_len = sizeof(struct pagelist_info) + (sizeof(uint64_t) * pages_no);
++		buff = mailbox_alloc(buff_len, MB_FLAG_ZERO);
++		if (buff == NULL)
++			return -EFAULT;
++		if (fill_shared_mem_info((uint64_t)start_vaddr, pages_no, offset, buffer_size, (uint64_t)buff)) {
++			mailbox_free(buff);
++			return -EFAULT;
++		}
+ 	}
+ 
+ 	op_params->local_tmpbuf[index].temp_buffer = buff;
+@@ -707,13 +970,24 @@ static int update_tmp_mem(const struct tc_call_params *call_params,
+ 	if (buffer_size == 0)
+ 		return 0;
+ 	/* Only update the buffer when the buffer size is valid in complete case */
+-	if (write_to_client((void *)(uintptr_t)buffer_addr,
+-		operation->params[index].memref.size,
+-		op_params->local_tmpbuf[index].temp_buffer,
+-		operation->params[index].memref.size,
+-		call_params->dev->kernel_api) != 0) {
+-		tloge("copy tempbuf failed\n");
+-		return -ENOMEM;
++	if (call_params->dev->isVM && !call_params->dev->kernel_api) {
++		if (write_to_VMclient((void *)(uintptr_t)buffer_addr,
++			operation->params[index].memref.size,
++			op_params->local_tmpbuf[index].temp_buffer,
++			operation->params[index].memref.size,
++			call_params->dev->vmid) != 0) {
++			tloge("copy tempbuf failed\n");
++			return -ENOMEM;
++		}
++	} else {
++		if (write_to_client((void *)(uintptr_t)buffer_addr,
++			operation->params[index].memref.size,
++			op_params->local_tmpbuf[index].temp_buffer,
++			operation->params[index].memref.size,
++			call_params->dev->kernel_api) != 0) {
++			tloge("copy tempbuf failed\n");
++			return -ENOMEM;
++		}
+ 	}
+ 	return 0;
+ }
+@@ -863,7 +1137,11 @@ static void free_operation_sharedmem_params(const struct tc_call_params *call_pa
+ 		}
+ 	}
+ #endif
+-	release_shared_mem_page(temp_buf, temp_buf_sz);
++	if (call_params->dev->isVM)
++		release_vm_shared_mem_page(temp_buf, temp_buf_sz, call_params->dev->vm_page_size);
++	else
++		release_shared_mem_page(temp_buf, temp_buf_sz);
++
+ 	mailbox_free(temp_buf);
+ }
+ #endif
+diff --git a/core/gp_ops.h b/core/gp_ops.h
+index bc2446e..05bdcd2 100644
+--- a/core/gp_ops.h
++++ b/core/gp_ops.h
+@@ -28,5 +28,9 @@ int tc_client_call(const struct tc_call_params *call_params);
+ bool is_tmp_mem(uint32_t param_type);
+ bool is_ref_mem(uint32_t param_type);
+ bool is_val_param(uint32_t param_type);
++int write_to_VMclient(void __user *dest, size_t dest_size,
++	const void *src, size_t size, pid_t vm_pid);
++int read_from_VMclient(void *dest, size_t dest_size,
++	const void __user *src, size_t size, pid_t vm_pid);
+ 
+ #endif
+diff --git a/core/session_manager.c b/core/session_manager.c
+index e0e21c4..8365b4c 100644
+--- a/core/session_manager.c
++++ b/core/session_manager.c
+@@ -804,10 +804,19 @@ static int32_t load_image_copy_file(struct load_img_params *params, uint32_t loa
+ 		}
+ 		return 0;
+ 	}
+-	if (copy_from_user(params->mb_load_mem + sizeof(load_flag),
+-		(const void __user *)params->file_buffer + loaded_size, load_size)) {
+-		tloge("file buf get fail\n");
+-		return  -EFAULT;
++	if (params->dev_file->isVM) {
++		if (read_from_VMclient(params->mb_load_mem + sizeof(load_flag),
++			load_size, (const void __user *)(params->file_buffer + loaded_size),
++			load_size, (pid_t)params->dev_file->vmid)) {
++			tloge("file buf get failed \n");
++			return  -EFAULT;
++		}
++	} else {
++		if (copy_from_user(params->mb_load_mem + sizeof(load_flag),
++			(const void __user *)(params->file_buffer + loaded_size), load_size)) {
++			tloge("file buf get failed \n");
++			return  -EFAULT;
++		}
+ 	}
+ 	return 0;
+ }
+@@ -1412,10 +1421,109 @@ find_session:
+ 	return ret;
+ }
+ 
++static int process_vm_ref(struct tc_ns_dev_file *dev_file,
++	struct tc_ns_client_context *context, unsigned long long *vm_buffers)
++{
++	struct tc_ns_shared_mem *shared_mem = NULL;
++	int index = 0;
++	uint32_t buffer_size;
++	unsigned int offset = 0;
++	void *buffer_addr = NULL;
++	void *size_addr = NULL;
++	unsigned long long vm_hvas[TEE_PARAM_NUM]={0};
++
++	if (!dev_file->isVM || !context->file_buffer)
++		return 0;
++
++	if (copy_from_user(vm_hvas, context->file_buffer, context->file_size) != 0) {
++		tloge("copy from user failed\n");
++		return -EFAULT;
++	}
++
++	mutex_lock(&dev_file->shared_mem_lock);
++	list_for_each_entry(shared_mem, &dev_file->shared_mem_list, head) {
++		for (index = 0; index < TEE_PARAM_NUM; index++) {
++			buffer_addr = (void *)(uintptr_t)(context->params[index].memref.buffer |
++				((uint64_t)context->params[index].memref.buffer_h_addr << ADDR_TRANS_NUM));
++			if (shared_mem->user_addr == buffer_addr) {
++				buffer_addr = (void *)(uintptr_t)(shared_mem->kernel_addr);
++				size_addr = (void *)(uintptr_t)(context->params[index].memref.size_addr |
++					((uint64_t)context->params[index].memref.size_h_addr << ADDR_TRANS_NUM));
++				offset = context->params[index].memref.offset;
++
++				if (copy_from_user(&buffer_size, size_addr, sizeof(uint32_t))) {
++					tloge("copy memref.size_addr failed\n");
++					return -EFAULT;
++				}
++
++				if (read_from_VMclient(buffer_addr + offset, buffer_size,
++					(uint32_t __user *)(uintptr_t)(vm_hvas[index] + offset),
++					buffer_size, dev_file->vmid)) {
++					tloge("copy memref.buffer failed\n");
++					return -EFAULT;
++				}
++				vm_buffers[index] = vm_hvas[index];
++			}
++		}
++	}
++	mutex_unlock(&dev_file->shared_mem_lock);
++	return 0;
++}
++
++static int process_vm_ref_end(struct tc_ns_dev_file *dev_file,
++	struct tc_ns_client_context *context, unsigned long long *vm_buffers)
++{
++	int ret = 0;
++	struct tc_ns_shared_mem *shared_mem = NULL;
++	int index = 0;
++	uint32_t buffer_size;
++	unsigned int offset = 0;
++	void *buffer_addr = NULL;
++	void *size_addr = NULL;
++
++	if (!dev_file->isVM)
++		return 0;
++
++	mutex_lock(&dev_file->shared_mem_lock);
++	list_for_each_entry(shared_mem, &dev_file->shared_mem_list, head) {
++		for (index = 0; index < TEE_PARAM_NUM; index++) {
++			buffer_addr = (void *)(uintptr_t)(context->params[index].memref.buffer |
++				((uint64_t)context->params[index].memref.buffer_h_addr << ADDR_TRANS_NUM));
++			if (shared_mem->user_addr == buffer_addr) {
++				buffer_addr = (void *)(uintptr_t)(shared_mem->kernel_addr);
++				size_addr = (void *)(uintptr_t)(context->params[index].memref.size_addr |
++					((uint64_t)context->params[index].memref.size_h_addr << ADDR_TRANS_NUM));
++				offset = context->params[index].memref.offset;
++
++				if (copy_from_user(&buffer_size, size_addr, sizeof(uint32_t))) {
++					tloge("copy memref.size_addr failed\n");
++					return -EFAULT;
++				}
++
++				if (write_to_VMclient((void *)(uintptr_t)(vm_buffers[index] + offset),
++					buffer_size, (void *)(uintptr_t)(buffer_addr + offset), 
++					buffer_size, dev_file->vmid)) {
++					tloge("copy buf size failed\n");
++					return -EFAULT;
++				}
++			}
++		}
++	}
++	mutex_unlock(&dev_file->shared_mem_lock);
++	return ret;
++}
++
+ static int ioctl_session_send_cmd(struct tc_ns_dev_file *dev_file,
+ 	struct tc_ns_client_context *context, void *argp)
+ {
+ 	int ret;
++	unsigned long long vm_buffers[TEE_PARAM_NUM]={0};
++
++	if (dev_file->isVM &&
++		process_vm_ref(dev_file, context, vm_buffers)) {
++		tloge("copy from VM memref failed\n");
++		return -EFAULT;
++	}
+ 
+ 	ret = tc_ns_send_cmd(dev_file, context);
+ 	if (ret != 0)
+@@ -1424,6 +1532,11 @@ static int ioctl_session_send_cmd(struct tc_ns_dev_file *dev_file,
+ 		if (ret == 0)
+ 			ret = -EFAULT;
+ 	}
++	if (ret ==0 && dev_file->isVM && 
++		process_vm_ref_end(dev_file, context, vm_buffers)) {
++		tloge("copy to VM memref failed\n");
++		return -EFAULT;
++	}
+ 	return ret;
+ }
+ 
+diff --git a/core/shared_mem.c b/core/shared_mem.c
+index 6b1d2fa..49f9d47 100644
+--- a/core/shared_mem.c
++++ b/core/shared_mem.c
+@@ -127,6 +127,35 @@ void release_shared_mem_page(uint64_t buf, uint32_t buf_size)
+ #endif
+ 	}
+ }
++
++void release_vm_shared_mem_page(uint64_t buf, uint32_t buf_size, uint32_t vm_page_size)
++{
++	uint32_t i;
++	uint64_t *phys_addr = NULL;
++	struct pagelist_info *page_info = NULL;
++	struct page *page = NULL;
++	struct page *last_page = NULL;
++
++	page_info = (struct pagelist_info *)(uintptr_t)buf;
++	phys_addr = (uint64_t *)(uintptr_t)buf + (sizeof(*page_info) / sizeof(uint64_t));
++
++	if (buf_size != sizeof(*page_info) + sizeof(uint64_t) * page_info->page_num) {
++		tloge("bad size, cannot release page\n");
++		return;
++	}
++
++	for (i = 0; i < page_info->page_num; i++) {
++		page = (struct page *)(uintptr_t)phys_to_page(phys_addr[i]);
++		if (page == NULL)
++			continue;
++		if (last_page != page) {
++			set_bit(PG_dirty, &page->flags);
++			put_page(page);
++		}
++		last_page = page;
++	}		
++}
++
+ #else
+ 
+ int fill_shared_mem_info(uint64_t start_vaddr, uint32_t pages_no,
+diff --git a/core/shared_mem.h b/core/shared_mem.h
+index aece31e..5065cd4 100644
+--- a/core/shared_mem.h
++++ b/core/shared_mem.h
+@@ -64,5 +64,5 @@ void free_spi_mem(uint64_t spi_vaddr);
+ int fill_shared_mem_info(uint64_t start_vaddr, uint32_t pages_no,
+ 	uint32_t offset, uint32_t buffer_size, uint64_t info_addr);
+ void release_shared_mem_page(uint64_t buf, uint32_t buf_size);
+-
++void release_vm_shared_mem_page(uint64_t buf, uint32_t buf_size, uint32_t vm_page_size);
+ #endif
+diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
+index b0010cb..cf9ccb6 100644
+--- a/core/tc_client_driver.c
++++ b/core/tc_client_driver.c
+@@ -341,10 +341,14 @@ static int client_login_prepare(uint8_t *cert_buffer,
+ 
+ static int tc_login_check(const struct tc_ns_dev_file *dev_file)
+ {
+-	int ret = check_teecd_auth();
+-	if (ret != 0) {
+-		tloge("teec auth failed, ret %d\n", ret);
+-		return -EACCES;
++	int ret;
++	ret = check_proxy_auth();
++	if (ret) {
++		ret = check_teecd_auth();
++		if (ret != 0) {
++			tloge("teec auth failed, ret %d\n", ret);
++			return -EACCES;
++		}
+ 	}
+ 
+ 	if (!dev_file)
+@@ -734,12 +738,55 @@ static int ioctl_check_is_ccos(void __user *argp)
+ 	return ret;
+ }
+ 
++static int copy_buf_to_VM(unsigned int agent_id, unsigned int nsid,
++	unsigned long buffer_addr, unsigned int vmid)
++{
++	int ret = 0;
++	struct smc_event_data *event_data = NULL;
++
++	event_data = find_event_control(agent_id, nsid, vmid);
++	if (!event_data)
++		return -EINVAL;
++
++	if (write_to_VMclient((void *)(uintptr_t)buffer_addr,
++		event_data->agent_buff_size,
++		event_data->agent_buff_kernel,
++		event_data->agent_buff_size,
++		vmid) != 0) {
++		tloge("copy agent buffer failed\n");
++		return -ENOMEM;
++	}
++	return ret;
++}
++
++static int copy_buf_from_VM(unsigned int agent_id, unsigned int nsid,
++	unsigned long buffer_addr, unsigned int vmid)
++{
++	int ret = 0;
++	struct smc_event_data *event_data = NULL;
++
++	event_data = find_event_control(agent_id, nsid, vmid);
++	if (!event_data)
++		return -EINVAL;
++
++	if (read_from_VMclient(event_data->agent_buff_kernel,
++		event_data->agent_buff_size,
++		(void *)(uintptr_t)buffer_addr,
++		event_data->agent_buff_size,
++		vmid) != 0) {
++		tloge("copy agent buffer failed\n");
++		return -EFAULT;
++	}
++	return ret;
++}
++
+ /* ioctls for the secure storage daemon */
+ int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, bool is_from_client_node)
+ {
+ 	int ret = -EINVAL;
+ 	struct tc_ns_dev_file *dev_file = NULL;
+ 	void *argp = (void __user *)(uintptr_t)arg;
++	unsigned long tmp[2];
+ 	if (file == NULL || file->private_data == NULL) {
+ 		tloge("invalid params\n");
+ 		return -EINVAL;
+@@ -747,16 +794,29 @@ int public_ioctl(const struct file *file, unsigned int cmd, unsigned long arg, b
+ 	dev_file = file->private_data;
+ 	uint32_t nsid = dev_file->nsid;
+ 	uint32_t vmid = dev_file->vmid;
++	if (dev_file->isVM) {
++		if (copy_from_user(tmp, (void *)(uintptr_t)arg, sizeof(tmp)) != 0) {
++			tloge("copy agent args failed\n");
++			return -EFAULT;
++		}
++		arg = tmp[0];
++	}
+ 
+ 	switch (cmd) {
+ 	case TC_NS_CLIENT_IOCTL_WAIT_EVENT:
+ 		if (ioctl_check_agent_owner(dev_file, (unsigned int)arg) != 0)
+ 			return -EINVAL;
+ 		ret = tc_ns_wait_event((unsigned int)arg, nsid, vmid);
++		if (!ret && dev_file->isVM) {
++			ret = copy_buf_to_VM(tmp[0], nsid, tmp[1], dev_file->vmid);
++		}
+ 		break;
+ 	case TC_NS_CLIENT_IOCTL_SEND_EVENT_RESPONSE:
+ 		if (ioctl_check_agent_owner(dev_file, (unsigned int)arg) != 0)
+ 			return -EINVAL;
++		if (dev_file->isVM) {
++			ret = copy_buf_from_VM(tmp[0], nsid, tmp[1], dev_file->vmid);
++		}
+ 		ret = tc_ns_send_event_response((unsigned int)arg, nsid, vmid);
+ 		break;
+ 	case TC_NS_CLIENT_IOCTL_REGISTER_AGENT:
+@@ -853,6 +913,23 @@ static int tc_client_agent_ioctl(const struct file *file, unsigned int cmd,
+ 	return ret;
+ }
+ 
++int set_vm_flag(struct tc_ns_dev_file *dev_file, void *argp)
++{
++	if (!argp) {
++		tloge("set vm flag failed, argp is null");
++		return -EFAULT;
++	}
++	struct_group group_info;
++	if (copy_from_user(&group_info, argp, sizeof(group_info)) != 0) {
++		tloge("copy vm flag argp failed\n");
++		return -EFAULT;
++	}
++	dev_file->nsid = group_info.nsid;
++	dev_file->vmid = group_info.vmid;
++	tlogd(" dev_file->vmpid %u, nsid is %u\n", dev_file->vmid, dev_file->nsid);
++	return 0;
++}
++
+ void handle_cmd_prepare(unsigned int cmd)
+ {
+ 	if (cmd != TC_NS_CLIENT_IOCTL_WAIT_EVENT &&
+@@ -872,6 +949,11 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
+ {
+ 	int ret = -EFAULT;
+ 	void *argp = (void __user *)(uintptr_t)arg;
++	if (cmd == TC_NS_CLIENT_IOCTL_SET_VM_FLAG) {
++		tlogd(" before set_vm_flag \n");
++		return set_vm_flag(file->private_data, (void *)argp);
++	}
++
+ 	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->vmid == 0)
+ 		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
+ 			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
+@@ -915,6 +997,12 @@ static long tc_client_ioctl(struct file *file, unsigned int cmd,
+ {
+ 	int ret = -EFAULT;
+ 	void *argp = (void __user *)(uintptr_t)arg;
++
++	if (cmd == TC_NS_CLIENT_IOCTL_SET_VM_FLAG) {
++		tlogd(" before set_vm_flag \n");
++		return set_vm_flag(file->private_data, (void *)argp);
++	}
++
+ 	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->vmid == 0)
+ 		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
+ 			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
+@@ -950,20 +1038,30 @@ static int tc_client_open(struct inode *inode, struct file *file)
+ {
+ 	int ret;
+ 	struct tc_ns_dev_file *dev = NULL;
++	int vm = 0;
+ 	(void)inode;
+ 
+-	ret = check_teecd_auth();
+-	if (ret != 0) {
+-		tloge("teec auth failed, ret %d\n", ret);
+-		return -EACCES;
++	ret =check_proxy_auth();
++	if (ret) {
++		ret = check_teecd_auth();
++		if (ret != 0) {
++			tloge("teec auth failed, ret %d\n", ret);
++			return -EACCES;
++		}
++	} else {
++		vm = 1;
+ 	}
+ 
+ 	file->private_data = NULL;
+ 	ret = tc_ns_client_open(&dev, TEE_REQ_FROM_USER_MODE);
+-	if (ret == 0)
++	if (ret == 0) {
+ 		file->private_data = dev;
++		if (vm)
++			dev->isVM = true;
++	}
+ #ifdef CONFIG_TEE_REBOOT
+-	get_teecd_pid();
++	if (!vm && check_teecd_auth() == 0)
++		get_teecd_pid();
+ #endif
+ 	return ret;
+ }
+diff --git a/core/tc_client_driver.h b/core/tc_client_driver.h
+index e926e6e..6fd7599 100644
+--- a/core/tc_client_driver.h
++++ b/core/tc_client_driver.h
+@@ -47,6 +47,7 @@ int tc_ns_client_open(struct tc_ns_dev_file **dev_file, uint8_t kernel_api);
+ int tc_ns_client_close(struct tc_ns_dev_file *dev);
+ int is_agent_alive(unsigned int agent_id, unsigned int nsid, unsigned int vmid);
+ int tc_ns_register_host_nsid_vmid(void);
++int set_vm_flag(struct tc_ns_dev_file *dev_file, void *argp);
+ int init_dev_node(struct dev_node *node, const char *node_name,
+ 		struct class *driver_class, const struct file_operations *fops);
+ void destory_dev_node(struct dev_node *node, struct class *driver_class);
+diff --git a/core/tc_cvm_driver.c b/core/tc_cvm_driver.c
+index 52fe687..952cf15 100644
+--- a/core/tc_cvm_driver.c
++++ b/core/tc_cvm_driver.c
+@@ -82,6 +82,12 @@ static long tc_cvm_ioctl(struct file *file, unsigned int cmd,
+ {
+ 	int ret = -EFAULT;
+ 	void *argp = (void __user *)(uintptr_t)arg;
++
++	if (cmd == TC_NS_CLIENT_IOCTL_SET_VM_FLAG) {
++		tlogd(" before set_vm_flag \n");
++		return set_vm_flag(file->private_data, (void *)arg);
++	}
++	
+ 	if (file != NULL && file->private_data != NULL && ((struct tc_ns_dev_file *)(file->private_data))->vmid == 0)
+ 		init_nsid_vmid(&(((struct tc_ns_dev_file *)(file->private_data))->nsid),
+ 			&(((struct tc_ns_dev_file *)(file->private_data))->vmid));
+diff --git a/tc_ns_client.h b/tc_ns_client.h
+index 23aed72..cdad6d5 100644
+--- a/tc_ns_client.h
++++ b/tc_ns_client.h
+@@ -217,6 +217,9 @@ typedef struct {
+ #define TC_NS_CLIENT_IOCTL_GET_TEE_INFO \
+ 	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 26, struct tc_ns_tee_info)
+ 
++#define TC_NS_CLIENT_IOCTL_SET_VM_FLAG \
++	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 27, struct_group)
++
+ #define TC_NS_CLIENT_IOCTL_REGISTER_VM_NSID_VMID  \
+     _IOWR(TC_NS_CLIENT_IOC_MAGIC, 28, struct_group)
+ #define TC_NS_CLIENT_IOCTL_UNREGISTER_VM_NSID_VMID  \
+diff --git a/teek_ns_client.h b/teek_ns_client.h
+index b426df6..cd40c69 100644
+--- a/teek_ns_client.h
++++ b/teek_ns_client.h
+@@ -131,6 +131,8 @@ struct tc_ns_dev_file {
+ #ifdef CONFIG_CONFIDENTIAL_CONTAINER
+ 	uint32_t nsid;
+ 	uint32_t vmid;
++	bool isVM;
++	uint32_t vm_page_size;
+ #endif
+ 	struct completion close_comp; /* for kthread close unclosed session */
+ #ifdef CONFIG_TEE_TELEPORT_SUPPORT
+diff --git a/tlogger/tlogger.c b/tlogger/tlogger.c
+index df1fb49..4f8c8b7 100644
+--- a/tlogger/tlogger.c
++++ b/tlogger/tlogger.c
+@@ -61,6 +61,7 @@
+ #define SET_TLOGCAT_STAT_BASE  7
+ #define GET_TLOGCAT_STAT_BASE  8
+ #define GET_TEE_INFO_BASE      9
++#define SET_VM_FLAG            10
+ 
+ /* get tee verison */
+ #define MAX_TEE_VERSION_LEN     256
+@@ -75,6 +76,8 @@
+ 	_IO(LOGGERIOCTL, GET_TLOGCAT_STAT_BASE)
+ #define TEELOGGER_GET_TEE_INFO \
+ 	_IOR(LOGGERIOCTL, GET_TEE_INFO_BASE, struct tc_ns_tee_info)
++#define TEELOGGER_SET_VM_FLAG \
++	_IOR(LOGGERIOCTL, SET_VM_FLAG, struct_group)
+ 
+ int g_tlogcat_f = 0;
+ 
+@@ -808,6 +811,41 @@ static int get_teeos_version(uint32_t cmd, unsigned long arg)
+ 	return 0;
+ }
+ 
++int set_tlog_vm_flag(struct file *file, void *arg)
++{
++	struct tlogger_reader *reader = NULL;
++	struct tlogger_group *group = NULL;
++
++	if (!file || !file->private_data) {
++		return -1;
++	}
++	struct_group id_info = {0};
++	if (copy_from_user(&id_info, arg, sizeof(id_info)) != 0) {
++		tloge("copy tlog vm flag args failed\n");
++		return -EFAULT;
++	}
++
++	reader = file->private_data;
++	mutex_lock(&g_reader_group_mutex);
++	group = get_tlogger_group(id_info.nsid, id_info.vmid);
++	if (group == NULL) {
++		group = kzalloc(sizeof(*group), GFP_KERNEL);
++		if (ZERO_OR_NULL_PTR((unsigned long)(uintptr_t)group)) {
++			mutex_unlock(&g_reader_group_mutex);
++			return -ENOMEM;
++		}
++		init_tlogger_group(group);
++		group->nsid = id_info.nsid;
++		group->vmid = id_info.vmid;
++		list_add_tail(&group->node, &g_reader_group_list);
++	} else {
++		group->reader_cnt++;
++	}
++	mutex_unlock(&g_reader_group_mutex);
++	reader->group = group;
++	return 0;
++}
++
+ static long process_tlogger_ioctl(struct file *file,
+ 	unsigned int cmd, unsigned long arg)
+ {
+@@ -845,6 +883,9 @@ static long process_tlogger_ioctl(struct file *file,
+ 	case TEELOGGER_GET_TEE_INFO:
+ 		ret = tc_ns_get_tee_info(file, (void *)(uintptr_t)arg);
+ 		break;
++	case TEELOGGER_SET_VM_FLAG:
++		ret = set_tlog_vm_flag(file, (struct_group *)arg);
++		break;
+ 	default:
+ 		tloge("ioctl error default\n");
+ 		break;
+@@ -1023,11 +1064,13 @@ static int write_part_log_to_msg(struct file *filep,
+ 
+ 	while (next_item && read_off <= read_off_end) {
+ 		item_len = next_item->buffer_len + sizeof(*next_item);
+-		write_len = kernel_write(filep, next_item->log_buffer,
+-			next_item->real_len, pos);
+-		if (write_len < 0) {
+-			tloge("Failed to write last teemsg %zd\n", write_len);
+-			return -1;
++		if (next_item->nsid == 0) {
++			write_len = kernel_write(filep, next_item->log_buffer,
++				next_item->real_len, pos);
++			if (write_len < 0) {
++				tloge("Failed to write last teemsg %zd\n", write_len);
++				return -1;
++			}
+ 		}
+ 
+ 		tlogd("Succeed to Write last teemsg, len=%zd\n", write_len);
+-- 
+2.43.0
+

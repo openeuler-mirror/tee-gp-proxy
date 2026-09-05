@@ -1,0 +1,121 @@
+From b75328ff5eade7f52887303e212603a2eeb355df Mon Sep 17 00:00:00 2001
+From: root <root@localhost.localdomain>
+Date: Wed, 20 May 2026 15:15:20 +0800
+Subject: [PATCH] [feature]add transfer data ioctl func
+
+---
+ core/tc_client_driver.c | 67 +++++++++++++++++++++++++++++++++++++++++
+ tc_ns_client.h          | 12 ++++++++
+ 2 files changed, 79 insertions(+)
+
+diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
+index afdd4d6..eebc286 100644
+--- a/core/tc_client_driver.c
++++ b/core/tc_client_driver.c
+@@ -286,6 +286,70 @@ static int tc_ns_translate_gpa(const struct tc_ns_dev_file *dev_file, const void
+ 	return 0;
+ }
+ 
++/*
++ * Read/write data from/to QEMU process address space.
++ */
++
++static int tc_ns_transfer_data(const struct tc_ns_dev_file *dev_file, const void *argp, unsigned int cmd)
++{
++	struct rd_info info;
++	void *buffer = NULL;
++
++	if (argp == NULL)
++		return -EINVAL;
++
++	if (copy_from_user(&info, argp, sizeof(info))) {
++		tloge("copy_from_user failed for rd_info\n");
++		return -EFAULT;
++	}
++
++	if (info.src_addr == 0 || info.src_size == 0 || info.dst_size < info.src_size || info.src_size > 4 * 1024 * 1024) {
++		tloge("invalid src_addr %llu or src_size %llu\n", info.src_addr, info.src_size);
++		return -EINVAL;
++	}
++
++	if (!info.write_back) {
++		/* Read mode: read data from QEMU process into kernel buffer, then copy to user-space dst_addr */
++		buffer = kmalloc(info.src_size, GFP_KERNEL);
++		if (buffer == NULL) {
++			tloge("kmalloc failed for size %llu\n", info.src_size);
++			return -ENOMEM;
++		}
++		if (read_from_VMclient(buffer, info.src_size,
++			(const void __user *)(uintptr_t)(info.src_addr), info.src_size, (pid_t)(info.vmpid))) {
++			tloge("read from VM client failed\n");
++			return -EFAULT;
++		}
++
++		if (copy_to_user((void __user *)(uintptr_t)info.dst_addr, buffer, info.src_size)) {
++			tloge("copy_to_user failed for dst_addr\n");
++			kfree(buffer);
++			return -EFAULT;
++		}
++		kfree(buffer);
++	} else {
++		/* Write-back mode: read data from user-space dst_addr, then write to QEMU process src_addr */
++		buffer = kmalloc(info.dst_size, GFP_KERNEL);
++		if (buffer == NULL) {
++			tloge("kmalloc failed for size %llu\n", info.dst_size);
++			return -ENOMEM;
++		}
++		if (copy_from_user(buffer, (const void __user *)(uintptr_t)info.dst_addr, info.dst_size)) {
++			tloge("copy_from_user failed for dst_addr\n");
++			kfree(buffer);
++			return -EFAULT;
++		}
++		if (write_to_VMclient((void __user *)(uintptr_t)info.src_addr, info.dst_size, buffer, info.dst_size,
++			(pid_t)info.vmpid)) {
++			tloge("write to VM client failed\n");
++			return -EFAULT;
++		}
++		kfree(buffer);
++	}
++
++	return 0;
++}
++
+ int tc_ns_register_host_nsid_vmid(void)
+ {
+ 	struct tc_ns_smc_cmd smc_cmd = {{0}, 0};
+@@ -1178,6 +1242,9 @@ static long tc_private_ioctl(struct file *file, unsigned int cmd,
+ 	case TC_NS_CLIENT_IOCTL_TRANSLATE_GPA:
+ 		ret = tc_ns_translate_gpa(file->private_data, argp, cmd);
+ 		break;
++	case TC_NS_CLIENT_IOCTL_TRANSFER_DATA:
++		ret = tc_ns_transfer_data(file->private_data, argp, cmd);
++		break;
+ 	default:
+ 		ret = public_ioctl(file, cmd, arg, false);
+ 		break;
+diff --git a/tc_ns_client.h b/tc_ns_client.h
+index 8a1d6ff..f9d0c2d 100644
+--- a/tc_ns_client.h
++++ b/tc_ns_client.h
+@@ -230,6 +230,18 @@ typedef struct {
+ #define TC_NS_CLIENT_IOCTL_CHECK_CCOS \
+ 	_IOWR(TC_NS_CLIENT_IOC_MAGIC, 32, unsigned int)
+ 
++struct rd_info{
++    uint64_t src_addr;
++    uint64_t src_size;
++    uint64_t dst_addr;
++    uint64_t dst_size;
++    int write_back;
++	int32_t vmpid;
++};
++
++#define TC_NS_CLIENT_IOCTL_TRANSFER_DATA \
++    _IOWR(TC_NS_CLIENT_IOC_MAGIC, 33, struct rd_info)
++
+ struct vm_gpa_info {
+ 	uint32_t cid;
+ 	uint64_t gpa;
+-- 
+2.33.0
+
