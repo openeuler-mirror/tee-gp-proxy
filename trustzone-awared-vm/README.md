@@ -54,19 +54,25 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
     yum install compat-openssl11-libs # 当内核版本大于等于6.6需安装
     ```
 2. `vhost_vsock`编译
-    > 注：当系统内核使用4.19内核基线版本大于4.19.149时，vsock驱动代码需要根据基线做修改适配。具体可根据版本号参考https://elixir.bootlin.com/linux/v4.19.150/source/drivers/vhost/vsock对vsock对应版本驱动源码进行修改。
-    > 示例修改：在vhost_vsock_handle_tx_kick函数前声明如下vhost_transport结构，同时修改virtio_transport_recv_pkt接口传参，增加&vhost_transport参数。
-    ```
-    static struct virtio_transport vhost_transport;
-
-    virtio_transport_recv_pkt(pkt);改为virtio_transport_recv_pkt(&vhost_transport, pkt);
-    ```
     1. 下载代码仓，进入Host路径，执行`build_vsock.sh`脚本，编译并替换系统vhost_vsock.ko驱动。
     ```shell
     git clone https://gitcode.com/openeuler/tee-gp-proxy.git
     cd tee-gp-proxy/trustzone-awared-vm/Host/
     sh build_vsock.sh
     ```
+
+    > 注意事项：
+    
+    > 1.当系统内核使用4.19内核且基线版本大于4.19.149时，vsock驱动代码需要根据基线做修改适配。具体可根据版本号参考https://elixir.bootlin.com/linux/v4.19.150/source/drivers/vhost/vsock对vsock对应版本驱动源码进行修改。
+    
+    > 示例修改：在vhost_vsock_handle_tx_kick函数前声明如下vhost_transport结构，同时修改virtio_transport_recv_pkt接口传参，增加&vhost_transport参数。
+
+    ```
+    static struct virtio_transport vhost_transport;
+
+    virtio_transport_recv_pkt(pkt);改为virtio_transport_recv_pkt(&vhost_transport, pkt);
+    ```
+    > 2.麒麟v11操作系统，需修改 `tee-gp-proxy/trustzone-awared-vm/Host/vsock-6.6/vhost.h` 中` eventfd_signal((vq)->error_ctx, 1)` 为 `eventfd_signal(1)`。
 3. `tzdriver`和`client`编译安装
     1. 进入`itrustee_tzdriver`的根目录，补丁文件路径按照实际路径修改。
     ``` 
