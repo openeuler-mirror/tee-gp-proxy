@@ -91,9 +91,7 @@ void wait_event(struct_packet_cmd_event *packet_cmd,
     }
     pthread_mutex_unlock(&serial_port->vm_file->fd_lock);
     if (bfind) {
-        fd_p->agent.thd  = pthread_self();
         ret = ioctl(packet_cmd->ptzfd, TC_NS_CLIENT_IOCTL_WAIT_EVENT, buf);
-        fd_p->agent.thd  = 0;
     }
     packet_rsp.packet_size = sizeof(packet_rsp);
     packet_rsp.seq_num = packet_cmd->seq_num + 1;
