@@ -1,6 +1,8 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+
 #include "errno.h"
 #include "vm.h"
 #include "agent.h"
@@ -209,6 +211,8 @@ struct vm_file *create_vm_file(uint32_t cid)
     tmp->vmpid = 0;
     tmp->nsid = 0;
     tmp->cid = cid;
+    tmp->count = 0;
+    tmp->is_destroying = false;
     ListInsertTail(&g_vm_list, &tmp->head);
 END:
     pthread_mutex_unlock(&g_mutex_vm);
@@ -248,10 +252,11 @@ void wakeup_thread(struct vm_file * vm_file) {
                     tloge("try to kill thread failed, ret %d, vmpid %u\n", result, vm_file->vmpid);
                 }
             }
-        } else {
-            pthread_mutex_unlock(&vm_file->workers_lock);
-            break;
         }
+        if (vm_file->count == 0) {
+            pthread_mutex_unlock(&vm_file->workers_lock);
+		    break;
+	    }
         pthread_mutex_unlock(&vm_file->workers_lock);
         usleep(5000);
     } while(1);
@@ -262,10 +267,14 @@ void *destroy_vm_file(void *args)
     struct ListNode *ptr = NULL;
     struct ListNode *n = NULL;
     struct fd_file *fd_p = NULL;
-    struct vm_file * vm_file = (struct vm_file *)args;
+    struct serial_port_file * serial_port = (struct serial_port_file *)args;
+    struct vm_file * vm_file = serial_port->vm_file;
     if (!vm_file)
         return NULL;
 
+    pthread_mutex_lock(&vm_file->workers_lock);
+    vm_file->is_destroying = true;
+    pthread_mutex_unlock(&vm_file->workers_lock);
     wakeup_thread(vm_file);
 
     pthread_mutex_lock(&vm_file->fd_lock);
@@ -280,6 +289,7 @@ void *destroy_vm_file(void *args)
     pthread_mutex_lock(&g_mutex_vm);
     ListRemoveEntry(&(vm_file->head));
     free(vm_file);
+    serial_port->vm_file = NULL;
     pthread_mutex_unlock(&g_mutex_vm);
     return NULL;
 }

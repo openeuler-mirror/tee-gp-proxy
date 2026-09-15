@@ -37,6 +37,8 @@ struct vm_file {
     struct ListNode workers_head;
     uint32_t nsid;
     uint32_t cid;
+    uint64_t count;
+    bool is_destroying;
 };
 
 typedef struct {

@@ -363,6 +363,13 @@ static void *deal_packet_thread(void *arg)
                     continue;
                 }
             }
+
+            pthread_mutex_lock(&serial_port->vm_file->workers_lock);
+            if(serial_port->vm_file->is_destroying == true){
+                goto end;
+            }
+            serial_port->vm_file->count++;
+            pthread_mutex_unlock(&serial_port->vm_file->workers_lock);
             thread_pool_submit(&g_pool, thread_entry, (void *)((uint64_t)packet));
         }
         serial_port->offset = offset;

@@ -73,8 +73,8 @@ static void signal_handler(int signum) {
         case SIGABRT:
         case SIGILL:
         case SIGFPE:
-            cleanup_resources();
-            exit(EXIT_FAILURE);
+            signal(signum, SIG_DFL);
+            raise(signum);
             break;
         case SIGPIPE:
             break;

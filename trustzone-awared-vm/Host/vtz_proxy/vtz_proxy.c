@@ -1081,6 +1081,9 @@ void *thread_entry(void *args)
     pthread_mutex_lock(&vm_fp->workers_lock);
     worker_p->tid = pthread_self();
     ListInsertTail(&vm_fp->workers_head, &worker_p->head);
+    if(vm_fp->is_destroying == true){
+        goto END;
+    }
     pthread_mutex_unlock(&vm_fp->workers_lock);
 
     struct_packet_cmd_nothing *p = (struct_packet_cmd_nothing *)rd_buf;
@@ -1173,6 +1176,7 @@ END:
 
     pthread_mutex_lock(&vm_fp->workers_lock);
     ListRemoveEntry(&(worker_p->head));
+    vm_fp->count--;
     pthread_mutex_unlock(&vm_fp->workers_lock);
     free(worker_p);
     return NULL;
