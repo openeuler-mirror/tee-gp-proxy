@@ -365,7 +365,8 @@ static void *deal_packet_thread(void *arg)
             }
 
             pthread_mutex_lock(&serial_port->vm_file->workers_lock);
-            if(serial_port->vm_file->is_destroying == true){
+            if(serial_port->vm_file->is_destroying == true) {
+                pthread_mutex_unlock(&serial_port->vm_file->workers_lock);
                 goto end;
             }
             serial_port->vm_file->count++;
