@@ -1,4 +1,4 @@
-From 1f1c3aeb736d8b98be2bde1c580e86512a62ad99 Mon Sep 17 00:00:00 2001
+From 2acc711566afbf3bade4fbcfc6415e299debb1dc Mon Sep 17 00:00:00 2001
 From: liuhao365 <liuhao365@h-partners.com>
 Date: Thu, 17 Sep 2026 17:06:17 +0800
 Subject: [PATCH] support set ree load mode for modprobe tzdriver
@@ -9,7 +9,7 @@ Subject: [PATCH] support set ree load mode for modprobe tzdriver
  2 files changed, 19 insertions(+), 8 deletions(-)
 
 diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
-index fd4f53a..64920d6 100644
+index fd4f53a..3d254df 100644
 --- a/core/tc_client_driver.c
 +++ b/core/tc_client_driver.c
 @@ -117,6 +117,21 @@ static bool g_init_succ = false;
@@ -24,7 +24,7 @@ index fd4f53a..64920d6 100644
 +
 +int get_ree_load_mode(void)
 +{
-+#ifdef CONFIG_VM_DEPLOY
++#ifdef VM_DEPLOY
 +	return load_mode;
 +#else
 +	return REE_CONTAINER;
