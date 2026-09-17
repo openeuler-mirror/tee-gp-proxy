@@ -15,7 +15,7 @@ index 37514c3..49d1398 100644
   * this version number MAJOR.MINOR is used
   * to identify the compatibility of tzdriver and teeos
   */
--#define TEEOS_COMPAT_LEVEL_MAJOR 7
+-#define TEEOS_COMPAT_LEVEL_MAJOR 8
 +#define TEEOS_COMPAT_LEVEL_MAJOR 6
  #define TEEOS_COMPAT_LEVEL_MINOR 0
  

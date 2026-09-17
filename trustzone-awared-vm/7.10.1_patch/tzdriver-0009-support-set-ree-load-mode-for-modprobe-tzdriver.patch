@@ -1,0 +1,69 @@
+From 1f1c3aeb736d8b98be2bde1c580e86512a62ad99 Mon Sep 17 00:00:00 2001
+From: liuhao365 <liuhao365@h-partners.com>
+Date: Thu, 17 Sep 2026 17:06:17 +0800
+Subject: [PATCH] support set ree load mode for modprobe tzdriver
+
+---
+ core/tc_client_driver.c | 18 ++++++++++++++++++
+ tc_ns_client.h          |  9 +--------
+ 2 files changed, 19 insertions(+), 8 deletions(-)
+
+diff --git a/core/tc_client_driver.c b/core/tc_client_driver.c
+index fd4f53a..64920d6 100644
+--- a/core/tc_client_driver.c
++++ b/core/tc_client_driver.c
+@@ -117,6 +117,21 @@ static bool g_init_succ = false;
+ 
+ static bool g_vm_deploy_enable = true;
+ 
++#ifdef CONFIG_CONFIDENTIAL_CONTAINER
++static int load_mode = REE_VIRTUAL;
++module_param(load_mode, int, 0660);
++MODULE_PARM_DESC(load_mode, "Load mode for tzdriver: 1=contrainer, 2=virtual.");
++#endif
++
++int get_ree_load_mode(void)
++{
++#ifdef CONFIG_VM_DEPLOY
++	return load_mode;
++#else
++	return REE_CONTAINER;
++#endif
++}
++
+ struct class *get_driver_class(void)
+ {
+ 	return g_driver_class;
+@@ -1914,6 +1929,9 @@ static __init int tc_init(void)
+ 		tloge("enable dev nodes failed\n");
+ 		goto class_device_destroy;
+ 	}
++#ifdef CONFIG_CONFIDENTIAL_CONTAINER
++	tlogi("set load mode success, mode = %d\n", load_mode);
++#endif
+ 
+ 	set_tz_init_flag();
+ #if defined(DYNAMIC_DRV_DIR) || defined(DYNAMIC_CRYPTO_DRV_DIR) || defined(DYNAMIC_SRV_DIR)
+diff --git a/tc_ns_client.h b/tc_ns_client.h
+index 8b14ce4..4bc78a9 100644
+--- a/tc_ns_client.h
++++ b/tc_ns_client.h
+@@ -269,14 +269,7 @@ enum REE_LOAD_MODE {
+ 	REE_VIRTUAL = 2,
+ };
+ 
+-static inline int get_ree_load_mode(void)
+-{
+-#ifdef VM_DEPLOY
+-	return REE_VIRTUAL;
+-#else
+-	return REE_CONTAINER;
+-#endif
+-}
++int get_ree_load_mode(void);
+ 
+ static inline bool is_same_group(unsigned int dst_nsid, unsigned int dst_vmid, unsigned int nsid, unsigned int vmid)
+ {
+-- 
+2.33.0
+
