@@ -191,7 +191,7 @@ clone_itrustee_tzdriver() {
                 pushd "${ITRUSTEE_TZDRIVER_DIR}" > /dev/null || return 1
 
                 log_info "Applying tzdriver-00*.patch..."
-                for patch in ${TEE_GP_PROXY_DIR}/trustzone-awared-vm/Host/tzdriver-00*.patch; do
+                for patch in ${TEE_GP_PROXY_DIR}/trustzone-awared-vm/7.10.1_patch/tzdriver-00*.patch; do
                     log_info "Patching: $patch"
                     git am "$patch" || {
                         log_error "Patch failed: $patch"
@@ -223,7 +223,7 @@ clone_itrustee_tzdriver() {
         pushd "${ITRUSTEE_TZDRIVER_DIR}" > /dev/null || return 1
 
         log_info "Applying tzdriver-00*.patch..."
-        for patch in ${TEE_GP_PROXY_DIR}/trustzone-awared-vm/Host/tzdriver-00*.patch; do
+        for patch in ${TEE_GP_PROXY_DIR}/trustzone-awared-vm/7.10.1_patch/tzdriver-00*.patch; do
             log_info "Patching: $patch"
             git am "$patch" || {
                 log_error "Patch failed: $patch"

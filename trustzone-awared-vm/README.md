@@ -74,9 +74,10 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
     ```
     > 2.麒麟v11操作系统，需修改 `tee-gp-proxy/trustzone-awared-vm/Host/vsock-6.6/vhost.h` 中` eventfd_signal((vq)->error_ctx, 1)` 为 `eventfd_signal(1)`。
 3. `tzdriver`和`client`编译安装
-    1. 进入`itrustee_tzdriver`的根目录，补丁文件路径按照实际路径修改。
+    1. 下载并进入`itrustee_tzdriver`的根目录，补丁文件路径按照实际路径修改。
     ``` 
-    git am ../tee-gp-proxy/trustzone-awared-vm/Host/tzdriver-00*.patch
+    git clone https://gitcode.com/openeuler/itrustee_tzdriver.git -b iTrustee_7.10.1_release
+    git am ../tee-gp-proxy/trustzone-awared-vm/7.10.1_patch/tzdriver-00*.patch
     cd rpm
     sh build_rpm.sh
     rpm -ivh output/tzdriver-*.rpm
@@ -84,8 +85,9 @@ Host的vsock服务端占用Host 30000端口，保证可以与VM侧通信，部�
     > 如果是麒麟系统，需要在Makefile中 删除 `-fstack-protector-strong`
     >
     > 若kernel路径不正确，请自行修改Makefile中的KERN_DIR
-    2. 进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改，编译守护进程并安装。
+    2. 下载并进入`itrustee_client`的根目录，补丁文件路径按照实际路径修改，编译守护进程并安装。
     ```shell 
+    git clone https://gitcode.com/openeuler/itrustee_client.git -b iTrustee_7.10.1_release
     git am ../tee-gp-proxy/trustzone-awared-vm/Host/client-00*.patch
     cd rpm
     sh build_rpm.sh
