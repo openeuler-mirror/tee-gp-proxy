@@ -24,6 +24,11 @@ VM_SCALABILITY=${VM_SCALABILITY:-"true"}
 # Whether to install huawei's sdf utils rpm package
 NEED_SDF_UTILS_RPM=${NEED_SDF_UTILS_RPM:-"true"}
 
+# Whether to deploy itrustee_tzdriver and itrustee_client (Step5-8)
+# When set to false, Steps 5-8 are skipped and pre_deployment_check
+# no longer checks whether tzdriver.ko is loaded
+NEED_ITRUSTEE=${NEED_ITRUSTEE:-"true"}
+
 # Lenient mode: skip deletion of existing directories during clone operations
 LENIENT_MODE=${LENIENT_MODE:-"false"}
 
@@ -44,7 +49,7 @@ KUNPENG_SEC_DRV_DIR="/var/itrustee/tee_dynamic_drv/crypto"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KUNPENG_SEC_DRV_FILE_NAME="kunpeng_sec_drv.sec"
-KUNPENG_SEC_DRV_FILE=${SCRIPT_DIR}/${KUNPENG_SEC_DRV_FILE_NAME}
+KUNPENG_SEC_DRV_FILE=${KUNPENG_SEC_DRV_FILE:-${SCRIPT_DIR}/${KUNPENG_SEC_DRV_FILE_NAME}}
 SDF_UTILS_RPM=${SDF_UTILS_RPM:-"sdf-utils*.rpm"}
 DEPLOYMENT_SUCCESS="false"
 RPM_PKG_INSTALLED="false"
@@ -106,6 +111,7 @@ print_config() {
     echo "Deployment Options:"
     echo "  VM_SCALABILITY        : ${VM_SCALABILITY}"
     echo "  LENIENT_MODE          : ${LENIENT_MODE}"
+    echo "  NEED_ITRUSTEE         : ${NEED_ITRUSTEE}"
     echo ""
     echo "Required Files:"
     if [ $DEPLOY_MODE = "host" ]; then
@@ -209,6 +215,11 @@ check_params() {
 
     if [[ "${LENIENT_MODE}" != "true" ]] && [[ "${LENIENT_MODE}" != "false" ]]; then
         log_error "Invalid param: LENIENT_MODE"
+        return 1
+    fi
+
+    if [[ "${NEED_ITRUSTEE}" != "true" ]] && [[ "${NEED_ITRUSTEE}" != "false" ]]; then
+        log_error "Invalid param: NEED_ITRUSTEE"
         return 1
     fi
 
@@ -316,6 +327,8 @@ show_help() {
     echo "                              默认: true"
     echo "  -n, --need_sdf_utils_rpm    是否需要部署鲲鹏密码模块，可配置 true 或 false"
     echo "                              默认: true"
+    echo "  -i, --need_itrustee         是否需要部署 itrustee_tzdriver/itrustee_client，可配置 true 或 false"
+    echo "                              默认: true"
     echo "  -l, --lenient               宽松模式，跳过 clone 时删除已存在目录的步骤"
     echo "                              默认: false"
     echo ""
@@ -324,6 +337,7 @@ show_help() {
     echo "  $0 -w /opt/ccos-deploy      # 在 /opt/ccos-deploy 目录下进行安装和构建"
     echo "  $0 -w ./my-deploy           # 使用相对路径进行部署"
     echo "  $0 -n false                 # 不需要部署鲲鹏密码模块"
+    echo "  $0 -i false                 # 跳过部署teecd/tzdriver"
     echo "  $0 -l                       # 使用宽松模式，保留已存在的目录"
 }
 
@@ -343,6 +357,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -n|--need_sdf_utils_rpm)
             NEED_SDF_UTILS_RPM="$2"
+            shift 2
+            ;;
+        -i|--need_itrustee)
+            NEED_ITRUSTEE="$2"
             shift 2
             ;;
         -l|--lenient)

@@ -48,6 +48,7 @@ TEE_GP_PROXY_BRANCH="master"
 | `--vm_scalability` | `-v` | 虚机扩展功能（true/false） | `true` |
 | `--need_sdf_utils_rpm` | `-n` | 是否部署鲲鹏密码模块（true/false） | `true` |
 | `--lenient` | `-l` | 宽松模式，部署路径下存在相应组件代码时，将不再git clone获取，适合离线部署 | `false` |
+| `--need_itrustee` | `-i` | 是否部署 itrustee_tzdriver/itrustee_client（Host 的 Step5-8，true/false）；设为 false 时跳过 Step5-8，且 pre_deployment_check 不再检查 tzdriver.ko 是否已加载 | `true` |
 
 ### 使用示例
 
@@ -57,6 +58,9 @@ TEE_GP_PROXY_BRANCH="master"
 
 # 不需要部署鲲鹏密码模块
 ./deploy.sh -n false
+
+# 跳过部署 itrustee（跳过 Step5-8，且跳过 tzdriver.ko 检查）
+./deploy.sh -i false
 
 # 使用宽松模式部署
 ./deploy -l true
