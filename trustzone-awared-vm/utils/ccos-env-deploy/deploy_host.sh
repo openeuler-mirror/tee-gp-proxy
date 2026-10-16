@@ -54,7 +54,7 @@ pre_deployment_check() {
 
     # Check 3: tzdriver.ko must not be loaded (this check must be last)
     log_info "Checking tzdriver.ko module..."
-    if lsmod | grep -q "^tzdriver"; then
+    if ${NEED_ITRUSTEE} && lsmod | grep -q "^tzdriver"; then
         log_error "tzdriver.ko module is already loaded!"
         log_error "Please reboot the machine and run this script again."
         log_info "After reboot, run: $0"
@@ -462,10 +462,10 @@ deploy_host() {
         build_and_copy_vsock || { log_error "Step 4 failed"; return 1; }
     fi
 
-    clone_itrustee_tzdriver || { log_error "Step 5 failed"; return 1; }
-    build_and_install_tzdriver || { log_error "Step 6 failed"; return 1; }
-    clone_itrustee_client || { log_error "Step 7 failed"; return 1; }
-    build_itrustee_client || { log_error "Step 8 failed"; return 1; }
+    ${NEED_ITRUSTEE} && clone_itrustee_tzdriver || { log_error "Step 5 failed"; return 1; }
+    ${NEED_ITRUSTEE} && build_and_install_tzdriver || { log_error "Step 6 failed"; return 1; }
+    ${NEED_ITRUSTEE} && clone_itrustee_client || { log_error "Step 7 failed"; return 1; }
+    ${NEED_ITRUSTEE} && build_itrustee_client || { log_error "Step 8 failed"; return 1; }
     if [[ "$VM_SCALABILITY" = "true" ]]; then
         build_and_install_vtz_proxy || { log_error "Step 9 failed"; return 1; }
     fi
