@@ -462,10 +462,12 @@ deploy_host() {
         build_and_copy_vsock || { log_error "Step 4 failed"; return 1; }
     fi
 
-    ${NEED_ITRUSTEE} && clone_itrustee_tzdriver || { log_error "Step 5 failed"; return 1; }
-    ${NEED_ITRUSTEE} && build_and_install_tzdriver || { log_error "Step 6 failed"; return 1; }
-    ${NEED_ITRUSTEE} && clone_itrustee_client || { log_error "Step 7 failed"; return 1; }
-    ${NEED_ITRUSTEE} && build_itrustee_client || { log_error "Step 8 failed"; return 1; }
+    if [[ "$NEED_ITRUSTEE" = "true" ]]; then
+        clone_itrustee_tzdriver || { log_error "Step 5 failed"; return 1; }
+        build_and_install_tzdriver || { log_error "Step 6 failed"; return 1; }
+        clone_itrustee_client || { log_error "Step 7 failed"; return 1; }
+        build_itrustee_client || { log_error "Step 8 failed"; return 1; }
+    fi
     if [[ "$VM_SCALABILITY" = "true" ]]; then
         build_and_install_vtz_proxy || { log_error "Step 9 failed"; return 1; }
     fi
